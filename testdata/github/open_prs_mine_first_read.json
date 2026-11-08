@@ -1,0 +1,455 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4982,
+      "resetAt": "2026-11-06T06:07:31Z",
+      "limit": 5000,
+      "used": 18
+    },
+    "search": {
+      "issueCount": 17,
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "Y3Vyc29yOjE3"
+      },
+      "nodes": [
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 219,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/t1-tile-filters",
+          "headRefOid": "9436f7c038a597ef7228fd2831d26ac3c0745e7b",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/acme/pivot/pull/219",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T05:19:04Z",
+          "updatedAt": "2026-11-02T05:19:04Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot-web"
+          },
+          "number": 32,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "headRefName": "share/w3-embed-guide",
+          "headRefOid": "a6680f4c140dbd396307e9bd09d1c1c9a92c63f3",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (W3)",
+          "url": "https://github.com/acme/pivot-web/pull/32",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:55:17Z",
+          "updatedAt": "2026-11-02T04:55:23Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 218,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/s1-scheduled-snapshots",
+          "headRefOid": "01e03359ad772d90e0346fc8fe73c30d4750bdcb",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (S1)",
+          "url": "https://github.com/acme/pivot/pull/218",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:54:02Z",
+          "updatedAt": "2026-11-02T04:54:02Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 217,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/a3-embed-endpoint",
+          "headRefOid": "b2d3bffe898e6122800708825b68ab612824790b",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (A3)",
+          "url": "https://github.com/acme/pivot/pull/217",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:45:04Z",
+          "updatedAt": "2026-11-02T04:45:05Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 216,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/a4-snapshot-renderer",
+          "headRefOid": "af9bba2e95c0ea8869c173a357dd8512073246d2",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (A4)",
+          "url": "https://github.com/acme/pivot/pull/216",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:44:43Z",
+          "updatedAt": "2026-11-02T04:49:58Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot-web"
+          },
+          "number": 31,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "headRefName": "share/w2-share-dialog",
+          "headRefOid": "30fd1d8b0d89b85c12082aa213a5ec866ff2bf1e",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (W2)",
+          "url": "https://github.com/acme/pivot-web/pull/31",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:41:33Z",
+          "updatedAt": "2026-11-02T04:41:39Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 215,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/a2-token-revocation",
+          "headRefOid": "6df8657ca5063b280728cc4804d39ffb8ea1f9c2",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (A2)",
+          "url": "https://github.com/acme/pivot/pull/215",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:39:55Z",
+          "updatedAt": "2026-11-02T04:45:14Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/pivot"
+          },
+          "number": 214,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "share/v1-email-reports",
+          "headRefOid": "64a260aca901aede716644da290221d81d0701e1",
+          "baseRefName": "release/2.4",
+          "isCrossRepository": false,
+          "title": "PR title (V1)",
+          "url": "https://github.com/acme/pivot/pull/214",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-11-02T04:32:07Z",
+          "updatedAt": "2026-11-02T04:41:47Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "example-org/meadow-backend"
+          },
+          "number": 188,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "UNKNOWN",
+          "mergeStateStatus": "UNKNOWN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feat/batch-2c-audit-log",
+          "headRefOid": "121f8ace591f336c9196b2d03603b4e686d374a9",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-org/meadow-backend/pull/188",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-10-01T01:40:32Z",
+          "updatedAt": "2026-10-16T21:34:00Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/acme-www"
+          },
+          "number": 27,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "headRefName": "feat/pricing-terms-page",
+          "headRefOid": "c1efbc02546c084e0ac1d42f8bf4c85ae5fe192a",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/acme/acme-www/pull/27",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-09-28T18:57:25Z",
+          "updatedAt": "2026-09-28T18:57:31Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "example-org/meadow-ios"
+          },
+          "number": 342,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "UNKNOWN",
+          "mergeStateStatus": "UNKNOWN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feat/152-saved-items-p5",
+          "headRefOid": "ed756563fda4fa429cbac527577b43346301323b",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-org/meadow-ios/pull/342",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-09-16T20:31:54Z",
+          "updatedAt": "2026-09-16T21:20:50Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "example-org/meadow-backend"
+          },
+          "number": 126,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "UNKNOWN",
+          "mergeStateStatus": "UNKNOWN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feat/step12-hookup",
+          "headRefOid": "f7a583e11a167d88853f82ba81d7f54a1d0b7dbe",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-org/meadow-backend/pull/126",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-09-05T05:05:18Z",
+          "updatedAt": "2026-09-05T05:05:18Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/scoreboard"
+          },
+          "number": 596,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "headRefName": "chore/node-runtime-v24",
+          "headRefOid": "231b548529f40088d6bc39e0aee4f6125d05b80e",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/acme/scoreboard/pull/596",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-07-30T17:04:01Z",
+          "updatedAt": "2026-07-30T17:06:38Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "example-org/meadow-backend"
+          },
+          "number": 71,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "UNKNOWN",
+          "mergeStateStatus": "UNKNOWN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "design/team-invite-flow",
+          "headRefOid": "056e40fa8057e9a8c4f54713bfa1ea7751e325b5",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-org/meadow-backend/pull/71",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-07-08T06:31:53Z",
+          "updatedAt": "2026-07-08T06:31:53Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "example-user/weekly-digest"
+          },
+          "number": 5,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "UNKNOWN",
+          "mergeStateStatus": "UNKNOWN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feature/install-guide",
+          "headRefOid": "6aefdecd18b6a366ea10d453c435326f591fd72a",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-user/weekly-digest/pull/5",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-06-07T01:44:58Z",
+          "updatedAt": "2026-06-07T02:55:59Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/scoreboard"
+          },
+          "number": 518,
+          "state": "OPEN",
+          "isDraft": true,
+          "mergeable": "CONFLICTING",
+          "mergeStateStatus": "DIRTY",
+          "reviewDecision": null,
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "headRefName": "fix/318-list-scroll-reset",
+          "headRefOid": "fc85d36e6849818ab6d8b4c4e18b6916bc5d8f80",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/acme/scoreboard/pull/518",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2026-06-03T22:36:47Z",
+          "updatedAt": "2026-06-03T23:37:39Z",
+          "mergedAt": null,
+          "closedAt": null
+        },
+        {
+          "repository": {
+            "nameWithOwner": "acme/PlatformerGame"
+          },
+          "number": 9,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feat/level2-editor",
+          "headRefOid": "3855f179ba4ff66c9dd7dbfb35833366d883e822",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/acme/PlatformerGame/pull/9",
+          "author": {
+            "login": "example-user"
+          },
+          "createdAt": "2025-08-29T22:27:52Z",
+          "updatedAt": "2025-08-29T23:42:43Z",
+          "mergedAt": null,
+          "closedAt": null
+        }
+      ]
+    }
+  }
+}

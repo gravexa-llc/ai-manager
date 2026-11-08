@@ -1,0 +1,12 @@
+worktree ~/Projects/dogwood
+HEAD e9689f9048d50970f7d558feca67ce0fc47ae221
+branch refs/heads/main
+
+worktree ~/Projects/dogwood/.claude/worktrees/watch-app
+HEAD 3ca4ba92f957b915f3e56b84a6cafcba84abee8c
+branch refs/heads/watch-app
+
+worktree ~/Projects/dogwood/.claude/worktrees/rc-build
+HEAD 7466210f9e0668f3f2921bc54cf5b0d190823b17
+detached
+

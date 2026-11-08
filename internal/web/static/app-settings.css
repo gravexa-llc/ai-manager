@@ -1,0 +1,15 @@
+/* The Settings page's own styles (templates/app/settings.html). The
+   shell's cards, rows (.trow), switches and segmented controls do most of
+   it. */
+
+.trow > form { flex: none; }
+.set-lead { margin: 0 0 6px; }
+.set-text { margin: 0; font-size: 13px; line-height: 1.6; }
+.set-note { color: var(--warn-ink); }
+.set-override { margin-left: 6px; vertical-align: 1px; }
+.set-reset { margin-top: 8px; }
+.card .hint .btn { margin-left: 6px; }
+
+@media (max-width: 600px) {
+  .trow { flex-wrap: wrap; }
+}

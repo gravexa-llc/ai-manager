@@ -1,0 +1,173 @@
+analysis/topic-001|origin/analysis/topic-001||1066bce|2026-09-30T09:24:38-07:00|
+cf/topic-002|origin/main|[ahead 1, behind 79]|25c78a3|2026-10-22T01:09:00-07:00|
+cf/topic-003|||8916eac|2026-10-22T01:09:07-07:00|
+cf/topic-004|||e75855e|2026-10-22T01:22:25-07:00|
+chore/topic-005|origin/chore/topic-005||c332fa6|2026-10-19T15:59:21-07:00|
+chore/topic-006|origin/chore/topic-006||717c51d|2026-10-13T12:48:17-07:00|
+chore/topic-007|origin/chore/topic-007||314428a|2026-10-13T12:39:40-07:00|
+design/topic-008|origin/design/topic-008||056e40f|2026-07-07T23:31:33-07:00|
+docs/topic-009|origin/docs/topic-009||72f2ab6|2026-10-19T16:15:55-07:00|
+docs/topic-010|origin/docs/topic-010||dc61977|2026-10-12T12:38:07-07:00|
+docs/topic-011|origin/docs/topic-011||e3b52b5|2026-10-13T12:37:47-07:00|
+docs/topic-012|origin/main|[behind 481]|afc20ff|2026-09-07T20:05:00-07:00|
+docs/topic-013|origin/main|[behind 470]|779018b|2026-09-07T20:38:58-07:00|
+docs/topic-014|origin/main|[behind 462]|5a70553|2026-09-09T15:02:31-07:00|
+docs/topic-015|origin/main|[behind 468]|d62b75d|2026-09-09T14:32:36-07:00|
+docs/topic-016|origin/main|[behind 454]|89f1c7c|2026-09-09T21:33:49-07:00|
+docs/topic-017|origin/main|[behind 447]|69ce1d5|2026-09-10T09:01:59-07:00|
+docs/topic-018|origin/docs/topic-018||bfa3b08|2026-09-29T10:55:49-07:00|
+docs/topic-019|origin/docs/topic-019||49aa74a|2026-10-13T12:23:16-07:00|
+docs/topic-020|origin/main|[behind 465]|6507009|2026-09-09T14:45:37-07:00|
+docs/topic-021|origin/main|[behind 453]|8d2ad27|2026-09-09T23:38:02-07:00|
+docs/topic-022|origin/main|[behind 469]|cc7bd81|2026-09-09T10:59:52-07:00|
+docs/topic-023|origin/docs/topic-023||5885918|2026-09-05T09:18:40-07:00|
+docs/topic-024|origin/docs/topic-024||fc14625|2026-08-12T16:03:14-07:00|
+feat/topic-025|origin/feat/topic-025||f4c8882|2026-09-09T14:46:41-07:00|
+feat/topic-026|origin/feat/topic-026||75a700d|2026-10-19T22:07:32-07:00|
+feat/topic-027|origin/feat/topic-027|[ahead 1]|e05847c|2026-09-16T18:10:59-07:00|
+feat/topic-028|origin/feat/topic-028||5dc739f|2026-10-29T00:26:15-07:00|
+feat/topic-029|origin/feat/topic-029||705b123|2026-10-23T00:45:23-07:00|
+feat/topic-030|origin/feat/topic-030||521bd1d|2026-10-26T18:25:30-07:00|
+feat/topic-031|origin/feat/topic-031||33bbd89|2026-10-19T17:10:59-07:00|
+feat/topic-032|origin/feat/topic-032||f2ba05f|2026-10-22T00:09:51-07:00|
+feat/topic-033|origin/feat/topic-033||9144366|2026-08-03T12:17:57-07:00|
+feat/topic-034|origin/feat/topic-034||364d79d|2026-10-16T15:06:44-07:00|
+feat/topic-035|origin/feat/topic-035||8810027|2026-10-17T12:50:42-07:00|
+feat/topic-036|origin/feat/topic-036||cfc2d7f|2026-09-10T14:01:27-07:00|
+feat/topic-037|origin/feat/topic-037||f7a583e|2026-09-04T22:04:55-07:00|
+feat/topic-038|origin/feat/topic-038||5c353f8|2026-09-15T19:39:38-07:00|
+feat/topic-039|origin/feat/topic-039||f82b73b|2026-10-08T17:22:12-07:00|
+feat/topic-040|origin/feat/topic-040|[behind 2]|522ffcf|2026-09-09T23:20:35-07:00|
+feat/topic-041|origin/feat/topic-041||63aced0|2026-10-11T21:54:26-07:00|
+feat/topic-042|origin/feat/topic-042||a8aba1e|2026-08-12T13:55:21-07:00|
+feat/topic-043|origin/feat/topic-043|[gone]|0f5c23d|2026-09-13T14:12:55-07:00|
+feat/topic-044|origin/feat/topic-044|[gone]|0e55760|2026-09-13T12:46:03-07:00|
+feat/topic-045|origin/feat/topic-045||ad41ec1|2026-08-12T20:05:25-07:00|
+feat/topic-046|origin/feat/topic-046||8081237|2026-08-29T15:19:07-07:00|
+feat/topic-047|origin/feat/topic-047||45bcba3|2026-08-30T17:01:20-07:00|
+feat/topic-048|origin/feat/topic-048||9ccab47|2026-09-04T15:37:33-07:00|
+feat/topic-049|origin/feat/topic-049||bf242f5|2026-09-04T19:45:46-07:00|
+feat/topic-050|origin/feat/topic-050||22ad79c|2026-09-09T21:20:40-07:00|
+feat/topic-051|origin/feat/topic-051||f644b88|2026-08-05T16:39:02-07:00|
+feat/topic-052|origin/feat/topic-052||47792fa|2026-07-19T07:31:44-07:00|
+feat/topic-053|origin/feat/topic-053||fbaf797|2026-09-28T15:49:51-07:00|
+feat/topic-054|origin/feat/topic-054|[behind 1]|b1aa192|2026-09-28T12:57:23-07:00|
+feat/topic-055|origin/feat/topic-055||427ffb3|2026-10-16T16:34:43-07:00|
+feat/topic-056|origin/feat/topic-056||8d21cbb|2026-09-30T09:48:25-07:00|
+feat/topic-057|origin/feat/topic-057||121f8ac|2026-09-30T18:40:07-07:00|
+feat/topic-058|origin/feat/topic-058||8caed07|2026-09-29T19:34:17-07:00|
+fix-412-retry-backoff|origin/fix-412-retry-backoff||57db6fc|2026-11-01T20:55:24-08:00|~/Projects/dogwood-backend-412
+fix/233-stale-row-cleanup|origin/fix/233-stale-row-cleanup|[ahead 4]|ed0af04|2026-10-23T01:08:30-07:00|~/Projects/dogwood-backend/.claude/worktrees/233-stale-row
+fix/topic-061|origin/fix/topic-061||2d1c0a8|2026-10-16T02:39:15-07:00|
+fix/topic-062|origin/fix/topic-062||4610511|2026-10-20T19:54:26-07:00|
+fix/topic-063|origin/fix/topic-063||640f8a8|2026-10-22T20:58:48-07:00|
+fix/topic-064|origin/fix/topic-064||ce96693|2026-10-22T21:39:59-07:00|
+fix/topic-065|origin/fix/topic-065||a0f8395|2026-10-29T11:03:35-07:00|
+fix/topic-066|||0bae978|2026-10-30T19:26:38-07:00|
+fix/topic-067|origin/fix/topic-067||dfe2b78|2026-10-31T01:59:00-07:00|
+fix/topic-068|origin/fix/topic-068||61aae9d|2026-10-31T03:30:23-07:00|
+fix/topic-069|origin/fix/topic-069||8afe182|2026-11-01T14:51:31-08:00|
+fix/topic-070|origin/fix/topic-070||724d5e1|2026-11-01T10:32:38-08:00|
+fix/topic-071|origin/fix/topic-071||948f635|2026-11-02T00:12:20-08:00|
+fix/topic-072|origin/fix/topic-072||87d08ce|2026-08-04T17:41:04-07:00|
+fix/topic-073|origin/fix/topic-073||a7c27ee|2026-09-28T15:13:37-07:00|
+fix/topic-074|origin/fix/topic-074||1d1fe7e|2026-10-04T17:52:49-07:00|
+fix/topic-075|origin/fix/topic-075||702e319|2026-10-04T17:31:34-07:00|
+fix/topic-076|||fdc2529|2026-09-06T20:47:20-07:00|
+fix/topic-077|origin/fix/topic-077||9a22516|2026-09-07T17:55:30-07:00|
+fix/topic-078|||198930f|2026-10-22T01:02:46-07:00|
+fix/topic-079|origin/fix/topic-079||023d691|2026-10-04T17:53:03-07:00|
+fix/topic-080|origin/fix/topic-080||9173354|2026-08-05T16:30:49-07:00|
+fix/topic-081|origin/fix/topic-081||63cbc55|2026-09-09T13:37:14-07:00|
+fix/topic-082|origin/fix/topic-082||6b05720|2026-09-29T22:09:39-07:00|
+fix/topic-083|origin/fix/topic-083||768d633|2026-10-08T16:18:36-07:00|
+fix/topic-084|origin/feat/topic-054||70b0e1e|2026-09-28T13:16:59-07:00|
+fix/topic-085|origin/fix/topic-085||5cf09b6|2026-09-29T10:09:18-07:00|
+fix/topic-086|origin/fix/topic-086||2f32c5f|2026-10-18T16:14:05-07:00|
+fix/topic-087|origin/fix/topic-087||54a1483|2026-10-18T00:12:33-07:00|
+fix/topic-088|origin/fix/topic-088||d20fe4e|2026-09-30T14:18:53-07:00|
+fix/topic-089|origin/fix/topic-089||7db6179|2026-09-30T16:27:45-07:00|
+fix/topic-090|origin/fix/topic-090||abb2709|2026-09-30T19:07:48-07:00|
+fix/topic-091|origin/fix/topic-091||2a5a24d|2026-09-29T17:34:15-07:00|
+fixture/topic-092|origin/fixture/topic-092||47690a6|2026-09-17T07:30:31-07:00|
+main|origin/main|[behind 28]|f0a34b5|2026-10-30T13:18:14-07:00|~/Projects/dogwood-backend
+pr-446|||f04cc37|2026-11-01T15:27:43-08:00|
+pr-446b|||0c41a73|2026-11-01T15:47:11-08:00|
+pr-446c|||48182cf|2026-11-01T16:05:39-08:00|
+pr-446d|||69fde7e|2026-11-01T16:11:20-08:00|
+pr-452|||21a5499|2026-11-01T15:40:52-08:00|
+pr-455|||e47b3dd|2026-11-01T16:56:54-08:00|
+pr-455b|||99b1c06|2026-11-01T17:10:04-08:00|
+pr-456|||4de15ca|2026-11-01T17:01:20-08:00|
+pr-459|||5b12beb|2026-11-01T17:34:22-08:00|
+pr-460|||281992f|2026-11-01T17:40:46-08:00|
+pr-460b|||6852a98|2026-11-01T18:14:07-08:00|
+pr-462|||178b0d5|2026-11-01T19:15:02-08:00|
+pr-463|||f824c1b|2026-11-01T18:17:54-08:00|
+pr-464|||1d8655e|2026-11-01T18:34:22-08:00|
+pr-464c|||3ea873c|2026-11-01T19:54:58-08:00|
+pr-465|||17a717a|2026-11-01T20:31:18-08:00|
+pr-465b|||a6ff622|2026-11-01T20:39:47-08:00|
+pr-465c|||57db6fc|2026-11-01T20:55:24-08:00|
+pr-467|||98a1734|2026-11-01T21:18:10-08:00|
+pr-468|||c78aec7|2026-11-01T21:45:15-08:00|
+pr-469|||32186bd|2026-11-01T22:46:07-08:00|
+pr-470|||bb351ce|2026-11-01T22:55:15-08:00|
+pr-470b|||53f887e|2026-11-01T23:20:54-08:00|
+scratch/topic-117|origin/scratch/topic-117||51a77b5|2026-10-07T11:59:40-07:00|
+scratch/topic-118|origin/scratch/topic-118||d7bd0a2|2026-09-30T16:42:53-07:00|
+surge-a-1|origin/surge-a-1||ec7dd53|2026-11-02T12:39:32-08:00|
+surge-a-1b|origin/surge-a-1b||b051c31|2026-11-02T14:04:58-08:00|
+surge-a-1c|origin/surge-a-1c||f7f057e|2026-11-04T12:15:06-08:00|
+surge-a-1d|origin/surge-a-1d||44dc88b|2026-11-04T12:42:32-08:00|~/Projects/dogwood-backend-d1
+surge-a-2a|origin/surge-a-2a||dff288d|2026-11-02T14:20:23-08:00|~/Projects/dogwood-backend-a2a
+surge-a-2b|origin/surge-a-2b||afa357a|2026-11-02T13:34:49-08:00|~/Projects/dogwood-backend-a2b
+surge-a-5a|origin/surge-a-5a||48be991|2026-11-04T15:15:24-08:00|
+surge-a-5b|origin/surge-a-5b||5015ff4|2026-11-04T15:20:40-08:00|
+surge-a-5c|origin/surge-a-5c||080b60e|2026-11-04T15:43:47-08:00|
+surge-a-5d|origin/surge-a-5d||de8cb5d|2026-11-04T16:30:13-08:00|
+surge-a-5e|origin/surge-a-5e||2c69b8a|2026-11-04T17:05:17-08:00|
+surge-a-6a|origin/surge-a-6a||dfbfcc8|2026-11-05T10:59:14-08:00|
+surge-a-6b|origin/surge-a-6b||b021820|2026-11-05T11:22:06-08:00|
+surge-a-6c|origin/surge-a-6c||393c16d|2026-11-05T11:37:30-08:00|
+surge-a-6d|origin/surge-a-6d||9d38f5c|2026-11-05T11:47:54-08:00|
+surge-a-6e|origin/surge-a-6e||24a7275|2026-11-05T12:29:55-08:00|
+surge-a-6f|origin/surge-a-6f||91faafb|2026-11-05T13:14:51-08:00|~/Projects/dogwood-backend-w6
+surge-b-2|origin/surge-b-2||99b1c06|2026-11-01T17:10:04-08:00|~/Projects/dogwood-backend-b2
+surge-b-2a-notes|origin/surge-b-2a-notes||21a5499|2026-11-01T15:40:52-08:00|~/Projects/dogwood-backend-b2a-notes
+surge-b-2a-spike|origin/surge-b-2a-spike||2f22b33|2026-11-01T15:08:13-08:00|~/Projects/dogwood-backend-b2a
+surge-b-3a|origin/surge-b-3a||e6a835d|2026-11-02T09:16:20-08:00|~/Projects/dogwood-backend-b3a
+surge-b-3b-1|origin/surge-b-3b-1||1020822|2026-11-02T11:24:10-08:00|~/Projects/dogwood-backend-b3b
+surge-b-3b-2|origin/surge-b-3b-2||072c5db|2026-11-02T12:00:21-08:00|~/Projects/dogwood-backend-b3b2
+surge-b-3b-3|origin/surge-b-3b-3||758d8b4|2026-11-02T12:56:15-08:00|~/Projects/dogwood-backend-b3b3
+surge-copy-review|origin/surge-copy-review||bf69cee|2026-11-01T17:34:18-08:00|
+surge-d-1-data|origin/surge-d-1-data||69fde7e|2026-11-01T16:11:20-08:00|
+surge-d-1-defaults|origin/surge-d-1-defaults||98a1734|2026-11-01T21:18:10-08:00|
+surge-d-1-fix|origin/surge-d-1-fix||6852a98|2026-11-01T18:14:07-08:00|
+surge-d-1-timing|origin/surge-d-1-timing||187e8e9|2026-11-02T07:56:25-08:00|
+surge-d-1-undo|origin/surge-d-1-undo||3ea873c|2026-11-01T19:54:58-08:00|
+surge-d-1-unsent|origin/surge-d-1-unsent|[ahead 3, behind 5]|e49c27b|2026-11-01T19:02:08-08:00|
+surge-d-1-unsent-ff|origin/surge-d-1-unsent||178b0d5|2026-11-01T19:15:02-08:00|
+surge-d-2|origin/surge-d-2||53f887e|2026-11-01T23:20:54-08:00|~/Projects/dogwood-backend-d2
+surge-d-2-daily|||1d27d76|2026-11-01T17:19:18-08:00|
+surge-d-2-prerebase|||44ff654|2026-11-01T17:33:08-08:00|
+surge-d-2-prerebase2|||772d084|2026-11-01T17:39:40-08:00|
+surge-d-3|origin/surge-d-3||598c250|2026-11-02T08:33:50-08:00|
+surge-d-4|origin/surge|[behind 240]|5b12beb|2026-11-01T17:34:22-08:00|
+surge-d-4-keys|origin/surge-d-4-keys||32186bd|2026-11-01T22:46:07-08:00|
+surge-d-4-rerun|origin/surge-d-4-rerun||c78aec7|2026-11-01T21:45:15-08:00|
+surge-d-5|origin/surge-d-5||2201176|2026-11-02T12:12:53-08:00|
+surge-d-5-limits|origin/surge-d-5-limits||2673467|2026-11-02T13:00:55-08:00|~/Projects/dogwood-backend-d4
+surge-deploy-config|origin/surge-deploy-config||5145584|2026-11-01T17:53:02-08:00|~/Projects/dogwood-backend-config-docs
+surge-format-version|origin/surge-format-version||3ea9e95|2026-11-01T16:00:44-08:00|
+surge-merge-main|origin/surge-merge-main||2ec461e|2026-11-01T21:00:11-08:00|/private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/surge-main-merge
+surge-read-api|origin/surge-read-api||714a437|2026-11-02T11:01:16-08:00|
+surge-retry-cleanup|origin/surge-retry-cleanup||85862e2|2026-11-02T10:24:25-08:00|
+surge-session-rate-limit|origin/surge-session-rate-limit||9adf14f|2026-11-01T15:52:38-08:00|
+surge-try-login|origin/surge-login-audit||13bede8|2026-11-01T17:27:11-08:00|
+surge-w6-api|origin/surge-w6-api||ff915c8|2026-11-04T13:45:23-08:00|
+test/topic-169|origin/test/topic-169||5e27a58|2026-09-30T19:22:27-07:00|
+test/topic-170|origin/test/topic-170||3947063|2026-09-29T23:03:04-07:00|
+test/topic-171|origin/test/topic-171||8949335|2026-09-30T12:27:20-07:00|
+wip/topic-172|origin/wip/topic-172||3b7ec0a|2026-08-29T15:25:59-07:00|
+wip/topic-173|origin/wip/topic-173||63d4d8c|2026-09-07T15:38:07-07:00|

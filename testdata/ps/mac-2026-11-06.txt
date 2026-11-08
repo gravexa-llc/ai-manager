@@ -1,0 +1,71 @@
+# `ps -A -o pid=,ppid=,tty=,comm=` on a Mac running several sessions, 2026-11-06.
+# Trimmed to launchd, two system daemons, the terminal apps, iTermServer, and
+# every login, shell and claude process. Scrubbed: the home path is ~; the
+# per-user temp folder and iTerm2's translocation id are placeholders.
+# Claude sessions run in Terminal.app (ttys000-ttys016) and iTerm2 (ttys021,
+# the lead session). 53221 is a background job's process, on a pty that claude
+# bg-pty-host made. Lines starting with # aren't ps output; ParseProcs skips
+# them.
+    1     0 ??       /sbin/launchd
+  324     1 ??       /usr/libexec/logd
+  326     1 ??       /usr/libexec/UserEventAgent
+  615     1 ??       /usr/libexec/UserEventAgent
+  669     1 ??       /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
+ 1710   669 ttys003  login
+ 1723  1710 ttys003  -zsh
+ 1968   669 ttys004  login
+ 1973  1968 ttys004  -zsh
+ 2182   669 ttys005  login
+ 2204  2182 ttys005  -zsh
+ 2637   669 ttys010  login
+ 2673   669 ttys011  login
+ 2677  2637 ttys010  -zsh
+ 2708  2673 ttys011  -zsh
+ 2710   669 ttys012  login
+ 2753  2710 ttys012  -zsh
+21392   669 ttys015  login
+21393 21392 ttys015  -zsh
+24996  1723 ttys003  claude
+36027   669 ttys006  login
+36028 36027 ttys006  -zsh
+36430 36028 ttys006  claude
+36607   669 ttys007  login
+36608 36607 ttys007  -zsh
+37975 36608 ttys007  claude
+43628     1 ??       ~/.local/bin/claude
+47312   669 ttys008  login
+47313 47312 ttys008  -zsh
+47792 47313 ttys008  claude
+53152 43628 ??       claude bg-pty-host
+53221 53152 ttys020  claude bg-spare
+56776     1 ??       /private/var/folders/xx/XXXXXXXX/T/AppTranslocation/00000000-0000-0000-0000-000000000000/d/iTerm.app/Contents/MacOS/iTerm2
+56805 56776 ??       ~/Library/Application Support/iTerm2/iTermServer-3.6.6
+57240   669 ttys002  login
+57245 57240 ttys002  -zsh
+57933   669 ttys017  login
+57936 57933 ttys017  -zsh
+60441 57245 ttys002  claude
+60475   669 ttys016  login
+60476 60475 ttys016  -zsh
+68858   669 ttys000  login
+68859 68858 ttys000  -zsh
+69087 68859 ttys000  claude
+73461  1973 ttys004  claude
+73623   669 ttys018  login
+73624 73623 ttys018  -zsh
+74019   669 ttys014  login
+74020 74019 ttys014  -zsh
+74245 74020 ttys014  claude
+76780 60476 ttys016  claude
+77615   669 ttys019  login
+77616 77615 ttys019  -zsh
+79552  2677 ttys010  claude
+88268 56805 ttys021  login
+88270 88268 ttys021  -zsh
+91470 88270 ttys021  claude
+92696 56805 ttys009  login
+92697 92696 ttys009  -zsh
+95043   669 ttys001  login
+95044 95043 ttys001  -zsh
+95547 43628 ??       claude bg-pty-host
+95563 95547 ??       claude bg-spare

@@ -1,0 +1,152 @@
+[
+  {
+    "id": "022c44bf",
+    "cwd": "~/Projects/pivot-app",
+    "kind": "background",
+    "startedAt": 1783011309562,
+    "sessionId": "022c44bf-c611-406e-b465-3cfca7d1b3f1",
+    "name": "session-1",
+    "state": "blocked"
+  },
+  {
+    "id": "47bedaa8",
+    "cwd": "~/Projects/acme-www",
+    "kind": "background",
+    "startedAt": 1784056868671,
+    "sessionId": "47bedaa8-c526-406f-830c-9c681185b029",
+    "name": "session-2",
+    "state": "blocked"
+  },
+  {
+    "pid": 47792,
+    "cwd": "~/Projects/example-org/websites/meadow",
+    "kind": "interactive",
+    "startedAt": 1791145665335,
+    "sessionId": "7ec736d7-39cc-4cca-a973-768bcbe0d4b6",
+    "name": "session-4",
+    "status": "idle"
+  },
+  {
+    "pid": 24996,
+    "cwd": "~/Projects/forms",
+    "kind": "interactive",
+    "startedAt": 1791312595112,
+    "sessionId": "990dcdb5-c9a9-45ae-b929-cbd24344fbbd",
+    "name": "session-5",
+    "status": "busy"
+  },
+  {
+    "pid": 79552,
+    "cwd": "~/Projects/other-1",
+    "kind": "interactive",
+    "startedAt": 1791563496284,
+    "sessionId": "110b42af-3469-4092-bbb5-65a0185c16ba",
+    "name": "session-6",
+    "status": "idle"
+  },
+  {
+    "pid": 36430,
+    "cwd": "~/Projects/pivot-app",
+    "kind": "interactive",
+    "startedAt": 1791580610478,
+    "sessionId": "b3faa318-78c3-49f4-a870-3162c41d58fa",
+    "name": "session-7",
+    "status": "idle"
+  },
+  {
+    "pid": 37975,
+    "cwd": "~/Projects/pivot-app",
+    "kind": "interactive",
+    "startedAt": 1791847830419,
+    "sessionId": "4a0da389-5ab3-4fa1-b743-a3774170d672",
+    "name": "session-8",
+    "status": "idle"
+  },
+  {
+    "pid": 74245,
+    "cwd": "~/Projects/other-3",
+    "kind": "interactive",
+    "startedAt": 1791998976349,
+    "sessionId": "3851e8c5-62c0-45df-94a7-44a12ca94a4a",
+    "name": "session-9",
+    "status": "idle"
+  },
+  {
+    "pid": 60441,
+    "cwd": "~/Projects/other-2",
+    "kind": "interactive",
+    "startedAt": 1792106978708,
+    "sessionId": "08c7d7b1-5f9c-4135-9ded-4dcea7863fcc",
+    "name": "session-10",
+    "status": "idle"
+  },
+  {
+    "pid": 73461,
+    "cwd": "~/Projects/dogwood",
+    "kind": "interactive",
+    "startedAt": 1792186045361,
+    "sessionId": "8ef92c4d-ed89-4b53-a8b1-441cc9afbb1d",
+    "name": "session-11",
+    "status": "idle"
+  },
+  {
+    "pid": 76780,
+    "cwd": "~/Projects/meadow-android",
+    "kind": "interactive",
+    "startedAt": 1792618190373,
+    "sessionId": "5213f886-247d-496b-a20e-50b0e6c1973f",
+    "name": "session-12",
+    "status": "idle"
+  },
+  {
+    "pid": 69087,
+    "cwd": "~/Projects/game",
+    "kind": "interactive",
+    "startedAt": 1792789091715,
+    "sessionId": "f5073c97-778e-45dc-b401-4cb74be53d8f",
+    "name": "session-13",
+    "status": "idle"
+  },
+  {
+    "pid": 69310,
+    "id": "199dc94c",
+    "cwd": "~/Projects/forms",
+    "kind": "background",
+    "startedAt": 1793925425727,
+    "sessionId": "1adba5b1-0bfc-449c-a01b-e881219d9920",
+    "name": "session-14",
+    "status": "idle",
+    "state": "blocked"
+  },
+  {
+    "pid": 69601,
+    "id": "ecf75089",
+    "cwd": "~/Projects/dogwood",
+    "kind": "background",
+    "startedAt": 1793925431685,
+    "sessionId": "5c63be7c-e39d-4507-a2f4-631838c9c2ab",
+    "name": "session-15",
+    "status": "idle",
+    "state": "blocked"
+  },
+  {
+    "pid": 69887,
+    "id": "09a1a428",
+    "cwd": "~/Projects/dogwood",
+    "kind": "background",
+    "startedAt": 1793925446333,
+    "sessionId": "f96780a4-7218-42bd-a373-98f95c085834",
+    "name": "session-16",
+    "status": "idle",
+    "state": "done"
+  },
+  {
+    "pid": 91470,
+    "cwd": "~/Projects/ai-manager",
+    "kind": "interactive",
+    "startedAt": 1793928215582,
+    "sessionId": "a394c94b-30ca-47f7-a983-975238be2b2e",
+    "name": "session-17",
+    "status": "busy"
+  }
+]

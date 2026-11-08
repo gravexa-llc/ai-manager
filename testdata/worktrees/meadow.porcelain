@@ -1,0 +1,120 @@
+worktree ~/Projects/example-org/websites/meadow
+HEAD 7776e23ddeb318bb13abd34b87997f239f9a86aa
+branch refs/heads/site-staging
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web160
+HEAD 9f709b5f2d0fdc15ab343b7f26d4918653a388c0
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web161
+HEAD ad580e607c41f83c72b418fc45b18995add195f1
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web162
+HEAD b861378a9116d512bb485e1d59e12410fba49a7b
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web163
+HEAD db8093555639b14c37180f80ab1e73dcf92bcc3e
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web163b
+HEAD e3c3c00d2188b527cda63e953bba1f116e6cf523
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web164
+HEAD 8316e5235bfca48b12889fd65ac3feacfcb87590
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web165
+HEAD 71aa6df4861f2ea5604671997ed33d354a021aa4
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web165c
+HEAD 6ed882914eadd0ee6ebbd031bb34904021f909e5
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web165d
+HEAD 6f9f9002eff2b391dd3db1f5d685d8ba15d9189f
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web167
+HEAD 2a1e3a0cc9f68a6e6efc5d6a5a51354bb98c5ba4
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web170
+HEAD 88183886faade3fe3b2a53a570cf8e457c8aef66
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web171
+HEAD 13ccfdd0c5b64d803713a619e9134242059893e8
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web172
+HEAD f9d9d1d39654fc3ef73d6747d8c6cf0229cadb22
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web173
+HEAD 117dad8955fedf4973854dc819e166938e22de1d
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web174
+HEAD 412d97c1f5ceb0c53bc20159bd0ba800acf4b0df
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web176
+HEAD 62cb3f9b3104cf383f2cb86f419f52081f6954eb
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web178
+HEAD bcbb64f53c5c7bb583cb286f9347b835927f2910
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web182
+HEAD a8fc3166843f3c8c80d74954d515f0f5be5f1c77
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-web185
+HEAD 1fbfa1100a53c913a8978576dd0d1c3118778c36
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/web-docs
+HEAD f6c782a677d95989fa454fb4579e628f96e3b47e
+branch refs/heads/surge-api-key-rotate
+
+worktree ~/Projects/example-org/websites/meadow-w1
+HEAD d7fd3190cbc1bfb1db9f0e20323795516a406b5d
+branch refs/heads/surge-w-1-scaffold
+
+worktree ~/Projects/meadow-web-b2a-docs
+HEAD 9f709b5f2d0fdc15ab343b7f26d4918653a388c0
+branch refs/heads/surge-b-2a-docs
+
+worktree ~/Projects/meadow-web-client
+HEAD 8316e5235bfca48b12889fd65ac3feacfcb87590
+branch refs/heads/surge-w-2-client
+
+worktree ~/Projects/meadow-web-common
+HEAD b861378a9116d512bb485e1d59e12410fba49a7b
+branch refs/heads/surge-w-common
+
+worktree ~/Projects/meadow-web-w10
+HEAD 8526abfa9bf150977ee592c61b145266c8463c14
+branch refs/heads/surge-w-22
+
+worktree ~/Projects/meadow-web-w2
+HEAD ad580e607c41f83c72b418fc45b18995add195f1
+branch refs/heads/surge-w-2
+
+worktree ~/Projects/meadow-web-w3
+HEAD e3c3c00d2188b527cda63e953bba1f116e6cf523
+branch refs/heads/surge-w-3
+
+worktree ~/Projects/meadow-web-w4
+HEAD 13ccfdd0c5b64d803713a619e9134242059893e8
+branch refs/heads/surge-w-flaky-test
+
+worktree ~/Projects/meadow-web-w5
+HEAD 4546f248c7e07e4a8b46af9f9f700a3255f3ad7f
+branch refs/heads/surge-w-5o
+

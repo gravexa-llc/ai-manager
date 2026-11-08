@@ -1,0 +1,33 @@
+[
+  {
+    "pid": 73461,
+    "cwd": "~/Projects/dogwood",
+    "kind": "interactive",
+    "startedAt": 1792186045361,
+    "sessionId": "8ef92c4d-ed89-4b53-a8b1-441cc9afbb1d",
+    "name": "session-11",
+    "status": "idle"
+  },
+  {
+    "pid": 69601,
+    "id": "ecf75089",
+    "cwd": "~/Projects/dogwood",
+    "kind": "background",
+    "startedAt": 1793925431685,
+    "sessionId": "5c63be7c-e39d-4507-a2f4-631838c9c2ab",
+    "name": "session-15",
+    "status": "idle",
+    "state": "blocked"
+  },
+  {
+    "pid": 69887,
+    "id": "09a1a428",
+    "cwd": "~/Projects/dogwood",
+    "kind": "background",
+    "startedAt": 1793925446333,
+    "sessionId": "f96780a4-7218-42bd-a373-98f95c085834",
+    "name": "session-16",
+    "status": "idle",
+    "state": "done"
+  }
+]

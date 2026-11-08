@@ -1,0 +1,75 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4970,
+      "resetAt": "2026-11-06T05:37:12Z",
+      "limit": 5000,
+      "used": 30
+    },
+    "r0": {
+      "nameWithOwner": "acme/pivot-web",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 33,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "seo/pricing-page",
+            "headRefOid": "9e017bd98d9d18b284c5e85c623f6637ac687dfe",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/pivot-web/pull/33",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T19:27:02Z",
+            "updatedAt": "2026-11-05T19:27:12Z",
+            "mergedAt": "2026-11-05T19:27:11Z",
+            "closedAt": "2026-11-05T19:27:12Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 32,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "share/w3-embed-guide",
+            "headRefOid": "a6680f4c140dbd396307e9bd09d1c1c9a92c63f3",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (W3)",
+            "url": "https://github.com/acme/pivot-web/pull/32",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:55:17Z",
+            "updatedAt": "2026-11-02T04:55:23Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      }
+    }
+  }
+}

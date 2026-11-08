@@ -1,0 +1,37 @@
+/* The Worktrees & cleanup page (app_worktrees.go). The shell's
+   components do most of it (app-shell.css); these are the page's own. */
+
+.wt-rules { flex: 1 1 240px; font-size: 12px; color: var(--muted); }
+
+/* A row: checkbox, path over branch and reason, verdict pill. */
+.wt-row { cursor: pointer; }
+.wt-row.wt-static { cursor: default; }
+.wt-row.wt-static:hover { background: var(--panel); }
+.wt-check { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.wt-body { flex: 1; min-width: 0; }
+.wt-path {
+  display: block; overflow: hidden; font-family: var(--mono); font-size: 12px;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.wt-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); word-break: break-word; }
+.wt-row .pill { flex: 0 0 auto; }
+
+/* Clearing prunable records. */
+.wt-prune {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 8px 16px; border-bottom: 1px solid var(--line-soft);
+}
+
+.wt-foot { padding: 10px 16px 16px; margin: 0; }
+
+/* The confirmation: each worktree with its branch and reason. */
+.wt-confirm-rows { max-height: 50vh; margin-top: 12px; overflow-y: auto; }
+.wt-confirm-rows li { padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.wt-confirm-rows .wt-path { white-space: normal; word-break: break-all; }
+
+/* The removal log. */
+.wt-log-title { margin-top: 0; }
+.wt-log .when { flex-basis: 82px; }
+.wt-entry { flex: 1; min-width: 0; word-break: break-word; }
+.wt-entry .dot { margin-right: 2px; vertical-align: 1px; }
+.wt-note { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }

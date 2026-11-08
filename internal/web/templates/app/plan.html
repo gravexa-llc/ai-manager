@@ -1,0 +1,361 @@
+{{/* A plan's page (app_plans.go). The list pane is the plan in one of
+three views (?view=graph|kanban|timeline); the detail pane is the package
+?pkg= names or, with none, the plan. No style attributes (CSP): sizes and
+colors are classes in app-plan.css, and the graph and the timeline's bars are
+SVG placed with attributes. The graph's boxes are SVG links with data-pane,
+which the shell loads into the panes like any other; without the script
+they load the page. Each view scrolls sideways in its box, which keeps its
+scroll across swaps (the shell keeps it by id). The graph opens scrolled to
+its far right (data-scroll-start="end": the rightmost columns are usually
+the work going on), and app-plan.js then brings the selected box into view
+when a view first shows. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-plan.css?v={{.AssetVersion}}">
+<script src="/static/app-plan.js?v={{.AssetVersion}}" defer></script>
+{{- end}}
+
+{{define "list" -}}
+{{with .View -}}
+<div class="toolbar plan-bar">
+<nav class="tabs" aria-label="Plan views">
+{{range .Tabs}}<a class="tab{{if .On}} on{{end}}" href="{{.Href}}" data-pane="list detail"{{if .On}} aria-current="page"{{end}}>{{.Label}}</a>
+{{end -}}
+</nav>
+<div class="plan-legend end">
+{{range .Legend}}<span class="legend lc-{{.Key}}"><span class="sw"></span>{{.Label}} {{.N}}</span>
+{{end -}}
+</div>
+{{if or .Warnings .Unmatched .Provisional}}<p class="plan-notes">
+{{with .Provisional}}<a href="{{$.View.PlanHref}}#plan-provisional" data-pane="list detail">{{.}}</a>{{end}}
+{{with .Warnings}}<a href="{{$.View.PlanHref}}#plan-warnings" data-pane="list detail">{{.}}</a>{{end}}
+{{with .Unmatched}}<a href="{{$.View.PlanHref}}#plan-unmatched" data-pane="list detail">{{.}}</a>{{end}}
+</p>{{end}}
+{{with .Search}}<p class="plan-notes">Showing packages matching “{{.}}”; the others are dimmed.</p>{{end}}
+</div>
+{{if .Empty}}<p class="empty">This plan has no packages.</p>
+{{- else if .Graph}}{{template "plan-graph" .Graph}}
+{{- else if .Kanban}}{{template "plan-kanban" .}}
+{{- else if .Timeline}}{{template "plan-timeline" .Timeline}}
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{/* The dependency graph: one SVG, its boxes links (data-pane) and list
+items (data-item, for j / k). */}}
+{{define "plan-graph" -}}
+<div id="plan-graph" class="pg-scroll" data-keep-scroll data-scroll-start="end">
+<svg class="pg" width="{{.W}}" height="{{.H}}" viewBox="0 0 {{.W}} {{.H}}" role="group" aria-labelledby="pg-title">
+<title id="pg-title">{{.Label}}</title>
+<defs>
+<marker id="pg-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="pg-arrow" d="M0 0L10 5L0 10z"></path></marker>
+<marker id="pg-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="pg-arrow cycle" d="M0 0L10 5L0 10z"></path></marker>
+<marker id="pg-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="pg-arrow on" d="M0 0L10 5L0 10z"></path></marker>
+</defs>
+<g class="pg-edges" aria-hidden="true">
+{{range .Edges}}<path class="{{.Class}}" d="{{.D}}" marker-end="url(#{{.Marker}})"></path>
+{{end -}}
+</g>
+{{range .Nodes}}<a class="pg-node lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Cycle}} cycle{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}" tabindex="0" aria-label="{{.Label}}"{{if .Sel}} aria-current="true"{{end}}><title>{{.Tip}}</title><rect class="pg-box" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="8" ry="8"></rect><text class="pg-id" x="{{.TX}}" y="{{.TY}}">{{.ID}}</text><text class="pg-title" x="{{.TX}}" y="{{.TY2}}">{{.Title}}</text>{{with .Badge}}<g class="pg-badge b-{{.Kind}}"><rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="9" ry="9"></rect><text x="{{.TX}}" y="{{.TY}}" text-anchor="middle">{{.Text}}</text></g>{{end}}</a>
+{{end -}}
+</svg>
+</div>
+<p class="hint plan-hint">Columns are dependency depth: each arrow runs from a package to one that needs it. Packages drawn dotted in the last column aren't in the plan file yet. Select a package to see it and highlight its links.</p>
+{{- end}}
+
+{{/* Kanban: a column per lifecycle. */}}
+{{define "plan-kanban" -}}
+<div id="plan-kanban" class="kb-scroll" data-keep-scroll>
+<div class="kb">
+{{range .Kanban}}<section class="kb-col lc-{{.Key}}" aria-label="{{.Label}}">
+<h3 class="khead"><span><span class="sw"></span> {{.Label}}</span><span>{{len .Cards}}</span></h3>
+{{range .Cards}}<a class="kcard lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}"{{if .Sel}} aria-current="true"{{end}}><span class="nid">{{.ID}}</span> {{.Title}}{{if or .Lane .Badges}}<span class="kmeta">{{with .Lane}}<span class="tag">{{.}}</span>{{end}}{{range .Badges}}<span class="badge b-{{.Kind}}" title="{{.Why}}">{{.Text}}</span>{{end}}</span>{{end}}</a>
+{{else}}<p class="kb-none">None</p>
+{{end -}}
+</section>
+{{end -}}
+</div>
+</div>
+{{- end}}
+
+{{/* Timeline: a row per package, its bars placed in percent of the axis. */}}
+{{define "plan-timeline" -}}
+<div id="plan-timeline" class="tl-scroll" data-keep-scroll>
+<div class="tl">
+{{if .Error}}<p class="empty">{{.Error}}</p>
+{{- else -}}
+<div class="tl-head" aria-hidden="true"><span>Package</span><svg class="tl-axis" width="100%" height="16">{{range .Ticks}}<text x="{{.X}}" y="12" text-anchor="{{.Anchor}}">{{.Label}}</text>{{end}}</svg></div>
+{{range .Rows}}<a class="tl-row lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}" title="{{.Tip}}"{{if .Sel}} aria-current="true"{{end}}><span class="tl-name"><span class="nid">{{.ID}}</span> {{.Title}}{{if .Prov}} <span class="badge b-prov">not in plan file</span>{{end}}</span><svg class="tl-track" width="100%" height="14" aria-hidden="true">{{range $.Ticks}}<line class="tl-grid" x1="{{.X}}" x2="{{.X}}" y1="0" y2="14"></line>{{end}}{{range .Bars}}<rect class="tl-bar {{.Kind}}" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="3" ry="3"></rect>{{end}}</svg><span class="vh">{{.Tip}}</span></a>
+{{end -}}
+<p class="hint plan-hint">Solid blue: an agent working. Thin purple: waiting in review, up to now at the right edge. Green: a done package, start to finish. Rows with no bar haven't started.{{with .Note}} {{.}}{{end}}</p>
+{{- end}}
+</div>
+</div>
+{{- end}}
+
+{{define "detail" -}}
+{{with .View}}{{if .Pkg}}{{template "plan-pkg" $}}{{else if .Plan}}{{template "plan-overview" $}}{{end}}{{end}}
+{{- end}}
+
+{{/* A needed or unblocked package: a link to it, with its state. */}}
+{{define "plan-dep" -}}
+{{if .Href}}<a class="dep" href="{{.Href}}" data-pane="list detail"><span class="dep-name"><span class="nid">{{.ID}}</span> {{.Title}}</span><span class="dep-state lc-{{.Lifecycle}}">{{.State}}</span></a>
+{{- else}}<span class="dep"><span class="dep-name"><span class="nid">{{.ID}}</span></span><span class="dep-state">{{.State}}</span></span>{{end}}
+{{- end}}
+
+{{/* A link of a package: its label (a link to GitHub, or code) and facts. */}}
+{{define "plan-link" -}}
+<span class="pd-link">{{if .URL}}<a href="{{.URL}}" rel="noreferrer noopener" target="_blank"{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</a>{{else if .Code}}<code{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</code>{{else}}<strong>{{.Label}}</strong>{{end}}
+{{- if .CI}} · <span class="ci ci-{{.CIClass}}">{{.CI}}</span>{{end}}
+{{- range .Facts}} · <span class="fact{{with .Class}} fact-{{.}}{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</span>{{end}}</span>
+{{- end}}
+
+{{/* The selected package. It gets the page data ($), for the forms. */}}
+{{define "plan-pkg" -}}
+{{$action := .View.Action}}{{with .View.Pkg -}}
+{{$id := .ID}}
+<div class="pd-head">
+<span class="pill lc-{{.Lifecycle}}">{{.LifecycleLabel}}</span>
+<span class="nid pd-id">{{.ID}}</span>
+<a class="btn sm pd-close" href="{{.CloseHref}}" data-pane="list detail" aria-label="Close {{.ID}}: show the plan">✕</a>
+</div>
+<h2>{{.Title}}</h2>
+<p class="subtitle">{{.Sub}}</p>
+{{with .Since}}<p class="hint">{{.}}</p>{{end}}
+{{with .Provisional -}}
+<div class="pd-prov" role="note">
+<p class="pd-prov-head">Not in {{.File}} yet</p>
+<p class="hint">Work names this package, but the plan file's tables have no row for it. aimd never edits the plan file: it shows the package as provisional until the row is there, then the package becomes the plan's, with its links.{{with .Since}} {{.}}.{{end}}</p>
+<p class="label">Suggested row</p>
+<div class="copyrow"><pre class="code" id="{{.RowID}}">{{.Row}}</pre><button type="button" class="btn sm" data-copy="{{.RowID}}" title="Copy the row, to paste into {{.File}}">Copy</button></div>
+<p class="hint">Fill in the blank cells as the other rows do: what it is, its size, what it needs.</p>
+{{if .Sources}}<p class="label">Named by</p>
+<ul class="rows pd-sources">{{range .Sources}}<li>{{.}}</li>{{end}}</ul>{{end}}
+</div>
+{{- end}}
+{{if .Badges}}<ul class="pd-badges">
+{{range .Badges}}<li><span class="badge b-{{.Kind}}">{{.Text}}</span> <span>{{.Why}}</span></li>
+{{end -}}
+</ul>{{end}}
+{{if .Signals}}<p class="pd-signals">{{range .Signals}}<span class="tag sig-{{.Class}}">{{.Text}}</span> {{end}}</p>{{end}}
+
+<p class="label">Needs</p>
+{{if .Needs}}<ul class="deps">
+{{range .Needs}}<li>{{template "plan-dep" .}}</li>
+{{end -}}
+</ul>{{else}}<p class="hint">Nothing: it can start any time.</p>{{end}}
+{{with .NeedsNote}}<p class="hint">Also needs: {{.}}</p>{{end}}
+{{with .Cycle}}<p class="hint pd-warn">In a dependency cycle: {{.}}</p>{{end}}
+
+<p class="label">Unblocks</p>
+{{if .Unblocks}}<ul class="deps">
+{{range .Unblocks}}<li>{{template "plan-dep" .}}</li>
+{{end -}}
+</ul>{{else}}<p class="hint">No package waits on it.</p>{{end}}
+
+<p class="label">Work</p>
+<dl class="ctx">
+<dt>PR</dt><dd>{{range .PRs}}{{template "plan-link" .}}{{else}}none yet{{end}}</dd>
+<dt>Agent</dt><dd>{{range .Agents}}{{template "plan-link" .}}{{else}}none{{end}}</dd>
+<dt>Branch</dt><dd>{{range .Branches}}<code>{{.}}</code> {{else}}{{with .Suggested}}none yet; the conventions suggest <code>{{.}}</code>{{else}}none{{end}}{{end}}</dd>
+{{if .Worktrees}}<dt>Worktree</dt><dd>{{range .Worktrees}}{{template "plan-link" .}}{{end}}</dd>{{end}}
+<dt>Merges</dt><dd>{{.Merges}}</dd>
+</dl>
+
+<div class="actions pd-actions">
+{{if .Go.Key}}<form method="post" action="{{$action}}/go" data-pane="detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g">Go to agent <kbd>g</kbd></button>
+</form>
+{{- else}}<button type="button" class="btn primary" disabled data-key="g" data-off="{{.Go.Off}}" title="{{.Go.Off}}">Go to agent <kbd>g</kbd></button>{{end}}
+{{if .Done.Undo}}<form method="post" action="{{$action}}/done" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="done" value="0">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" data-key="u" aria-keyshortcuts="u" title="It was marked done here; the plan file is unchanged">Undo Mark done <kbd>u</kbd></button>
+</form>
+{{- else if .Done.Can}}<form method="post" action="{{$action}}/done" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="done" value="1">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" data-key="d" aria-keyshortcuts="d" title="For a step finished without a PR; the plan file is unchanged">Mark done <kbd>d</kbd></button>
+</form>
+{{- else}}<button type="button" class="btn" disabled data-key="d" data-off="{{.Done.Off}}" title="{{.Done.Off}}">Mark done <kbd>d</kbd></button>{{end}}
+<details id="pd-link-{{.ID}}" class="pd-linker">
+<summary class="btn">Link a PR or agent…</summary>
+<div class="pd-linkbox">
+{{if .Choices}}<form method="post" action="{{$action}}/link" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<label class="pd-field">Pick one
+<select name="target" required>
+{{range .Choices}}<optgroup label="{{.Label}}">
+{{range .Choices}}<option value="{{.Value}}">{{.Label}}</option>
+{{end -}}
+</optgroup>
+{{end -}}
+</select></label>
+<button type="submit" class="btn sm">Link to {{.ID}}</button>
+</form>
+{{- else}}<p class="hint">The Unmatched lane is empty, and every live session is linked.</p>{{end}}
+<form method="post" action="{{$action}}/link" data-pane="list detail" class="pd-free">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<label class="pd-field">Or type it <select name="kind">
+<option value="pr">PR: owner/repo#123 or its URL</option>
+<option value="agent">agent: session_id/agent_id, a session id or job:id</option>
+<option value="branch">branch: owner/repo:branch</option>
+<option value="worktree">worktree: its absolute path</option>
+<option value="cloud_session">cloud session: its URL</option>
+</select></label>
+<label class="pd-field">Ref <input name="ref" type="text" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+<button type="submit" class="btn sm">Link to {{.ID}}</button>
+</form>
+</div>
+</details>
+</div>
+{{if not .Go.Key}}<p class="hint pd-why">{{.Go.Off}}</p>{{end}}
+{{with .Done.Off}}<p class="hint pd-why">{{.}}</p>{{end}}
+
+{{if .Links -}}
+<details id="pd-links-{{.ID}}" class="pd-links">
+<summary class="label">Links ({{len .Links}}) and how they were made</summary>
+<ul class="rows">
+{{range .Links}}<li class="pd-linkrow{{if .Low}} low{{end}}"><span class="tag">{{.KindLabel}}</span> {{template "plan-link" .}}
+<span class="hint" title="{{.HowTitle}}">{{.How}}</span>
+<form method="post" action="{{$action}}/unlink" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="pkg" value="{{$id}}">
+<input type="hidden" name="kind" value="{{.Kind}}">
+<input type="hidden" name="ref" value="{{.Ref}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn sm" title="Unlink it from {{$id}}; aimd won't link it again">Unlink</button>
+</form></li>
+{{end -}}
+</ul>
+</details>
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{/* The plan, when no package is selected: progress, what's ready and
+what needs you, alerts, the parser warnings and the Unmatched lane. */}}
+{{define "plan-overview" -}}
+{{$action := .View.Action}}{{with .View.Plan -}}
+{{with .Missing}}<p class="hint pd-warn" role="status">{{.}}</p>{{end}}
+<h2>{{.Title}}</h2>
+<p class="subtitle">{{.Sub}}</p>
+{{if .Segs}}<div class="bar" role="img" aria-label="{{.BarLabel}}">{{range .Segs}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}</div>{{end}}
+<p class="hint">Select a package to see what it needs and who works on it.</p>
+
+<p class="label">Ready to dispatch</p>
+{{if .Ready}}<ul class="deps">
+{{range .Ready}}<li>{{template "plan-dep" .}}</li>
+{{end -}}
+</ul>{{else}}<p class="hint">Nothing is ready to dispatch.</p>{{end}}
+
+<p class="label">Needs you</p>
+{{if .NeedsYou}}<ul class="deps">
+{{range .NeedsYou}}<li>{{template "plan-dep" .}}{{range .Badges}}<span class="dep-why"><span class="badge b-{{.Kind}}">{{.Text}}</span> {{.Why}}</span>{{end}}</li>
+{{end -}}
+</ul>{{else}}<p class="hint">Nothing on this plan waits on you.</p>{{end}}
+
+{{if .Provisional -}}
+<p class="label" id="plan-provisional">Not in {{.File}} yet</p>
+<p class="hint">Work names these packages, but the plan file has no row for them. Select one for the row to paste.</p>
+<ul class="deps">
+{{range .Provisional}}<li>{{template "plan-dep" .}}</li>
+{{end -}}
+</ul>
+{{- end}}
+
+{{if .Alerts -}}
+<p class="label">Alerts</p>
+<ul class="rows plan-alerts">
+{{range .Alerts}}<li><span class="tag sig-{{.Class}}">{{.Label}}</span> {{.Message}}{{if .Since}} <span class="hint">{{.Since}}</span>{{end}}</li>
+{{end -}}
+</ul>
+{{- end}}
+
+<p class="label" id="plan-warnings">Parser warnings</p>
+{{if .Warnings}}<ul class="rows plan-warnings">
+{{range .Warnings}}<li><span class="tag">{{.Kind}}</span>{{if .Line}} line {{.Line}}:{{end}} {{.Message}}</li>
+{{end -}}
+</ul>{{else}}<p class="hint">None: the parser read the whole plan.</p>{{end}}
+
+<p class="label" id="plan-unmatched">Unmatched</p>
+<p class="hint">PRs and branches in this plan's repos that no package of any plan links. If one belongs to a package, link it.</p>
+{{if .Unmatched}}<ul class="rows plan-unmatched">
+{{range .Unmatched}}<li class="um">
+<span class="tag">{{.KindLabel}}</span>
+{{if .URL}}<a href="{{.URL}}" rel="noreferrer noopener" target="_blank">{{.Label}}</a>{{else}}<code>{{.Label}}</code>{{end}}
+{{with .Title}}<span class="um-title">{{.}}</span>{{end}}
+{{with .State}}<span class="hint">{{.}}</span>{{end}}
+<span class="hint um-where">{{.Repo}}{{with .Branch}} · <code>{{.}}</code>{{end}}{{with .Note}} · {{.}}{{end}}</span>
+<form method="post" action="{{$action}}/link" data-pane="list detail" class="um-form">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="kind" value="{{.Kind}}">
+<input type="hidden" name="ref" value="{{.Ref}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<label class="pd-field">Link to <select name="pkg">
+{{range $.View.Plan.Options}}<option value="{{.ID}}">{{.Label}}</option>
+{{end -}}
+</select></label>
+<button type="submit" class="btn sm">Link</button>
+</form>
+</li>
+{{end -}}
+</ul>{{else}}<p class="hint">Nothing unmatched: every PR and branch in these repos is on a board.</p>{{end}}
+
+<p class="label">Plan file</p>
+<dl class="ctx">
+<dt>File</dt><dd><code title="{{.PathFull}}">{{.Path}}</code></dd>
+<dt>Repos</dt><dd>{{range $i, $r := .Repos}}{{if $i}}, {{end}}<code>{{$r}}</code>{{else}}none{{end}}</dd>
+<dt>Merges</dt><dd>{{.Merges}}</dd>
+</dl>
+<div class="actions">
+<button type="button" class="btn js-only" data-open="plan-unregister">Unregister plan…</button>
+<noscript><a class="btn" href="{{.UnregisterHref}}">Unregister plan…</a></noscript>
+</div>
+{{template "plan-unregister" $}}
+{{- end}}
+{{- end}}
+
+{{/* Unregister's confirmation: what aimd forgets, as the plan service's
+Unregister does (planapi/register.go and the store's cascades), and what
+stays. The shell's data-open opens it; without the script, ?unregister=1
+renders it open. The form answers with the Overview: the plan's page is
+gone. */}}
+{{define "plan-unregister" -}}
+{{$v := .View}}{{with .View.Plan -}}
+<dialog id="plan-unregister" class="dialog" aria-labelledby="plan-unregister-title"{{if .Unregister}} open{{end}}>
+<div class="dialog-body">
+<h2 id="plan-unregister-title">Unregister {{.Title}}?</h2>
+<p>aimd forgets this plan. There's no Undo.</p>
+<ul>
+<li>It leaves the dashboard and the menu.</li>
+<li>Its packages, links and history go: every link (the ones you made by hand too), your unlinks and Mark done, the timeline and its alerts, and who merges if you changed it in Settings.</li>
+<li>Its lead session is no longer monitored as a lead, nor its agents as the plan's agents. A session you watch stays watched.</li>
+<li>The plan file stays as it is in the repo, and its branches, worktrees and PRs are untouched.</li>
+</ul>
+<p>Registering the file again starts afresh: aimd matches its PRs and branches again, but agent links, your links and unlinks, Mark done and the history don't come back. To register it again, run this in a Claude Code session:</p>
+<p class="code">/plan-register {{.PathFull}}</p>
+<form method="post" action="{{$v.Action}}/unregister" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="return" value="{{$v.PlanHref}}">
+<div class="dialog-actions">
+<button type="button" class="btn js-only" data-close>Cancel</button>
+<noscript><a class="btn" href="{{$v.PlanHref}}">Cancel</a></noscript>
+<button type="submit" class="btn primary">Unregister {{$v.Slug}}</button>
+</div>
+</form>
+</div>
+</dialog>
+{{- end}}
+{{- end}}

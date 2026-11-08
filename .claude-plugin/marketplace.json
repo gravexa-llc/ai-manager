@@ -1,0 +1,12 @@
+{
+  "name": "ai-manager",
+  "description": "The ai-manager plugin, installed from this checkout.",
+  "owner": { "name": "gravexa" },
+  "plugins": [
+    {
+      "name": "ai-manager",
+      "source": "./plugin",
+      "description": "Reports Claude Code sessions, agents and work packages to the local ai-manager daemon (aimd)."
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+-- 0007_review_requests: which open PRs ask for your review. The
+-- conventions are 0001's.
+--
+-- aimd learns it from one GitHub search per account, `is:pr is:open
+-- archived:false review-requested:@me user:<owner>…`, run on the open-PR
+-- search's cadence (internal/github ReviewRequests). A PR the search finds
+-- gets review_requested_at: when aimd first saw the request. It keeps that
+-- time while later searches still find the PR, and goes back to NULL once a
+-- search of its owner succeeds without it (you reviewed it, the request was
+-- withdrawn, or the PR closed). A search that fails leaves its owners' rows
+-- as they were. NULL means no review of yours is requested, or none is
+-- known. The column is written only by SetReviewRequests; UpsertPRs, which
+-- writes what the other queries answer, leaves it alone.
+ALTER TABLE prs ADD COLUMN review_requested_at INTEGER;

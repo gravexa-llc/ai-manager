@@ -1,0 +1,9 @@
+worktree ~/Projects/relay
+HEAD 27881b1d2df269e37dd15da97e6351821a611df4
+branch refs/heads/main
+
+worktree ~/projects/relay/.claude/worktrees/eager-blackwell-b5eea4
+HEAD 27881b1d2df269e37dd15da97e6351821a611df4
+branch refs/heads/claude/eager-blackwell-b5eea4
+prunable gitdir file points to non-existent location
+

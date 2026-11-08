@@ -1,0 +1,78 @@
+[
+  {
+    "id": "aaaa0001",
+    "cwd": "~/Projects/example",
+    "kind": "background",
+    "startedAt": 1793900000000,
+    "sessionId": "aaaa0001-0000-4000-8000-000000000001",
+    "name": "session-1",
+    "state": "failed"
+  },
+  {
+    "id": "aaaa0002",
+    "cwd": "~/Projects/example",
+    "kind": "background",
+    "startedAt": 1793900001000,
+    "sessionId": "aaaa0002-0000-4000-8000-000000000002",
+    "name": "session-2",
+    "state": "stopped"
+  },
+  {
+    "pid": 10003,
+    "id": "aaaa0003",
+    "cwd": "~/Projects/example/.claude/worktrees/feature-x",
+    "kind": "background",
+    "startedAt": 1793900002000,
+    "sessionId": "bbbb0003-0000-4000-8000-000000000003",
+    "name": "session-3",
+    "status": "busy",
+    "state": "working"
+  },
+  {
+    "pid": 10004,
+    "id": "aaaa0004",
+    "cwd": "~/Projects/example",
+    "kind": "background",
+    "startedAt": 1793900003000,
+    "sessionId": "aaaa0004-0000-4000-8000-000000000004",
+    "name": "session-4",
+    "status": "waiting",
+    "waitingFor": "permission prompt",
+    "state": "blocked"
+  },
+  {
+    "pid": 10005,
+    "cwd": "~/Projects/example",
+    "kind": "background",
+    "startedAt": 1793900004000,
+    "sessionId": "aaaa0005-0000-4000-8000-000000000005",
+    "status": "idle"
+  },
+  {
+    "pid": 10006,
+    "cwd": "~/Projects/example",
+    "kind": "interactive",
+    "startedAt": 1793900005000,
+    "sessionId": "aaaa0006-0000-4000-8000-000000000006",
+    "name": "session-6",
+    "status": "waiting",
+    "waitingFor": "input needed"
+  },
+  {
+    "pid": 10007,
+    "cwd": "~/Projects/example",
+    "kind": "interactive",
+    "startedAt": 1793900006000,
+    "sessionId": "aaaa0007-0000-4000-8000-000000000007",
+    "name": "session-7",
+    "status": "waiting",
+    "waitingFor": "dialog open"
+  },
+  {
+    "pid": 10008,
+    "cwd": "/private/var/folders/xx/T/probe.1234",
+    "kind": "interactive",
+    "startedAt": 1793900007000,
+    "status": "busy"
+  }
+]

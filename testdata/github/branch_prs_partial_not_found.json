@@ -1,0 +1,73 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4938,
+      "resetAt": "2026-11-06T05:37:12Z",
+      "limit": 5000,
+      "used": 62,
+      "nodeCount": 15
+    },
+    "r0": {
+      "nameWithOwner": "acme/pivot-web",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 33,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "seo/pricing-page",
+            "headRefOid": "9e017bd98d9d18b284c5e85c623f6637ac687dfe",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/pivot-web/pull/33",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T19:27:02Z",
+            "updatedAt": "2026-11-05T19:27:12Z",
+            "mergedAt": "2026-11-05T19:27:11Z",
+            "closedAt": "2026-11-05T19:27:12Z"
+          }
+        ]
+      }
+    },
+    "r1": null,
+    "r2": {
+      "nameWithOwner": "acme/relay",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    }
+  },
+  "errors": [
+    {
+      "type": "NOT_FOUND",
+      "path": [
+        "r1"
+      ],
+      "locations": [
+        {
+          "line": 7,
+          "column": 3
+        }
+      ],
+      "message": "Could not resolve to a Repository with the name 'example-user/does-not-exist-probe'."
+    }
+  ]
+}

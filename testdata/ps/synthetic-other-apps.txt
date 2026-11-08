@@ -1,0 +1,67 @@
+# Synthetic `ps -A -o pid=,ppid=,tty=,comm=` for internal/term: the cases the
+# real snapshot (mac-2026-11-06.txt) doesn't have. The process names follow each app's
+# bundle layout. Lines starting with # aren't ps output; ParseProcs skips
+# them.
+    1     0 ??       /sbin/launchd
+# iTerm2 with its server; a tmux client in one tab, the tmux server
+# daemonized (parent launchd), and claude in a tmux pane.
+  500     1 ??       /Applications/iTerm.app/Contents/MacOS/iTerm2
+  501   500 ??       ~/Library/Application Support/iTerm2/iTermServer-3.6.6
+  510   501 ttys030  login
+  511   510 ttys030  -zsh
+  512   511 ttys030  tmux
+  600     1 ??       tmux
+  601   600 ttys031  -zsh
+  602   601 ttys031  claude
+# A tmux server run in the foreground of that iTerm2 tab: still tmux.
+  700   511 ttys030  tmux
+  701   700 ttys032  -zsh
+  702   701 ttys032  claude
+# VS Code's integrated terminal: its pty host is a helper inside the bundle.
+  800     1 ??       /Applications/Visual Studio Code.app/Contents/MacOS/Electron
+  801   800 ??       /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)
+  802   801 ttys040  -zsh
+  803   802 ttys040  claude
+# The VS Code extension's claude: no tty.
+  804   801 ??       claude
+# Ghostty and Warp.
+  900     1 ??       /Applications/Ghostty.app/Contents/MacOS/ghostty
+  901   900 ttys041  /usr/bin/login
+  902   901 ttys041  -zsh
+  903   902 ttys041  claude
+ 1000     1 ??       /Applications/Warp.app/Contents/MacOS/stable
+ 1001  1000 ttys042  -zsh
+ 1002  1001 ttys042  claude
+# Over SSH.
+ 1100     1 ??       /usr/libexec/sshd-session
+ 1101  1100 ttys043  -zsh
+ 1102  1101 ttys043  claude
+# Terminal.app: claude in a subshell is still Terminal's; VS Code started
+# from that tab is VS Code's; so is claude in `script`, which makes a pty.
+ 1200     1 ??       /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
+ 1201  1200 ttys044  login
+ 1202  1201 ttys044  -zsh
+ 1203  1202 ttys044  /Applications/Visual Studio Code.app/Contents/MacOS/Electron
+ 1204  1203 ttys044  /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)
+ 1205  1204 ttys045  -zsh
+ 1206  1205 ttys045  claude
+ 1500  1202 ttys044  script
+ 1501  1500 ttys047  claude
+ 1600  1202 ttys044  bash
+ 1601  1600 ttys044  claude
+# iTerm2 restarted: its server lives on under launchd. And an iTerm2 that
+# keeps its ptys itself.
+ 1700     1 ??       ~/Library/Application Support/iTerm2/iTermServer-3.6.6
+ 1701  1700 ttys050  login
+ 1702  1701 ttys050  -zsh
+ 1703  1702 ttys050  claude
+ 1800     1 ??       /Applications/iTerm.app/Contents/MacOS/iTerm2
+ 1801  1800 ttys051  login
+ 1802  1801 ttys051  -zsh
+ 1803  1802 ttys051  claude
+# Odd trees: an orphan whose shell is gone, a parent missing from the
+# snapshot, a loop.
+ 1400     1 ttys046  claude
+ 1900 99999 ttys052  claude
+ 2000  2001 ttys053  claude
+ 2001  2000 ttys053  -zsh

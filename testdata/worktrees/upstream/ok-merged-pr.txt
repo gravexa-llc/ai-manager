@@ -1,0 +1,11 @@
+# worktree: ~/Projects/dogwood-backend-a2a
+### git status -sb
+## surge-a-2a...origin/surge-a-2a
+### git status --porcelain=v2 --branch
+# branch.oid dff288d1619e435e464c8632ad1afdd9b7298c9e
+# branch.head surge-a-2a
+# branch.upstream origin/surge-a-2a
+# branch.ab +0 -0
+### git rev-parse --abbrev-ref --symbolic-full-name @{u}
+origin/surge-a-2a
+exit=0

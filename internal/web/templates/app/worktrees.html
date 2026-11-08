@@ -1,0 +1,108 @@
+{{/* Worktrees & cleanup (GET /app/worktrees; app_worktrees.go).
+
+The list: worktrees grouped by verdict. The safe and scratch rows' checkboxes
+are in the selection form (a GET, so the selection is in the URL), and the
+confirmation dialog posts the checked ones to /app/worktrees/remove. The
+prunable records post to /app/worktrees/prune. The detail pane is the
+removal log. app-worktrees.js keeps the count, the dialog's rows and the URL
+in step with the checkboxes; without it, "Remove selected…" loads the page
+with ?confirm=1, which opens the dialog. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-worktrees.css?v={{.AssetVersion}}">
+<script src="/static/app-worktrees.js?v={{.AssetVersion}}" defer></script>
+{{- end}}
+
+{{define "list" -}}
+{{$d := .}}{{with .View -}}
+<form id="wt-pick" method="get" action="/app/worktrees" data-pane="list detail">
+{{if $d.Query}}<input type="hidden" name="q" value="{{$d.Query}}">{{end}}
+<div class="toolbar">
+{{if .Removable -}}
+{{if .AllPicked}}<a class="btn sm" href="{{.ClearURL}}" data-pane="list" data-wt-all>Clear selection</a>{{else}}<a class="btn sm" href="{{.AllURL}}" data-pane="list" data-wt-all>Select all safe</a>{{end}}
+<button type="button" class="btn primary sm js-only" data-open="wt-confirm" data-wt-open{{if not .Picked}} disabled{{end}}>Remove selected (<span data-wt-n>{{.Picked}}</span>)</button>
+<noscript><button type="submit" class="btn primary sm" name="confirm" value="1">Remove selected…</button></noscript>
+{{end -}}
+<span class="wt-rules">Same rules as <code>aim prune</code>: never forced, and a branch is deleted only when its commits are in its PR or the base. Each one is checked again just before it goes.</span>
+</div>
+{{range .Pickable}}{{template "wt-group" .}}{{end}}
+</form>
+{{range .Others}}{{template "wt-group" .}}{{end}}
+{{with .Records -}}
+<div class="ghead" role="heading" aria-level="2"><span>{{.Title}}</span><span>{{len .Rows}}</span></div>
+{{if $d.View.CanRemove -}}
+<form class="wt-prune" method="post" action="/app/worktrees/prune" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$d.CSRF}}">
+<input type="hidden" name="run" value="{{$d.View.PruneRun}}">
+<input type="hidden" name="return" value="{{$d.Return}}">
+{{range .Rows}}<input type="hidden" name="rec" value="{{.ID}}">
+{{end -}}
+<button type="submit" class="btn sm">Clear these records</button>
+<span class="wt-rules">Runs <code>git worktree prune</code> in each repo whose records are all listed here. It clears only git's records; folders that still exist and branches stay.</span>
+</form>
+{{end -}}
+<ul class="rows">{{range .Rows}}{{template "wt-row" .}}{{end}}</ul>
+{{end -}}
+{{if not .Shown}}<p class="empty">{{if $d.Query}}No worktree matches “{{$d.Query}}”.{{else}}No worktrees besides the main checkouts.{{end}}</p>{{end}}
+<p class="hint wt-foot">{{with .Note}}{{.}} {{end}}Main checkouts ({{.Mains}}) are never candidates.{{if not .CanRemove}} This aimd can't remove worktrees; <code>aim prune</code> can.{{end}}</p>
+{{if .Removable -}}
+<dialog id="wt-confirm" class="dialog" aria-labelledby="wt-confirm-title"{{if .Confirm}} open{{end}}>
+<div class="dialog-body">
+<h2 id="wt-confirm-title">Remove the selected worktrees?</h2>
+<p class="hint">aimd checks each one again first and skips any that is no longer safe. Each folder is removed with <code>git worktree remove</code>, never forced; a branch worktree's branch is then deleted with <code>git branch -D</code>, since its PR merged and every commit on it is in the PR or the base. There's no Undo.</p>
+<form method="post" action="/app/worktrees/remove" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$d.CSRF}}">
+<input type="hidden" name="run" value="{{.Run}}">
+<input type="hidden" name="return" value="{{$d.Return}}">
+<ul class="rows wt-confirm-rows">
+{{range .Removable}}<li data-wt-row="{{.ID}}"{{if not .Checked}} hidden{{end}}><input type="hidden" name="wt" value="{{.Pick}}"{{if not .Checked}} disabled{{end}}><code class="wt-path" title="{{.PathFull}}">{{.PathFull}}</code><span class="wt-sub">{{.Branch}} · {{.Reason}}</span></li>
+{{end -}}
+</ul>
+<div class="dialog-actions">
+<button type="button" class="btn js-only" data-close>Cancel</button>
+<noscript><a class="btn" href="{{.CancelURL}}">Cancel</a></noscript>
+<button type="submit" class="btn primary">Remove <span data-wt-n>{{.Picked}}</span></button>
+</div>
+</form>
+</div>
+</dialog>
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{/* One group: its header with the count, and its rows. */}}
+{{define "wt-group" -}}
+<div class="ghead" role="heading" aria-level="2"><span>{{.Title}}</span><span>{{len .Rows}}</span></div>
+<ul class="rows">{{range .Rows}}{{template "wt-row" .}}{{end}}</ul>
+{{- end}}
+
+{{/* One worktree: a label around its checkbox when it can be removed. */}}
+{{define "wt-row" -}}
+<li>
+{{- if .Checkable -}}
+<label class="srow wt-row" for="pick-{{.ID}}"><input type="checkbox" class="wt-check" id="pick-{{.ID}}" name="pick" value="{{.ID}}"{{if .Checked}} checked{{end}} data-wt-pick>{{template "wt-cells" .}}</label>
+{{- else -}}
+<div class="srow wt-row wt-static">{{template "wt-cells" .}}</div>
+{{- end -}}
+</li>
+{{- end}}
+
+{{define "wt-cells" -}}
+<span class="wt-body"><span class="wt-path" title="{{.PathFull}}">{{.Path}}</span><span class="wt-sub"><code>{{.Branch}}</code>{{with .Reason}} · {{.}}{{end}}</span></span>
+<span class="pill {{.Tone}}">{{.Pill}}</span>
+{{- end}}
+
+{{define "detail" -}}
+{{with .View -}}
+<h2 class="wt-log-title">Removal log</h2>
+<p class="hint">Everything removed from here, with the branch it deleted, and what was skipped and why. Kept 30 days.</p>
+{{with .LogError}}<p class="hint">{{.}}</p>{{end}}
+{{if .Log -}}
+<ul class="rows wt-log">
+{{range .Log}}<li class="feed"><span class="when" title="{{.Stamp}}">{{.When}}</span><span class="wt-entry"><span class="dot {{.Tone}}" aria-hidden="true"></span> {{.Verb}} <code title="{{.PathFull}}">{{.Path}}</code>{{with .Deleted}} and deleted <code>{{.}}</code>{{end}}{{with .Kept}}; kept <code>{{.}}</code>{{end}}{{with .Note}}<span class="wt-note">{{.}}</span>{{end}}</span></li>
+{{end -}}
+</ul>
+{{- else if not .LogError}}<p class="empty">{{if .CanRemove}}Nothing removed from here yet.{{else}}This aimd can't remove worktrees, so there's no log.{{end}}</p>
+{{- end}}
+{{- end}}
+{{- end}}

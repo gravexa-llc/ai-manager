@@ -1,0 +1,11 @@
+# worktree: ~/Projects/pivot-app/.claude/worktrees/agent-a73d6cff14b7bf150
+### git status -sb
+## share/v1-email-reports...origin/share/v1-email-reports
+### git status --porcelain=v2 --branch
+# branch.oid 64a260aca901aede716644da290221d81d0701e1
+# branch.head share/v1-email-reports
+# branch.upstream origin/share/v1-email-reports
+# branch.ab +0 -0
+### git rev-parse --abbrev-ref --symbolic-full-name @{u}
+origin/share/v1-email-reports
+exit=0

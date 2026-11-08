@@ -1,0 +1,102 @@
+{{/* Settings (GET /app/settings; app_settings.go). Cards for
+the alerts, the inbox's timings, who merges each plan's PRs, monitoring,
+the keyboard shortcuts and the theme. Each switch and segmented
+control is a form posting to /app/settings/set or /app/settings/merges,
+answered with the toast protocol. The shell's flags ride on the menu
+(data-flags), which refreshes after a change here and in every other open
+tab. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-settings.css?v={{.AssetVersion}}">
+{{- end}}
+
+{{define "content" -}}
+{{with .View -}}
+{{with .Unsaved}}<p class="hint">{{.}}</p>{{end}}
+<section class="card" aria-labelledby="set-alerts">
+<h2 id="set-alerts">Alerts</h2>
+{{range .Alerts}}{{template "settings-switch" .}}{{end}}
+<p class="hint">Pages open in other tabs follow the tab title, the chime and the shortcuts within seconds.</p>
+</section>
+
+<section class="card" aria-labelledby="set-inbox">
+<h2 id="set-inbox">Needs you inbox</h2>
+{{template "settings-choice" .BackToOpen}}
+{{template "settings-choice" .KeepDone}}
+<div class="trow">
+<div><div class="trow-title">Snooze options</div><div class="trow-desc">{{.Snoozes}}</div></div>
+</div>
+</section>
+
+<section class="card" aria-labelledby="set-merges">
+<h2 id="set-merges">Who merges each plan's PRs</h2>
+<p class="hint set-lead">A ready PR is in Needs you only when the merge waits on you. Each plan says it in a <code>Merges:</code> line; a choice here is stored in aimd as an override, and the plan file is left as it is.</p>
+{{with .PlansNote}}<p class="hint">{{.}}</p>{{end}}
+{{range $i, $p := .Plans -}}
+<div class="trow">
+<div>
+<div class="trow-title" id="mg-{{$i}}-title">{{$p.Title}}{{if $p.Override}} <span class="tag set-override">Override</span>{{end}}</div>
+<div class="trow-desc">{{$p.Note}}</div>
+{{if $p.Override -}}
+<form method="post" action="/app/settings/merges" data-pane="content" class="set-reset">
+<input type="hidden" name="csrf_token" value="{{$p.CSRF}}"><input type="hidden" name="return" value="{{$p.Return}}">
+<input type="hidden" name="plan" value="{{$p.Slug}}"><input type="hidden" name="merges" value="">
+<button type="submit" id="mg-{{$i}}-reset" class="btn sm">Reset to the plan's line</button>
+</form>
+{{- end}}
+</div>
+<form method="post" action="/app/settings/merges" data-pane="content" class="seg" role="group" aria-labelledby="mg-{{$i}}-title">
+<input type="hidden" name="csrf_token" value="{{$p.CSRF}}"><input type="hidden" name="return" value="{{$p.Return}}">
+<input type="hidden" name="plan" value="{{$p.Slug}}">
+<button type="submit" id="mg-{{$i}}-you" name="merges" value="you"{{if eq $p.Merges "you"}} class="on" aria-pressed="true"{{else}} aria-pressed="false"{{end}}>You</button>
+<button type="submit" id="mg-{{$i}}-lead" name="merges" value="lead"{{if eq $p.Merges "lead"}} class="on" aria-pressed="true"{{else}} aria-pressed="false"{{end}}>Lead session</button>
+</form>
+</div>
+{{end -}}
+</section>
+
+<section class="card" aria-labelledby="set-monitoring">
+<h2 id="set-monitoring">Monitoring</h2>
+<p class="set-text">Monitored automatically: a lead that registers a plan, the agents it spawns, and agents on a registered plan's packages. Any other session: run <code>/aim watch</code> in it (<code>/aim unwatch</code> to stop), or use Watch on the Sessions page.</p>
+<p class="hint">Only monitored sessions come into Needs you and the notifications.{{if .AllMonitored}} config.toml has <code>sessions.monitor = "all"</code>, so every session is monitored.{{end}}</p>
+</section>
+
+<section class="card" aria-labelledby="set-shortcuts">
+<h2 id="set-shortcuts">Shortcuts</h2>
+{{range .Shortcuts}}{{template "settings-switch" .}}{{end}}
+<p class="hint">Pages open in other tabs follow when they next load. <button type="button" class="btn sm js-only" data-open="help">See them all</button></p>
+</section>
+
+<section class="card" aria-labelledby="set-appearance">
+<h2 id="set-appearance">Appearance</h2>
+{{template "settings-choice" .Theme}}
+<p class="hint">Pages open in other tabs follow within seconds.</p>
+</section>
+{{- end}}
+{{- end}}
+
+{{/* An on/off row (settingSwitch): its switch posts the other value. */}}
+{{define "settings-switch" -}}
+<div class="trow">
+<div><div class="trow-title" id="sw-{{.Key}}-title">{{.Title}}</div><div class="trow-desc" id="sw-{{.Key}}-desc">{{.Desc}}</div>{{with .Note}}<div class="trow-desc set-note">{{.}}</div>{{end}}</div>
+<form method="post" action="/app/settings/set" data-pane="content">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="return" value="{{.Return}}">
+<input type="hidden" name="key" value="{{.Key}}"><input type="hidden" name="value" value="{{.Next}}">
+<button type="submit" id="sw-{{.Key}}" class="switch" role="switch" aria-checked="{{.On}}" aria-labelledby="sw-{{.Key}}-title" aria-describedby="sw-{{.Key}}-desc"><span class="knob"></span></button>
+</form>
+</div>
+{{- end}}
+
+{{/* A row with a segmented control (settingChoice): each button posts its
+value. */}}
+{{define "settings-choice" -}}
+<div class="trow">
+<div><div class="trow-title" id="seg-{{.Key}}-title">{{.Title}}</div><div class="trow-desc">{{.Desc}}</div></div>
+<form method="post" action="/app/settings/set" data-pane="content" class="seg" role="group" aria-labelledby="seg-{{.Key}}-title">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="return" value="{{.Return}}">
+<input type="hidden" name="key" value="{{.Key}}">
+{{range .Options}}<button type="submit" id="seg-{{$.Key}}-{{.Value}}" name="value" value="{{.Value}}"{{if .On}} class="on" aria-pressed="true"{{else}} aria-pressed="false"{{end}}>{{.Label}}</button>
+{{end -}}
+</form>
+</div>
+{{- end}}

@@ -1,0 +1,133 @@
+{{/* Needs you (GET /app/inbox; app_inbox.go). The list pane
+has the tabs and the items by plan; the detail pane the selected item, its
+actions (forms posting to /app/inbox/…, answered with the toast protocol)
+and its history. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-inbox.css?v={{.AssetVersion}}">
+<script src="/static/app-inbox.js?v={{.AssetVersion}}" defer></script>
+{{- end}}
+
+{{define "list" -}}
+{{with .View -}}
+<div class="toolbar">
+<nav class="tabs" aria-label="Inbox tabs">
+{{range .Tabs}}<a class="tab{{if .On}} on{{end}}"{{if .On}} aria-current="page"{{end}} href="{{.URL}}" data-pane="list detail">{{.Label}}<span class="tcount"><span class="vh">: </span>{{.Count}}</span></a>
+{{end -}}
+</nav>
+</div>
+{{if .Unavailable -}}
+<p class="empty">{{.Unavailable}}</p>
+{{- else if not .Groups -}}
+<p class="empty">{{.Empty}}</p>
+{{- else -}}
+{{range .Groups -}}
+<div class="ghead"><span>{{.Label}}</span><span>{{.Count}}</span></div>
+<ul class="rows">
+{{range .Items}}<li><a class="irow {{.KindClass}}{{if .Sel}} sel{{end}}{{if .New}} new{{end}}" href="{{.URL}}" data-pane="detail" data-item="{{.ID}}"{{if .Sel}} aria-current="true"{{end}}{{with .Chime}} data-chime="{{.}}"{{end}}{{with .Search}} data-search="{{.}}"{{end}}>
+<span class="kdot" aria-hidden="true"></span>
+<span class="ibody"><span class="ikind">{{.KindLabel}}</span><span class="ititle">{{.Title}}</span>{{with .Sub}}<span class="isub">{{.}}</span>{{end}}</span>
+<span class="iwait" title="{{.WaitTitle}}">{{.Wait}}</span>
+</a></li>
+{{end -}}
+</ul>
+{{end -}}
+{{- end}}
+{{with .Footer}}<p class="hint list-foot">{{.}}</p>{{end}}
+{{- end}}
+{{- end}}
+
+{{define "detail" -}}
+{{with .View -}}
+{{if .Item -}}{{with .Item -}}
+<div class="ihead">
+<span class="pill {{.KindClass}}">{{.KindLabel}}</span>
+{{with .Term}}<span class="tag {{.Class}}" title="{{.Title}}">{{.Label}}</span>{{end}}
+<span class="istatus">{{.Status}}</span>
+</div>
+<h2>{{.Title}}</h2>
+{{with .Sub}}<p class="subtitle">{{.}}</p>{{end}}
+
+{{with .Waits -}}
+<p class="label">{{.Label}}</p>
+{{if .Tool}}<div class="code"><span class="tool">{{.Tool}}</span>{{with .Summary}}  {{.}}{{end}}</div>
+{{- else if .Summary}}<p class="iask">{{.Summary}}</p>{{end}}
+{{range .Questions}}<p class="iask">{{.Question}}</p>
+{{with .Options}}<ul class="iopts">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{end -}}
+{{with .Steps}}<ol class="isteps">{{range .}}<li>{{.}}</li>{{end}}</ol>{{end}}
+{{with .Hint}}<p class="hint">{{.}}</p>{{end}}
+{{- end}}
+{{with .Reply -}}
+{{with .Last}}<p class="label">Last message</p>
+<p class="iask">{{.}}</p>{{end}}
+{{with .Attach}}<p class="label">Open it from a terminal</p>
+<div class="code">{{.}}</div>{{end}}
+{{- end}}
+{{with .PR -}}
+<p class="label">Pull request</p>
+<p class="ipr">{{.State}}</p>
+{{with .Why}}<p class="hint">{{.}}</p>{{end}}
+{{- end}}
+{{with .PlanRow -}}
+<p class="label">Suggested row for {{.File}}</p>
+<div class="copyrow"><pre class="code" id="{{.ID}}">{{.Row}}</pre><button type="button" class="btn sm" data-copy="{{.ID}}" title="Copy the row, to paste into {{.File}}">Copy</button></div>
+<p class="hint">{{.Why}} Fill in the blank cells as the plan's other rows do. aimd never edits the plan file; <a href="{{.PkgURL}}">see it on the plan</a>.</p>
+{{- end}}
+
+<div class="actions">
+{{- if .Go.Show}}
+{{if .Go.Off -}}
+<button type="button" class="btn primary" disabled aria-disabled="true" data-key="g" data-off="{{.Go.Off}}" title="{{.Go.Off}}">{{.Go.Label}} <kbd>g</kbd></button>
+{{- else -}}
+<form method="post" action="/app/inbox/go" data-pane="list detail"{{with .Go.OpenURL}} target="_blank" rel="noopener noreferrer" data-open-url="{{.}}"{{end}}>
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="item" value="{{.ID}}"><input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn primary" data-key="g">{{.Go.Label}} <kbd>g</kbd></button>
+</form>
+{{- end}}
+{{- end}}
+{{- if .Snooze}}
+<details class="dropdown">
+<summary class="btn" data-key="s" aria-keyshortcuts="s">Snooze ▾ <kbd>s</kbd></summary>
+<div class="dropdown-menu">
+{{range .Snoozes}}<form method="post" action="/app/inbox/snooze" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="item" value="{{$.View.Item.ID}}"><input type="hidden" name="return" value="{{$.Return}}"><input type="hidden" name="snooze" value="{{.Key}}">
+<button type="submit" class="tab">{{.Label}}</button>
+</form>
+{{end -}}
+</div>
+</details>
+{{- end}}
+{{- if .Done}}
+<form method="post" action="/app/inbox/done" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="item" value="{{.ID}}"><input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" data-key="d" aria-keyshortcuts="d">Done <kbd>d</kbd></button>
+</form>
+{{- end}}
+{{- with .BackOpen}}
+<form method="post" action="/app/inbox/open" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="item" value="{{$.View.Item.ID}}"><input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" data-key="u" aria-keyshortcuts="u">{{.}} <kbd>u</kbd></button>
+</form>
+{{- end}}
+</div>
+{{with .Go.Off}}<p class="hint">{{.}}</p>{{end}}
+
+<p class="label">Where</p>
+<dl class="ctx">
+{{range .Where}}<dt>{{.Key}}</dt><dd>{{if .URL}}<a href="{{.URL}}">{{.Value}}</a>{{else if .Code}}<code>{{.Value}}</code>{{else}}{{.Value}}{{end}}</dd>
+{{end -}}
+</dl>
+<p class="label">History</p>
+<ol class="history">
+{{range .History}}<li><time datetime="{{.Stamp}}">{{.When}}</time> · {{.Text}}</li>
+{{end -}}
+</ol>
+{{- end}}
+{{- else if .Missing -}}
+<p class="empty">That item is gone. Done items are kept for 30 days.</p>
+{{- else -}}
+<p class="empty">Select an item to see what it's waiting on.</p>
+{{- end}}
+{{- end}}
+{{- end}}

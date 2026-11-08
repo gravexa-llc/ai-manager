@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The launchd agent for aimd. `aim up` fills in this template
+  (deploy/com.gravexa.aimd.plist in the ai-manager repo) and writes it to
+  ~/Library/LaunchAgents; edit the template, not the copy.
+  launchd's PATH lacks ~/.local/bin and the like, so `aim up` resolves
+  claude, gh and git when it runs and puts their folders in PATH below.
+  It also sets AIMD_LAUNCHD=1 there, which tells aimd it runs under launchd,
+  so it logs only to aimd.log (rotated to aimd.log.1 at 10 MB), not to
+  stderr as well.
+  StandardOutPath and StandardErrorPath (aimd.launchd.log) then hold only
+  what aimd.log doesn't get: a panic, or the error aimd stops with.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>{{xml .Label}}</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>{{xml .Program}}</string>
+		<string>--foreground</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+{{- range .Env}}
+		<key>{{xml .Key}}</key>
+		<string>{{xml .Value}}</string>
+{{- end}}
+	</dict>
+	<key>WorkingDirectory</key>
+	<string>{{xml .Home}}</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>{{xml .LaunchdLog}}</string>
+	<key>StandardErrorPath</key>
+	<string>{{xml .LaunchdLog}}</string>
+</dict>
+</plist>

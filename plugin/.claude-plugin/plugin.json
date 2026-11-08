@@ -1,0 +1,45 @@
+{
+  "name": "ai-manager",
+  "version": "1.0.0",
+  "description": "Reports Claude Code sessions, agents and work packages to the local ai-manager daemon (aimd).",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "token": {
+      "type": "string",
+      "title": "aimd token",
+      "description": "The contents of ~/.ai-manager/token, sent to aimd as X-AIM-Token.",
+      "sensitive": true
+    },
+    "aimdUrl": {
+      "type": "string",
+      "title": "aimd URL",
+      "description": "Where the ai-manager daemon listens.",
+      "default": "http://127.0.0.1:7777"
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Plan band",
+      "description": "Show the plan band above the prompt.",
+      "default": true
+    },
+    "appendConventions": {
+      "type": "boolean",
+      "title": "Append package conventions",
+      "description": "Add the package, branch and PR conventions to agent briefs.",
+      "default": true
+    },
+    "prCheck": {
+      "type": "boolean",
+      "title": "PR body check",
+      "description": "Ask agents to add the Plan: line to PR bodies before creating a PR.",
+      "default": true
+    },
+    "requirePlanRow": {
+      "type": "boolean",
+      "title": "Require the plan row",
+      "description": "Refuse to spawn an agent whose brief names a package its registered plan file has no row for, until the row is added. Off: the spawn goes ahead, the package shows as provisional, and the lead is told to add the row.",
+      "default": false
+    }
+  },
+  "license": "MIT"
+}

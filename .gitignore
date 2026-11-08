@@ -1,0 +1,20 @@
+# build output
+/bin/
+/dist/
+
+# local runtime data
+*.db
+*.db-journal
+*.log
+.ai-manager/
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# API types Claude Code lays beside a mod loaded with --plugin-dir
+/plugin/.claude-plugin/types/
+
+# Agent worktrees Claude Code creates inside the repo
+/.claude/worktrees/

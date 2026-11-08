@@ -1,0 +1,12 @@
+worktree ~/Projects/toolkit
+HEAD 7307f8b82c4e46df0974f50bbacac7360b7c864f
+branch refs/heads/user/sample-data-refresh-2026-08-18
+
+worktree ~/Projects/toolkit-plugins
+HEAD 1989c940a9639f2f78dca042969ecc0c75acdb53
+branch refs/heads/user/plugin-sources
+
+worktree ~/Projects/toolkit-release
+HEAD 130ffcce4e9bf8acaa99ea43eefcba98b33e9c40
+detached
+

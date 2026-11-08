@@ -1,0 +1,110 @@
+{{/* Overview (GET /app/; app_overview.go). Four cards, each a
+live region of its own with the topics that change it, and each a fragment
+(?fragment=ov-plans, ov-agents, ov-activity, ov-health). Go is a form
+posting to /app/overview/go, answered with the toast protocol. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-overview.css?v={{.AssetVersion}}">
+{{- end}}
+
+{{define "content" -}}
+<section id="ov-plans" class="card" aria-labelledby="ov-plans-h" data-live="plans inbox">
+{{template "ov-plans" .}}
+</section>
+<section id="ov-agents" class="card" aria-labelledby="ov-agents-h" data-live="sessions plans">
+{{template "ov-agents" .}}
+</section>
+<section id="ov-activity" class="card" aria-labelledby="ov-activity-h" data-live="prs plans sessions">
+{{template "ov-activity" .}}
+</section>
+<section id="ov-health" class="card" aria-labelledby="ov-health-h" data-live="status worktrees prs sessions plans">
+{{template "ov-health" .}}
+</section>
+{{- end}}
+
+{{define "ov-plans" -}}
+<h2 id="ov-plans-h">Plan progress</h2>
+{{with .View.Plans -}}
+{{if .Plans -}}
+<ul class="rows">
+{{range .Plans}}<li><a class="ovplan" href="{{.URL}}">
+<span class="ovplan-head"><strong>{{.Title}}</strong><span class="ovplan-sum">{{.Done}} of {{.Total}} done</span></span>
+<span class="bar" role="img" aria-label="{{.BarLabel}}">{{range .Segs}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}</span>
+<span class="ovlegend">{{range .Counts}}<span class="legend lc-{{.Key}}"><span class="sw" aria-hidden="true"></span>{{.Label}} {{.N}}</span>{{end}}
+{{- if .NeedsYou}}<span class="legend ovneeds">{{.NeedsYou}} {{if eq .NeedsYou 1}}needs{{else}}need{{end}} you</span>{{end}}</span>
+</a></li>
+{{end -}}
+</ul>
+{{- else -}}
+<p class="empty">{{.Empty}}</p>
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{define "ov-agents" -}}
+<h2 id="ov-agents-h">Agents running now</h2>
+{{with .View.Agents -}}
+{{if .Rows -}}
+<ul class="rows">
+{{range .Rows}}<li class="ovagent{{if .Sub}} sub{{end}}">
+<span class="dot {{.Dot}}" aria-hidden="true"></span>
+<span class="ovagent-body">
+<span class="ovagent-name"{{with .Why}} title="Monitored: {{.}}"{{end}}>{{.Name}}</span>
+<span class="ovagent-sub">{{.Plan}} · {{.Doing}}{{if .For}} · <span title="{{.ForTitle}}">{{.For}}</span>{{end}}</span>
+</span>
+<span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span>
+{{- if .ShowGo}}
+{{if .Go.Off -}}
+<button type="button" class="btn sm" disabled title="{{.Go.Off}}">Go<span class="vh"> (unavailable: {{.Go.Off}})</span></button>
+{{- else -}}
+<form method="post" action="/app/overview/go" data-pane="ov-agents">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="key" value="{{.Go.Key}}"><input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn sm" title="Switch to its terminal tab">Go</button>
+</form>
+{{- end}}
+{{- end}}
+</li>
+{{end -}}
+</ul>
+{{- else -}}
+<p class="empty">{{.Empty}}</p>
+{{- end}}
+{{- if .NotMonitored}}
+<p class="hint">{{.NotMonitored}} more {{if eq .NotMonitored 1}}session isn't{{else}}sessions aren't{{end}} monitored. <a href="/app/sessions">See Sessions</a>.</p>{{end}}
+{{- end}}
+{{- end}}
+
+{{define "ov-activity" -}}
+<h2 id="ov-activity-h">Activity, last 24 hours</h2>
+{{with .View.Activity -}}
+{{if .Entries -}}
+<ol class="rows">
+{{range .Entries}}<li class="feed"><time class="when" datetime="{{.Stamp}}" title="{{.Clock}}">{{.When}}</time><span class="ovfeed-body"><strong>{{.What}}</strong> {{if .URL}}<a href="{{.URL}}"{{if .External}} target="_blank" rel="noopener noreferrer"{{end}}>{{.Where}}</a>{{else}}<span class="ovfeed-where">{{.Where}}</span>{{end}}</span></li>
+{{end -}}
+</ol>
+{{- else -}}
+<p class="empty">Nothing happened in the last 24 hours.</p>
+{{- end}}
+{{- if .More}}
+<p class="ovmore"><a href="{{.MoreURL}}" data-pane="ov-activity">Show {{.More}} more</a></p>{{end}}
+{{- if .All}}
+<p class="ovmore"><a href="{{.LessURL}}" data-pane="ov-activity">Show the newest only</a></p>{{end}}
+{{- with .Note}}
+<p class="hint">{{.}}</p>{{end}}
+{{- end}}
+{{- end}}
+
+{{define "ov-health" -}}
+<h2 id="ov-health-h">Cleanup &amp; health</h2>
+{{with .View.Health -}}
+<div class="stats">
+{{range .Stats}}<a class="stat" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}><strong>{{.N}}</strong><span>{{.Label}}</span></a>
+{{end -}}
+</div>
+<p class="label">Health</p>
+<ul class="ovchips">
+{{range .Chips}}<li class="tag{{with .Tone}} tone-{{.}}{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</li>
+{{end -}}
+</ul>
+{{- end}}
+{{- end}}

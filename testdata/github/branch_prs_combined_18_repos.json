@@ -1,0 +1,1482 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4983,
+      "resetAt": "2026-11-06T06:07:31Z",
+      "limit": 5000,
+      "used": 17
+    },
+    "r0": {
+      "nameWithOwner": "example-org/meadow-backend",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 466,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-merge-main",
+            "headRefOid": "2ec461e6121699c09d4f7873c5553d1e9d57d04c",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/466",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T05:06:34Z",
+            "updatedAt": "2026-11-02T05:06:40Z",
+            "mergedAt": "2026-11-02T05:06:40Z",
+            "closedAt": "2026-11-02T05:06:40Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 465,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "fix-412-retry-backoff",
+            "headRefOid": "57db6fc9b336ff36f43c478bce44e4f3f9f2918e",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/465",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:04:04Z",
+            "updatedAt": "2026-11-02T15:58:26Z",
+            "mergedAt": "2026-11-02T04:59:55Z",
+            "closedAt": "2026-11-02T04:59:55Z"
+          }
+        ]
+      },
+      "b2": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 484,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-a-2a",
+            "headRefOid": "dff288d1619e435e464c8632ad1afdd9b7298c9e",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/484",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T21:58:29Z",
+            "updatedAt": "2026-11-02T22:29:30Z",
+            "mergedAt": "2026-11-02T22:29:30Z",
+            "closedAt": "2026-11-02T22:29:30Z"
+          }
+        ]
+      },
+      "b3": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 482,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-a-2b",
+            "headRefOid": "afa357a5ce8931164fd6983bd9ee32b627c6aab5",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/482",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T21:12:01Z",
+            "updatedAt": "2026-11-02T21:45:54Z",
+            "mergedAt": "2026-11-02T21:45:54Z",
+            "closedAt": "2026-11-02T21:45:54Z"
+          }
+        ]
+      },
+      "b4": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 455,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-2",
+            "headRefOid": "99b1c0649e0ea80e9340756f43777a956184e5a3",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/455",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T01:05:44Z",
+            "updatedAt": "2026-11-02T01:26:47Z",
+            "mergedAt": "2026-11-02T01:26:47Z",
+            "closedAt": "2026-11-02T01:26:47Z"
+          }
+        ]
+      },
+      "b5": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 447,
+            "state": "CLOSED",
+            "isDraft": true,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-2a-spike",
+            "headRefOid": "2f22b332a93bbefc269060c36bf108aed2b4e245",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/447",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-01T22:43:25Z",
+            "updatedAt": "2026-11-01T23:47:56Z",
+            "mergedAt": null,
+            "closedAt": "2026-11-01T23:47:56Z"
+          }
+        ]
+      },
+      "b6": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 452,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-2a-notes",
+            "headRefOid": "21a5499c40b14e8009e45e25dc2254b732a0729c",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/452",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-01T23:42:51Z",
+            "updatedAt": "2026-11-01T23:47:52Z",
+            "mergedAt": "2026-11-01T23:47:52Z",
+            "closedAt": "2026-11-01T23:47:52Z"
+          }
+        ]
+      },
+      "b7": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 463,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-3a",
+            "headRefOid": "e6a835d81f35d85672c353a2410b8a316cdb2b71",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/463",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T02:23:27Z",
+            "updatedAt": "2026-11-02T17:24:15Z",
+            "mergedAt": "2026-11-02T17:24:14Z",
+            "closedAt": "2026-11-02T17:24:14Z"
+          }
+        ]
+      },
+      "b8": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 474,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-3b-1",
+            "headRefOid": "102082284bd5a281f4ce27908a02a9b4ec9a86e9",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/474",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T17:57:43Z",
+            "updatedAt": "2026-11-02T19:33:18Z",
+            "mergedAt": "2026-11-02T19:33:18Z",
+            "closedAt": "2026-11-02T19:33:18Z"
+          }
+        ]
+      },
+      "b9": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 478,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-3b-2",
+            "headRefOid": "072c5dbf31102b051d67bb2d474bde3e49c3c49e",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/478",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T19:46:39Z",
+            "updatedAt": "2026-11-02T20:14:05Z",
+            "mergedAt": "2026-11-02T20:14:04Z",
+            "closedAt": "2026-11-02T20:14:05Z"
+          }
+        ]
+      },
+      "b10": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 480,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-b-3b-3",
+            "headRefOid": "758d8b419629131d01e11cc724c23db49af8d9d0",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/480",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T20:27:28Z",
+            "updatedAt": "2026-11-02T21:06:25Z",
+            "mergedAt": "2026-11-02T21:06:24Z",
+            "closedAt": "2026-11-02T21:06:24Z"
+          }
+        ]
+      },
+      "b11": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 488,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-a-1d",
+            "headRefOid": "44dc88b27c009ab351f935e137fe04fdfaa0eafb",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/488",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-04T20:32:49Z",
+            "updatedAt": "2026-11-04T20:51:07Z",
+            "mergedAt": "2026-11-04T20:51:07Z",
+            "closedAt": "2026-11-04T20:51:07Z"
+          }
+        ]
+      },
+      "b12": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 470,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-d-2",
+            "headRefOid": "53f887e1aae0a6735ba654fd63361e0df67826c7",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/470",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T06:59:24Z",
+            "updatedAt": "2026-11-02T07:28:47Z",
+            "mergedAt": "2026-11-02T07:28:47Z",
+            "closedAt": "2026-11-02T07:28:47Z"
+          }
+        ]
+      },
+      "b13": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 481,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-d-5-limits",
+            "headRefOid": "2673467c75eb9904cd107fd7f46417aff6b0fde1",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/481",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T20:49:45Z",
+            "updatedAt": "2026-11-02T21:11:39Z",
+            "mergedAt": "2026-11-02T21:11:39Z",
+            "closedAt": "2026-11-02T21:11:39Z"
+          }
+        ]
+      },
+      "b14": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 461,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-deploy-config",
+            "headRefOid": "5145584a750fe0f284902d1ac9957cf76f404d98",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/461",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T01:58:19Z",
+            "updatedAt": "2026-11-02T01:58:24Z",
+            "mergedAt": "2026-11-02T01:58:24Z",
+            "closedAt": "2026-11-02T01:58:24Z"
+          }
+        ]
+      },
+      "b15": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 501,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "surge-a-6f",
+            "headRefOid": "91faafbc5cdd7a3ac0233efca9483af566c9ad3f",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title (T27)",
+            "url": "https://github.com/example-org/meadow-backend/pull/501",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T21:19:41Z",
+            "updatedAt": "2026-11-05T21:25:19Z",
+            "mergedAt": "2026-11-05T21:25:19Z",
+            "closedAt": "2026-11-05T21:25:19Z"
+          }
+        ]
+      },
+      "b16": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 419,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "fix/233-stale-row-cleanup",
+            "headRefOid": "ed5b45e5971ac007a4de581075ba0f7c7a7bffa0",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-backend/pull/419",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-23T07:37:26Z",
+            "updatedAt": "2026-10-23T08:08:31Z",
+            "mergedAt": "2026-10-23T08:08:30Z",
+            "closedAt": "2026-10-23T08:08:31Z"
+          }
+        ]
+      }
+    },
+    "r1": {
+      "nameWithOwner": "example-org/meadow-web",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 13,
+        "nodes": [
+          {
+            "number": 156,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "site-staging",
+            "headRefOid": "b0ce2cfe0fc44813868fd6f5cb6874256cb4ff8c",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/156",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-29T20:30:31Z",
+            "updatedAt": "2026-10-29T20:30:45Z",
+            "mergedAt": "2026-10-29T20:30:45Z",
+            "closedAt": "2026-10-29T20:30:45Z"
+          },
+          {
+            "number": 155,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "site-staging",
+            "headRefOid": "8d025f76c9f7123e58643591a5bf4a12ddbca3d1",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/155",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-28T22:54:41Z",
+            "updatedAt": "2026-10-28T22:54:56Z",
+            "mergedAt": "2026-10-28T22:54:56Z",
+            "closedAt": "2026-10-28T22:54:56Z"
+          },
+          {
+            "number": 153,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "site-staging",
+            "headRefOid": "ef58cf7dba7c097575c5c180016fcdbb991c2005",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/153",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-28T03:41:34Z",
+            "updatedAt": "2026-10-28T03:41:39Z",
+            "mergedAt": "2026-10-28T03:41:37Z",
+            "closedAt": "2026-10-28T03:41:37Z"
+          },
+          {
+            "number": 151,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "site-staging",
+            "headRefOid": "c0cdf00c8dac827c3d4f86949bbed93e491e9e91",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/151",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-26T23:28:23Z",
+            "updatedAt": "2026-10-26T23:28:44Z",
+            "mergedAt": "2026-10-26T23:28:44Z",
+            "closedAt": "2026-10-26T23:28:44Z"
+          },
+          {
+            "number": 150,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "site-staging",
+            "headRefOid": "15515d9e67136433a78b88a1348205e320f07953",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/150",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-26T23:22:40Z",
+            "updatedAt": "2026-10-26T23:22:46Z",
+            "mergedAt": "2026-10-26T23:22:43Z",
+            "closedAt": "2026-10-26T23:22:43Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 169,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-api-key-rotate",
+            "headRefOid": "f6c782a677d95989fa454fb4579e628f96e3b47e",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/169",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T17:33:44Z",
+            "updatedAt": "2026-11-02T17:33:54Z",
+            "mergedAt": "2026-11-02T17:33:52Z",
+            "closedAt": "2026-11-02T17:33:52Z"
+          }
+        ]
+      },
+      "b2": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 158,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-1-scaffold",
+            "headRefOid": "d7fd3190cbc1bfb1db9f0e20323795516a406b5d",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/158",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-01T22:23:15Z",
+            "updatedAt": "2026-11-01T22:55:54Z",
+            "mergedAt": "2026-11-01T22:55:54Z",
+            "closedAt": "2026-11-01T22:55:54Z"
+          }
+        ]
+      },
+      "b3": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 160,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-b-2a-docs",
+            "headRefOid": "9f709b5f2d0fdc15ab343b7f26d4918653a388c0",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/160",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-01T23:50:04Z",
+            "updatedAt": "2026-11-01T23:51:13Z",
+            "mergedAt": "2026-11-01T23:51:13Z",
+            "closedAt": "2026-11-01T23:51:13Z"
+          }
+        ]
+      },
+      "b4": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 164,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-2-client",
+            "headRefOid": "8316e5235bfca48b12889fd65ac3feacfcb87590",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/164",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T02:04:51Z",
+            "updatedAt": "2026-11-02T02:08:14Z",
+            "mergedAt": "2026-11-02T02:08:14Z",
+            "closedAt": "2026-11-02T02:08:14Z"
+          }
+        ]
+      },
+      "b5": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 162,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-common",
+            "headRefOid": "b861378a9116d512bb485e1d59e12410fba49a7b",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/162",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T02:00:08Z",
+            "updatedAt": "2026-11-02T02:05:02Z",
+            "mergedAt": "2026-11-02T02:05:01Z",
+            "closedAt": "2026-11-02T02:05:01Z"
+          }
+        ]
+      },
+      "b6": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 209,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-22",
+            "headRefOid": "8526abfa9bf150977ee592c61b145266c8463c14",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/209",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T20:28:30Z",
+            "updatedAt": "2026-11-05T20:34:49Z",
+            "mergedAt": "2026-11-05T20:34:49Z",
+            "closedAt": "2026-11-05T20:34:49Z"
+          }
+        ]
+      },
+      "b7": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 161,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-2",
+            "headRefOid": "ad580e607c41f83c72b418fc45b18995add195f1",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/161",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T00:55:56Z",
+            "updatedAt": "2026-11-02T01:23:41Z",
+            "mergedAt": "2026-11-02T01:23:41Z",
+            "closedAt": "2026-11-02T01:23:41Z"
+          }
+        ]
+      },
+      "b8": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 163,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-3",
+            "headRefOid": "e3c3c00d2188b527cda63e953bba1f116e6cf523",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/163",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T02:02:03Z",
+            "updatedAt": "2026-11-02T03:08:30Z",
+            "mergedAt": "2026-11-02T03:08:30Z",
+            "closedAt": "2026-11-02T03:08:30Z"
+          }
+        ]
+      },
+      "b9": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 171,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-flaky-test",
+            "headRefOid": "13ccfdd0c5b64d803713a619e9134242059893e8",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/171",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T20:58:53Z",
+            "updatedAt": "2026-11-02T21:00:16Z",
+            "mergedAt": "2026-11-02T21:00:16Z",
+            "closedAt": "2026-11-02T21:00:16Z"
+          }
+        ]
+      },
+      "b10": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 207,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "surge-w-5o",
+            "headRefOid": "4546f248c7e07e4a8b46af9f9f700a3255f3ad7f",
+            "baseRefName": "surge",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-org/meadow-web/pull/207",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T20:08:55Z",
+            "updatedAt": "2026-11-05T20:10:13Z",
+            "mergedAt": "2026-11-05T20:10:13Z",
+            "closedAt": "2026-11-05T20:10:13Z"
+          }
+        ]
+      }
+    },
+    "r2": {
+      "nameWithOwner": "example-org/meadow-ios",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r3": {
+      "nameWithOwner": "example-org/example-web",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r4": {
+      "nameWithOwner": "acme/pivot",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 214,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/v1-email-reports",
+            "headRefOid": "64a260aca901aede716644da290221d81d0701e1",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (V1)",
+            "url": "https://github.com/acme/pivot/pull/214",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:32:07Z",
+            "updatedAt": "2026-11-02T04:41:47Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 0,
+        "nodes": []
+      },
+      "b2": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 217,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/a3-embed-endpoint",
+            "headRefOid": "b2d3bffe898e6122800708825b68ab612824790b",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (A3)",
+            "url": "https://github.com/acme/pivot/pull/217",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:45:04Z",
+            "updatedAt": "2026-11-02T04:45:05Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b3": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 218,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/s1-scheduled-snapshots",
+            "headRefOid": "01e03359ad772d90e0346fc8fe73c30d4750bdcb",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (S1)",
+            "url": "https://github.com/acme/pivot/pull/218",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:54:02Z",
+            "updatedAt": "2026-11-02T04:54:02Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b4": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 219,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/t1-tile-filters",
+            "headRefOid": "9436f7c038a597ef7228fd2831d26ac3c0745e7b",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/pivot/pull/219",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T05:19:04Z",
+            "updatedAt": "2026-11-02T05:19:04Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      }
+    },
+    "r5": {
+      "nameWithOwner": "acme/pivot-web",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 33,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "seo/pricing-page",
+            "headRefOid": "9e017bd98d9d18b284c5e85c623f6637ac687dfe",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/pivot-web/pull/33",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-05T19:27:02Z",
+            "updatedAt": "2026-11-05T19:27:12Z",
+            "mergedAt": "2026-11-05T19:27:11Z",
+            "closedAt": "2026-11-05T19:27:12Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 32,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "share/w3-embed-guide",
+            "headRefOid": "a6680f4c140dbd396307e9bd09d1c1c9a92c63f3",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (W3)",
+            "url": "https://github.com/acme/pivot-web/pull/32",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:55:17Z",
+            "updatedAt": "2026-11-02T04:55:23Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      }
+    },
+    "r6": {
+      "nameWithOwner": "acme/acme-www",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 47,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "seo-page-titles",
+            "headRefOid": "5f86afc90ddd9000cdf33c18609007683f39407d",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/47",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-15T04:24:41Z",
+            "updatedAt": "2026-10-15T04:25:50Z",
+            "mergedAt": "2026-10-15T04:25:50Z",
+            "closedAt": "2026-10-15T04:25:50Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 0,
+        "nodes": []
+      },
+      "b2": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 34,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "acme-brand",
+            "headRefOid": "e13f514ba862593e520afb62e43123b6aa88393b",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/34",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-14T16:47:38Z",
+            "updatedAt": "2026-10-14T16:55:38Z",
+            "mergedAt": "2026-10-14T16:55:38Z",
+            "closedAt": "2026-10-14T16:55:38Z"
+          }
+        ]
+      },
+      "b3": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 39,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "footer-app-badges",
+            "headRefOid": "ad8ddbc283f9e0beb149f0d357ee42eba9a7ddcd",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/39",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-14T17:13:02Z",
+            "updatedAt": "2026-10-14T17:18:41Z",
+            "mergedAt": "2026-10-14T17:18:40Z",
+            "closedAt": "2026-10-14T17:18:41Z"
+          }
+        ]
+      },
+      "b4": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 45,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "preview-pane-blank",
+            "headRefOid": "804329ec2b5e4cac91e3e586ff1333cec94f5953",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/45",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-14T18:15:01Z",
+            "updatedAt": "2026-10-15T04:10:26Z",
+            "mergedAt": "2026-10-15T04:10:26Z",
+            "closedAt": "2026-10-15T04:10:26Z"
+          }
+        ]
+      },
+      "b5": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 37,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "share-card-images",
+            "headRefOid": "04113aaac36278d1cbd45e24442bb0974ed755a9",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/37",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-14T17:04:56Z",
+            "updatedAt": "2026-10-14T17:07:56Z",
+            "mergedAt": "2026-10-14T17:07:56Z",
+            "closedAt": "2026-10-14T17:07:56Z"
+          }
+        ]
+      },
+      "b6": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 36,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "print-styles",
+            "headRefOid": "91c505f14c0c07b918bbe3791cbb487725c9428a",
+            "baseRefName": "site-staging",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/acme-www/pull/36",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-10-14T17:02:09Z",
+            "updatedAt": "2026-10-14T17:07:49Z",
+            "mergedAt": "2026-10-14T17:07:48Z",
+            "closedAt": "2026-10-14T17:07:48Z"
+          }
+        ]
+      }
+    },
+    "r7": {
+      "nameWithOwner": "acme/scoreboard",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 596,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "SUCCESS"
+            },
+            "headRefName": "chore/node-runtime-v24",
+            "headRefOid": "231b548529f40088d6bc39e0aee4f6125d05b80e",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/scoreboard/pull/596",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-07-30T17:04:01Z",
+            "updatedAt": "2026-07-30T17:06:38Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      }
+    },
+    "r8": {
+      "nameWithOwner": "acme/game",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r9": {
+      "nameWithOwner": "acme/relay",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r10": {
+      "nameWithOwner": "acme/ops-tools",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r11": {
+      "nameWithOwner": "example-user/ai-manager",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 2,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": {
+              "state": "FAILURE"
+            },
+            "headRefName": "aim/f1-repo-scaffold",
+            "headRefOid": "b0cb87b7bd6ff9eb70d4291d996eda750f867a3a",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title (F1)",
+            "url": "https://github.com/example-user/ai-manager/pull/2",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-06T05:18:17Z",
+            "updatedAt": "2026-11-06T05:21:28Z",
+            "mergedAt": "2026-11-06T05:21:25Z",
+            "closedAt": "2026-11-06T05:21:25Z"
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 1,
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "aim/plan-v2.2",
+            "headRefOid": "4a3525bfc17d83d53af69dadee533cfd32fefcc9",
+            "baseRefName": "main",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/example-user/ai-manager/pull/1",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-06T01:37:26Z",
+            "updatedAt": "2026-11-06T05:07:44Z",
+            "mergedAt": "2026-11-06T05:07:40Z",
+            "closedAt": "2026-11-06T05:07:40Z"
+          }
+        ]
+      },
+      "b2": {
+        "totalCount": 0,
+        "nodes": []
+      },
+      "b3": {
+        "totalCount": 0,
+        "nodes": []
+      },
+      "b4": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r12": {
+      "nameWithOwner": "acme/landing-page",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r13": {
+      "nameWithOwner": "example-org/meadow-android",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r14": {
+      "nameWithOwner": "example-org/meadow-noc",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r15": {
+      "nameWithOwner": "example-org/checklist-proto",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r16": {
+      "nameWithOwner": "acme/games",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    },
+    "r17": {
+      "nameWithOwner": "acme/type-specimen",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 0,
+        "nodes": []
+      }
+    }
+  }
+}

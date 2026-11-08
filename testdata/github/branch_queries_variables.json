@@ -1,0 +1,286 @@
+{
+  "per_repo": [
+    {
+      "repo": "example-org/meadow-backend",
+      "variables": {
+        "o0": "example-org",
+        "n0": "meadow-backend",
+        "r0b0": "surge-merge-main",
+        "r0b1": "fix-412-retry-backoff",
+        "r0b2": "surge-a-2a",
+        "r0b3": "surge-a-2b",
+        "r0b4": "surge-b-2",
+        "r0b5": "surge-b-2a-spike",
+        "r0b6": "surge-b-2a-notes",
+        "r0b7": "surge-b-3a",
+        "r0b8": "surge-b-3b-1",
+        "r0b9": "surge-b-3b-2",
+        "r0b10": "surge-b-3b-3",
+        "r0b11": "surge-a-1d",
+        "r0b12": "surge-d-2",
+        "r0b13": "surge-d-5-limits",
+        "r0b14": "surge-deploy-config",
+        "r0b15": "surge-a-6f",
+        "r0b16": "fix/233-stale-row-cleanup"
+      }
+    },
+    {
+      "repo": "example-org/meadow-web",
+      "variables": {
+        "o0": "example-org",
+        "n0": "meadow-web",
+        "r0b0": "site-staging",
+        "r0b1": "surge-api-key-rotate",
+        "r0b2": "surge-w-1-scaffold",
+        "r0b3": "surge-b-2a-docs",
+        "r0b4": "surge-w-2-client",
+        "r0b5": "surge-w-common",
+        "r0b6": "surge-w-22",
+        "r0b7": "surge-w-2",
+        "r0b8": "surge-w-3",
+        "r0b9": "surge-w-flaky-test",
+        "r0b10": "surge-w-5o"
+      }
+    },
+    {
+      "repo": "example-org/meadow-ios",
+      "variables": {
+        "o0": "example-org",
+        "n0": "meadow-ios",
+        "r0b0": "watch-app"
+      }
+    },
+    {
+      "repo": "example-org/example-web",
+      "variables": {
+        "o0": "example-org",
+        "n0": "example-web",
+        "r0b0": "site-staging"
+      }
+    },
+    {
+      "repo": "acme/pivot",
+      "variables": {
+        "o0": "acme",
+        "n0": "pivot",
+        "r0b0": "share/v1-email-reports",
+        "r0b1": "worktree-agent-ab66668f3b601afd9",
+        "r0b2": "share/a3-embed-endpoint",
+        "r0b3": "share/s1-scheduled-snapshots",
+        "r0b4": "share/t1-tile-filters"
+      }
+    },
+    {
+      "repo": "acme/pivot-web",
+      "variables": {
+        "o0": "acme",
+        "n0": "pivot-web",
+        "r0b0": "seo/pricing-page",
+        "r0b1": "share/w3-embed-guide"
+      }
+    },
+    {
+      "repo": "acme/acme-www",
+      "variables": {
+        "o0": "acme",
+        "n0": "acme-www",
+        "r0b0": "seo-page-titles",
+        "r0b1": "pivot-brand",
+        "r0b2": "acme-brand",
+        "r0b3": "footer-app-badges",
+        "r0b4": "preview-pane-blank",
+        "r0b5": "share-card-images",
+        "r0b6": "print-styles"
+      }
+    },
+    {
+      "repo": "acme/scoreboard",
+      "variables": {
+        "o0": "acme",
+        "n0": "scoreboard",
+        "r0b0": "chore/node-runtime-v24"
+      }
+    },
+    {
+      "repo": "acme/game",
+      "variables": {
+        "o0": "acme",
+        "n0": "game",
+        "r0b0": "docs/code-tour"
+      }
+    },
+    {
+      "repo": "example-user/relay",
+      "variables": {
+        "o0": "example-user",
+        "n0": "relay",
+        "r0b0": "claude/eager-blackwell-b5eea4"
+      }
+    },
+    {
+      "repo": "example-user/ops-tools",
+      "variables": {
+        "o0": "example-user",
+        "n0": "ops-tools",
+        "r0b0": "feature/admin-roles-update"
+      }
+    },
+    {
+      "repo": "example-user/ai-manager",
+      "variables": {
+        "o0": "example-user",
+        "n0": "ai-manager",
+        "r0b0": "aim/f1-repo-scaffold",
+        "r0b1": "aim/plan-v2.2",
+        "r0b2": "worktree-agent-a740b0899d775992b",
+        "r0b3": "worktree-agent-ab1d18655f3b9a17c",
+        "r0b4": "worktree-agent-adecb670ee2a01ec4"
+      }
+    },
+    {
+      "repo": "example-user/landing-page",
+      "variables": {
+        "o0": "example-user",
+        "n0": "landing-page",
+        "r0b0": "production"
+      }
+    },
+    {
+      "repo": "example-org/meadow-android",
+      "variables": {
+        "o0": "example-org",
+        "n0": "meadow-android",
+        "r0b0": "main"
+      }
+    },
+    {
+      "repo": "example-org/meadow-noc",
+      "variables": {
+        "o0": "example-org",
+        "n0": "meadow-noc",
+        "r0b0": "main"
+      }
+    },
+    {
+      "repo": "example-org/checklist-proto",
+      "variables": {
+        "o0": "example-org",
+        "n0": "checklist-proto",
+        "r0b0": "main"
+      }
+    },
+    {
+      "repo": "acme/games",
+      "variables": {
+        "o0": "acme",
+        "n0": "games",
+        "r0b0": "main"
+      }
+    },
+    {
+      "repo": "acme/type-specimen",
+      "variables": {
+        "o0": "acme",
+        "n0": "type-specimen",
+        "r0b0": "main"
+      }
+    }
+  ],
+  "combined": {
+    "o0": "example-org",
+    "n0": "meadow-backend",
+    "r0b0": "surge-merge-main",
+    "r0b1": "fix-412-retry-backoff",
+    "r0b2": "surge-a-2a",
+    "r0b3": "surge-a-2b",
+    "r0b4": "surge-b-2",
+    "r0b5": "surge-b-2a-spike",
+    "r0b6": "surge-b-2a-notes",
+    "r0b7": "surge-b-3a",
+    "r0b8": "surge-b-3b-1",
+    "r0b9": "surge-b-3b-2",
+    "r0b10": "surge-b-3b-3",
+    "r0b11": "surge-a-1d",
+    "r0b12": "surge-d-2",
+    "r0b13": "surge-d-5-limits",
+    "r0b14": "surge-deploy-config",
+    "r0b15": "surge-a-6f",
+    "r0b16": "fix/233-stale-row-cleanup",
+    "o1": "example-org",
+    "n1": "meadow-web",
+    "r1b0": "site-staging",
+    "r1b1": "surge-api-key-rotate",
+    "r1b2": "surge-w-1-scaffold",
+    "r1b3": "surge-b-2a-docs",
+    "r1b4": "surge-w-2-client",
+    "r1b5": "surge-w-common",
+    "r1b6": "surge-w-22",
+    "r1b7": "surge-w-2",
+    "r1b8": "surge-w-3",
+    "r1b9": "surge-w-flaky-test",
+    "r1b10": "surge-w-5o",
+    "o2": "example-org",
+    "n2": "meadow-ios",
+    "r2b0": "watch-app",
+    "o3": "example-org",
+    "n3": "example-web",
+    "r3b0": "site-staging",
+    "o4": "acme",
+    "n4": "pivot",
+    "r4b0": "share/v1-email-reports",
+    "r4b1": "worktree-agent-ab66668f3b601afd9",
+    "r4b2": "share/a3-embed-endpoint",
+    "r4b3": "share/s1-scheduled-snapshots",
+    "r4b4": "share/t1-tile-filters",
+    "o5": "acme",
+    "n5": "pivot-web",
+    "r5b0": "seo/pricing-page",
+    "r5b1": "share/w3-embed-guide",
+    "o6": "acme",
+    "n6": "acme-www",
+    "r6b0": "seo-page-titles",
+    "r6b1": "pivot-brand",
+    "r6b2": "acme-brand",
+    "r6b3": "footer-app-badges",
+    "r6b4": "preview-pane-blank",
+    "r6b5": "share-card-images",
+    "r6b6": "print-styles",
+    "o7": "acme",
+    "n7": "scoreboard",
+    "r7b0": "chore/node-runtime-v24",
+    "o8": "acme",
+    "n8": "game",
+    "r8b0": "docs/code-tour",
+    "o9": "example-user",
+    "n9": "relay",
+    "r9b0": "claude/eager-blackwell-b5eea4",
+    "o10": "example-user",
+    "n10": "ops-tools",
+    "r10b0": "feature/admin-roles-update",
+    "o11": "example-user",
+    "n11": "ai-manager",
+    "r11b0": "aim/f1-repo-scaffold",
+    "r11b1": "aim/plan-v2.2",
+    "r11b2": "worktree-agent-a740b0899d775992b",
+    "r11b3": "worktree-agent-ab1d18655f3b9a17c",
+    "r11b4": "worktree-agent-adecb670ee2a01ec4",
+    "o12": "example-user",
+    "n12": "landing-page",
+    "r12b0": "production",
+    "o13": "example-org",
+    "n13": "meadow-android",
+    "r13b0": "main",
+    "o14": "example-org",
+    "n14": "meadow-noc",
+    "r14b0": "main",
+    "o15": "example-org",
+    "n15": "checklist-proto",
+    "r15b0": "main",
+    "o16": "acme",
+    "n16": "games",
+    "r16b0": "main",
+    "o17": "acme",
+    "n17": "type-specimen",
+    "r17b0": "main"
+  }
+}

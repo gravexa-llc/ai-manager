@@ -1,0 +1,436 @@
+// The mod's reporting: each event kind from the recorded shapes
+// (testdata/events/interactive-*.jsonl, background-*.jsonl), the
+// batching, aimd down or slow, and every reporting hook failing open.
+
+import type { AgentInfo, On } from 'claude-code'
+import { expect, mock, test, type Engine } from 'claude-code/testing'
+
+import { CONTEXT, REPO, SESSION_ID, SPAWN, SPAWNED, bashResult } from './fixtures'
+import { OPTIONS, START, TOKEN, world, type Reply, type Routes } from './testkit'
+
+type World = ReturnType<typeof world>
+type Ev = Record<string, unknown> & { kind: string; session_id: string; at: string }
+
+/** The session ids R1's interactive run had before and after /clear. */
+const BEFORE_CLEAR = '55f811f4-a146-450f-b8a3-91f1fe9753bb'
+const AFTER_CLEAR = '7b5451e8-a02f-44dd-b8a1-6f68ed1a940f'
+/** The background subagent that asked for a permission in that run. */
+const SUB = 'a6cabd35f43276105'
+
+/** AskUserQuestion's input as recorded (interactive-dialogs-clear.jsonl, seq 49). */
+const QUESTION = {
+  questions: [
+    {
+      question: 'Do you prefer red or blue?',
+      header: 'Color',
+      multiSelect: false,
+      options: [
+        { label: 'Red', description: 'Choose red as your preferred color' },
+        { label: 'Blue', description: 'Choose blue as your preferred color' },
+      ],
+    },
+  ],
+}
+/** ExitPlanMode's input (seq 104): the engine adds the plan and its file; the plan here is a stand-in. */
+const PLAN = { plan: '# Plan\n\n1. Create plan.txt\n2. Put ok in it\n', planFilePath: '~/.claude/plans/make-a-one-line-plan.md' }
+
+/** What a test's world answers beneath the plugin, with switches the test flips. */
+type Below = { verdict: 'allow' | 'ask'; agents: AgentInfo[] }
+
+function reporting(on: On, routes: Routes = {}, env: Record<string, string> = {}) {
+  const w = world(on, { 'GET /api/context': { status: 200, body: CONTEXT }, 'POST /events': { status: 200, body: {} }, ...routes }, REPO, SESSION_ID, env)
+  const below: Below = { verdict: 'allow', agents: [] }
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  on('prompt.submit', (_, e) => ({ text: e.text, origin: e.origin }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('tool.check', () => ({ decision: below.verdict }))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  // No settings hook runs beneath: the classic events answer nothing.
+  on('classic.SessionStart', () => ({}))
+  on('classic.Notification', () => ({}))
+  on('classic.StopFailure', () => ({}))
+  on('classic.WorktreeCreate', () => ({}))
+  on('agent.list', () => ({ value: below.agents }))
+  on('agent.spawn', () => SPAWNED)
+  on('tool.call', { tool: 'Bash' }, () => bashResult(''))
+  on('tool.call', { tool: 'Edit' }, () => ({ result: { filePath: `${REPO}/internal/x.go` }, text: 'ok' }))
+  on('tool.call', { tool: 'AskUserQuestion' }, () => ({ result: { answers: {} }, text: '[tool output]' }))
+  on('tool.call', { tool: 'ExitPlanMode' }, () => ({ result: {}, text: '[tool output]' }))
+  return { ...w, below }
+}
+
+/** Every event POSTed to /events so far, in order. */
+function posted(w: World): Ev[] {
+  return w.sent('POST /events').flatMap(r => (r.body?.events as Ev[] | undefined) ?? [])
+}
+
+function ofKind(w: World, kind: string): Ev[] {
+  return posted(w).filter(e => e.kind === kind)
+}
+
+/** Settles `work` with the mocked clock moved on by at most `ms`; fails if it is still pending. */
+async function within<T>(w: World, ms: number, work: Promise<T>): Promise<T> {
+  let done = false
+  const tracked = work.then(value => {
+    done = true
+    return value
+  })
+  await w.clock.settle()
+  if (!done && ms > 0) await w.clock.advance(ms)
+  expect(done, `still waiting after ${ms} ms`).toBe(true)
+  return tracked
+}
+
+/** Starts the session as the engine does: classic.SessionStart, then session.start. */
+async function begin($: Engine, w: World, id = SESSION_ID): Promise<void> {
+  await $.classic.SessionStart({ session_id: id, source: 'startup' })
+  await $.session.start(START)
+  await w.clock.settle()
+}
+
+const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/
+
+// --- each event kind ----------------------------------------------------------
+
+test('session_start carries the facts; events wait for the batch and go with the token', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  expect(posted(w)).toEqual([])
+  await w.clock.advance(1000)
+  const posts = w.sent('POST /events')
+  expect(posts.length).toBe(1)
+  expect(posts[0]?.headers['X-AIM-Token']).toBe(TOKEN)
+  expect(posts[0]?.headers['Content-Type']).toBe('application/json')
+  const [start] = ofKind(w, 'session_start')
+  expect(start).toMatchObject({
+    session_id: SESSION_ID,
+    cwd: REPO,
+    repo: REPO,
+    worktree: REPO,
+    branch: 'main',
+    host: 'laptop',
+    interactive: true,
+    source: 'startup',
+  })
+  expect(start?.at).toMatch(ISO)
+  expect(start?.background).toBeUndefined()
+  expect(start?.iterm_session_id).toBeUndefined()
+})
+
+test('a background session says so (it says interactive too, R1); ITERM_SESSION_ID rides along', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on, {}, { CLAUDE_CODE_SESSION_KIND: 'bg', ITERM_SESSION_ID: 'w0t1p0:ABC' })
+  await begin($, w)
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'session_start')[0]).toMatchObject({ interactive: true, background: true, iterm_session_id: 'w0t1p0:ABC' })
+})
+
+test('a permission prompt goes at once, with the command it waits on; the call then closes it', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  w.below.verdict = 'ask'
+  const ran = await within(w, 0, $.tool.call({ tool: 'Bash', command: 'mkdir perm-main', description: 'Create directory perm-main' }))
+  expect(ran.text).toBe('')
+  // Sent before any batch timer: needs_you doesn't wait.
+  const asks = ofKind(w, 'needs_you')
+  expect(asks.length >= 1).toBe(true)
+  for (const a of asks) {
+    expect(a).toMatchObject({
+      session_id: SESSION_ID,
+      reason: 'Bash: Create directory perm-main',
+      wait: { kind: 'permission', tool: 'Bash', summary: 'mkdir perm-main' },
+    })
+    expect(a.agent_id).toBeUndefined()
+    expect(typeof a.tool_use_id).toBe('string')
+  }
+  expect(asks.map(a => a.source)).toContain('permission_request')
+  await w.clock.advance(1000)
+  const [done] = ofKind(w, 'tool')
+  expect(done).toMatchObject({ tool: 'Bash', label: 'Bash: Create directory perm-main', cwd: REPO, tool_use_id: asks[0]?.tool_use_id })
+})
+
+test('an ask nobody but a host answers is not reported from tool.check', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  await w.clock.advance(1000)
+  const before = posted(w).length
+  // A $.tool.check query: no call, no tool_use_id, nobody to ask.
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf x' } })
+  await w.clock.advance(1000)
+  expect(posted(w).slice(before).filter(e => e.kind === 'needs_you')).toEqual([])
+})
+
+test('a question waits on its questions and options; a plan approval on the plan', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  await within(w, 0, $.tool.call({ tool: 'AskUserQuestion', ...QUESTION }))
+  const [question] = ofKind(w, 'needs_you')
+  expect(question).toMatchObject({
+    source: 'ask_user_question',
+    reason: 'AskUserQuestion',
+    wait: {
+      kind: 'question',
+      tool: 'AskUserQuestion',
+      questions: [{ header: 'Color', question: 'Do you prefer red or blue?', options: ['Red', 'Blue'] }],
+    },
+  })
+  await within(w, 0, $.tool.call({ tool: 'ExitPlanMode', ...PLAN }))
+  const plan = ofKind(w, 'needs_you').find(e => e.source === 'exit_plan_mode')
+  expect(plan?.wait).toEqual({ kind: 'plan', tool: 'ExitPlanMode', plan: '# Plan\n\n1. Create plan.txt\n2. Put ok in it' })
+})
+
+test("a subagent's ask names it; its Notification, which names no one, isn't sent while an ask is open", { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  await $.classic.PermissionRequest({
+    tool_name: 'Bash',
+    tool_input: { command: 'mkdir perm-sub && echo done', description: 'Create perm-sub directory' },
+    agent_id: SUB,
+    agent_type: 'general-purpose',
+  })
+  await w.clock.settle()
+  expect(ofKind(w, 'needs_you')).toEqual([
+    expect.objectContaining({
+      agent_id: SUB,
+      source: 'permission_request',
+      reason: 'Bash: Create perm-sub directory',
+      wait: { kind: 'permission', tool: 'Bash', summary: 'mkdir perm-sub && echo done' },
+    }),
+  ])
+  await $.classic.Notification({ notification_type: 'permission_prompt', message: 'Claude needs your permission' })
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'needs_you').length).toBe(1)
+
+  // The subagent's turn moves on: a later Notification is a dialog the mod didn't see.
+  await $.turn.complete({ agentId: SUB, answer: 'done', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.classic.Notification({ notification_type: 'permission_prompt', message: 'Claude needs your permission' })
+  await w.clock.settle()
+  expect(ofKind(w, 'needs_you')[1]).toMatchObject({ source: 'notification', reason: 'permission_prompt' })
+  expect(ofKind(w, 'needs_you')[1]?.agent_id).toBeUndefined()
+
+  await $.classic.Notification({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'idle').length).toBe(1)
+})
+
+test('/clear: session_end under the old id, then session_start under the new one, from classic.SessionStart', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w, BEFORE_CLEAR)
+  await $.session.end({ reason: 'clear', sessionId: BEFORE_CLEAR, resume: { id: BEFORE_CLEAR } })
+  await w.clock.settle()
+  // session.start doesn't fire again after /clear.
+  await $.classic.SessionStart({ session_id: AFTER_CLEAR, source: 'clear' })
+  await $.prompt.submit({ text: 'Reply with the word hi.', wait: false, origin: { kind: 'composer' } })
+  await w.clock.advance(1000)
+  const evs = posted(w).map(e => [e.kind, e.session_id])
+  expect(evs).toEqual([
+    ['session_start', BEFORE_CLEAR],
+    ['session_end', BEFORE_CLEAR],
+    ['session_start', AFTER_CLEAR],
+    ['prompt', AFTER_CLEAR],
+  ])
+  const [first, , second] = posted(w)
+  expect(ofKind(w, 'session_end')[0]?.reason).toBe('clear')
+  expect(second).toMatchObject({ source: 'clear', prev_session_id: BEFORE_CLEAR, cwd: REPO, repo: REPO, branch: 'main', interactive: true })
+  expect(first?.prev_session_id).toBeUndefined()
+})
+
+test('prompts, turns and tools are summaries: no prompt text, the first line of the answer, a label', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  const secret = 'Deploy with password hunter2 to prod'
+  await $.prompt.submit({ text: secret, wait: false, origin: { kind: 'composer' } })
+  await $.turn.start({ text: secret, turnId: 't1' })
+  await $.tool.call({ tool: 'Edit', file_path: `${REPO}/internal/x.go`, old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ answer: `Done: the tests pass.\nHere is more: ${'x'.repeat(400)}`, durationMs: 9, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.prompt.submit({ text: '<task-notification>…', wait: false, origin: { kind: 'task-notification' } })
+  await w.clock.advance(1000)
+  expect(JSON.stringify(posted(w))).not.toContain('hunter2')
+  expect(JSON.stringify(posted(w))).not.toContain('Here is more')
+  expect(ofKind(w, 'prompt').map(e => e.origin_kind)).toEqual(['composer', 'task-notification'])
+  expect(ofKind(w, 'turn_start')[0]).toMatchObject({ cwd: REPO })
+  expect(ofKind(w, 'tool')[0]).toMatchObject({ tool: 'Edit', label: 'Edit internal/x.go', cwd: REPO })
+  expect(ofKind(w, 'turn_complete')[0]).toMatchObject({ reason: 'answer', last_said: 'Done: the tests pass.' })
+  // Every event of the batch went in one POST, in order.
+  expect(w.sent('POST /events').length).toBe(1)
+})
+
+test('agent.spawn: the flags, a snapshot, and one every 30 s while agents run', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  w.below.agents = [{ id: SPAWNED.agentId, description: 'fg probe', type: 'general-purpose', status: 'running' }]
+  await within(w, 1000, $.agent.spawn({ ...SPAWN, prompt: 'Look around.', description: 'look' }))
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'agent_list')).toEqual([
+    expect.objectContaining({ agents: [{ id: SPAWNED.agentId, status: 'running', type: 'general-purpose', background: true }] }),
+  ])
+  await w.clock.advance(30_000)
+  expect(ofKind(w, 'agent_list').length).toBe(2)
+  w.below.agents = [{ id: SPAWNED.agentId, description: 'fg probe', type: 'general-purpose', status: 'completed' }]
+  await w.clock.advance(30_000)
+  await w.clock.advance(30_000)
+  await w.clock.advance(1000)
+  const lists = ofKind(w, 'agent_list')
+  expect(lists.length).toBe(3)
+  expect(lists[2]).toMatchObject({ agents: [expect.objectContaining({ status: 'completed' })] })
+})
+
+test('an API error goes at once; a worktree agent names its worktree', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  await $.classic.WorktreeCreate({ name: 'agent-a5bd483a78c5f4783' })
+  await $.classic.StopFailure({ error: 'rate_limit' })
+  await w.clock.settle()
+  expect(ofKind(w, 'error')).toEqual([expect.objectContaining({ reason: 'rate_limit' })])
+  expect(ofKind(w, 'worktree_create')).toEqual([expect.objectContaining({ name: 'agent-a5bd483a78c5f4783' })])
+})
+
+// --- the transport ------------------------------------------------------------
+
+/**
+ * A fake /events that is down (or slow) until `up` is set, and records
+ * only the batches it accepted.
+ */
+function flaky(failure: Reply) {
+  const state = { up: false, delivered: [] as Ev[][], tries: 0 }
+  const route = (req: { body: Record<string, unknown> | undefined }): Reply => {
+    state.tries += 1
+    if (!state.up) return failure
+    state.delivered.push((req.body?.events as Ev[] | undefined) ?? [])
+    return { status: 200, body: {} }
+  }
+  return { state, route }
+}
+
+for (const failure of ['refuse', 'hang'] as const) {
+  const name = failure === 'refuse' ? 'down' : 'slow'
+
+  test(`aimd ${name}: no hook waits; 200 events are kept, the oldest dropped, and sent once it is back`, { options: OPTIONS, timeoutMs: 20_000 }, async ($, on) => {
+    const aimd = flaky(failure)
+    const w = reporting(on, { 'POST /events': aimd.route })
+    await within(w, 0, $.classic.SessionStart({ session_id: SESSION_ID, source: 'startup' }))
+    await within(w, 0, $.session.start(START))
+    for (let i = 0; i < 250; i++) {
+      await within(w, 0, $.prompt.submit({ text: `p${i}`, wait: false, origin: { kind: 'composer' } }))
+    }
+    w.below.verdict = 'ask'
+    await within(w, 0, $.tool.call({ tool: 'Bash', command: 'mkdir x', description: 'Make x' }))
+    await within(w, 0, $.session.end({ reason: 'other', sessionId: SESSION_ID, resume: { id: SESSION_ID } }))
+    // A minute of tries, all failed; they back off (2, 4, 8, then 15 s).
+    for (let i = 0; i < 12; i++) await w.clock.advance(5000)
+    expect(aimd.state.delivered).toEqual([])
+    expect(aimd.state.tries <= 10).toBe(true)
+    aimd.state.up = true
+    for (let i = 0; i < 4; i++) await w.clock.advance(5000)
+    const evs = aimd.state.delivered.flat()
+    expect(evs.length).toBe(200)
+    // The newest are kept: the asks, the tool's label and the end are last.
+    expect(evs.map(e => e.kind).slice(-4)).toEqual(['needs_you', 'needs_you', 'tool', 'session_end'])
+    expect(evs.filter(e => e.kind === 'prompt').length).toBe(196)
+    expect(evs.some(e => e.kind === 'session_start')).toBe(false)
+  })
+}
+
+test('a refused batch (4xx) is dropped, not tried again', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on, { 'POST /events': { status: 401, body: { error: 'bad token' } } })
+  await begin($, w)
+  await w.clock.advance(1000)
+  await w.clock.advance(60_000)
+  expect(w.sent('POST /events').length).toBe(1)
+  await $.prompt.submit({ text: 'again', wait: false, origin: { kind: 'composer' } })
+  await w.clock.advance(1000)
+  const second = w.sent('POST /events')[1]?.body?.events as Ev[] | undefined
+  expect(second?.map(e => e.kind)).toEqual(['prompt'])
+})
+
+test('a big backlog goes in POSTs of at most 200 events and well under 256 KB', { options: OPTIONS, timeoutMs: 20_000 }, async ($, on) => {
+  const aimd = flaky('refuse')
+  const w = reporting(on, { 'POST /events': aimd.route })
+  await begin($, w)
+  // 80 plan approvals of about 1000 characters each: a needs_you and a
+  // tool event each, with the session_start 161 events, more characters
+  // than one POST may carry.
+  const plan = Array.from({ length: 12 }, (_, i) => `${i + 1}. ${'step '.repeat(16)}`).join('\n')
+  const input = { plan, planFilePath: '/p.md' }
+  for (let i = 0; i < 80; i++) await $.tool.call({ tool: 'ExitPlanMode', ...input })
+  aimd.state.up = true
+  for (let i = 0; i < 4; i++) await w.clock.advance(5000)
+  const batches = aimd.state.delivered
+  expect(batches.length >= 2).toBe(true)
+  for (const b of batches) {
+    expect(b.length <= 200).toBe(true)
+    // Characters, at most 3 bytes each: under the 256 KB aimd takes.
+    expect(JSON.stringify({ events: b }).length * 3 < 256 * 1024).toBe(true)
+  }
+  expect(batches.flat().length).toBe(161)
+})
+
+// --- failing open ---------------------------------------------------------------
+
+test('every reporting hook fails open: with every $ call broken and odd inputs, each answers what is beneath, at once', { options: OPTIONS }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const boom = (): never => {
+    throw new Error('boom')
+  }
+  on('session.id', boom)
+  on('session.cwd', boom)
+  on('session.root', boom)
+  on('session.repo', boom)
+  on('process.run', boom)
+  on('env.get', boom)
+  on('agent.list', boom)
+  on('http.fetch', boom)
+  on('command.register', boom)
+  on('tool.register', boom)
+  on('classic.SessionStart', () => ({}))
+  on('classic.Notification', () => ({}))
+  on('classic.StopFailure', () => ({}))
+  on('classic.WorktreeCreate', () => ({}))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  on('session.start', () => ({ cwd: '/below' }))
+  on('session.end', () => ({ sessionId: 'below' }))
+  on('prompt.submit', () => ({ text: 'below' }))
+  on('turn.start', () => ({ turnId: 'below' }))
+  on('turn.complete', () => ({ text: 'below' }))
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('agent.spawn', () => SPAWNED)
+  on('tool.call', () => ({ result: 'below', text: 'below' }))
+
+  const settled = async <T>(work: Promise<T>): Promise<T> => {
+    let done = false
+    const tracked = work.then(v => {
+      done = true
+      return v
+    })
+    await clock.settle()
+    expect(done, 'a reporting hook waited').toBe(true)
+    return tracked
+  }
+  const odd = <T>(v: unknown) => v as T
+
+  expect(await settled($.classic.SessionStart({ session_id: odd<string>(42), source: odd<'startup'>(null) }))).toEqual({})
+  expect(await settled($.session.start(START))).toEqual({ cwd: '/below' })
+  expect((await settled($.prompt.submit({ text: 'x', wait: false, origin: odd({ kind: 7 }) }))).text).toBe('below')
+  expect(await settled($.turn.start({ text: 'x', turnId: 't' }))).toEqual({ turnId: 'below' })
+  for (const call of [
+    { tool: 'AskUserQuestion', questions: 'nope' },
+    { tool: 'AskUserQuestion', questions: [null, 3, { options: 'x' }] },
+    { tool: 'ExitPlanMode', plan: 42 },
+    { tool: 'Bash', command: odd<string>({ not: 'a string' }) },
+    { tool: 'mcp__x__y', a: { deep: [1, 2] }, b: Number.NaN },
+  ]) {
+    const out = await settled($.tool.call(odd<never>(call)))
+    expect(out.text, call.tool).toBe('below')
+  }
+  expect(await settled($.classic.PermissionRequest({ tool_name: odd<string>(undefined), tool_input: null }))).toEqual({ decision: { behavior: 'allow' } })
+  expect(await settled($.classic.Notification({ notification_type: odd<string>(9), message: '' }))).toEqual({})
+  expect(await settled($.classic.StopFailure({ error: odd('rate_limit') }))).toEqual({})
+  expect(await settled($.classic.WorktreeCreate({ name: odd<string>(null) }))).toEqual({})
+  // agent.spawn also asks aimd for the context, which fails at once here.
+  expect((await settled($.agent.spawn({ ...SPAWN, prompt: 'Package: aim · C4' }))).agentId).toBe(SPAWNED.agentId)
+  expect(await settled($.turn.complete({ answer: odd<string>(5), durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' }))).toEqual({ text: 'below' })
+  expect(await settled($.session.end({ reason: 'other', sessionId: 'x', resume: { id: 'x' } }))).toEqual({ sessionId: 'below' })
+  // The timers the reporter armed fire into the same broken world.
+  await clock.advance(120_000)
+})

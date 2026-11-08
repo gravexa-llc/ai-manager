@@ -1,0 +1,38 @@
+/* The Overview's own styles (templates/app/overview.html). The shell's
+   components (app-shell.css) do most of it: .card, .bar, .legend, .sw,
+   .dot, .tag, .feed, .stats and .stat. These lay out a plan's block, an
+   agent's row, a feed line and the health chips. */
+
+/* Plan progress: each plan is one link. */
+.ovplan {
+  display: block; padding: 10px 0 14px; border-bottom: 1px solid var(--line-soft);
+  color: var(--ink); text-decoration: none;
+}
+.ovplan:hover { color: var(--ink); background: var(--hover); }
+.ovplan:focus-visible { outline-offset: 2px; }
+.ovplan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ovplan-head strong { min-width: 0; font-size: 14px; word-break: break-word; }
+.ovplan-sum { flex: 0 0 auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ovlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.legend.ovneeds { color: var(--warn-ink); font-weight: 700; }
+
+/* Agents running now: a row per session, its subagents indented under it. */
+.ovagent { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
+.ovagent.sub { padding-left: 19px; }
+.ovagent-body { flex: 1; min-width: 0; }
+.ovagent-name { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ovagent-sub { display: block; font-size: 12px; color: var(--muted); word-break: break-word; }
+.ovagent form { margin: 0; }
+.ovagent .tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Activity: a feed line's text. */
+.ovfeed-body { flex: 1; min-width: 0; word-break: break-word; }
+.ovfeed-body strong { font-weight: 600; }
+.ovfeed-where { color: var(--muted); }
+.ovmore { margin: 10px 0 0; font-size: 13px; }
+
+/* Cleanup & health. */
+.ovchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+
+.card .empty { padding: 12px 0; text-align: left; }
+.card .hint { margin-top: 10px; }

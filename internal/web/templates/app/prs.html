@@ -1,0 +1,63 @@
+{{/* Pull requests (GET /app/prs; app_prs.go): the open PRs on a plan
+or a monitored session, then the rest, each with who it waits on, and the
+selected PR's detail (?pr=<owner/repo#n>). .View is an *appPRsView. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-prs.css?v={{.AssetVersion}}">
+{{- end}}
+
+{{define "list" -}}
+{{with .View -}}
+{{range .Groups -}}
+<div class="ghead"><span>{{.Label}}</span><span>{{len .Rows}}</span></div>
+<ul class="rows">
+{{range .Rows -}}
+<li><a class="srow{{if .Sel}} sel{{end}}" href="{{.Href}}" data-pane="detail" data-item="{{.Ref}}"{{if .Sel}} aria-current="true"{{end}}{{with .Search}} data-search="{{.}}"{{end}}>
+<span class="ibody"><span class="isub">{{.Repo}} #{{.Number}} · {{.PlanPkg}}</span><span class="ititle">{{.Title}}</span></span>
+{{template "who-chip" .Who}}
+<span class="iwait" title="{{.AgeTitle}}">{{.Age}}</span>
+</a></li>
+{{end -}}
+</ul>
+{{end -}}
+{{if not .Groups}}<p class="empty">{{.Empty}}</p>{{end}}
+{{- end}}
+{{- end}}
+
+{{/* A PR's who-chip (whoChip): a pill, or a plain tag for what keeps a PR
+nobody waits on from being ready. */}}
+{{define "who-chip" -}}
+{{if .Label}}<span class="{{if .Plain}}tag{{else}}pill {{.Tone}}{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{.Label}}</span>{{end}}
+{{- end}}
+
+{{define "detail" -}}
+{{with .View}}{{with .Detail -}}
+{{template "who-chip" .Who}}
+<h2>{{.Title}}</h2>
+<p class="subtitle">{{.Repo}} #{{.Number}}{{with .Branch}} · <code>{{.}}</code>{{end}}{{with .Author}} · by {{.}}{{end}}</p>
+<div class="label">Status</div>
+<dl class="ctx">
+<dt>State</dt><dd>{{.State}}</dd>
+<dt>CI</dt><dd>{{.CI}}</dd>
+<dt>Package</dt><dd>{{if .PlanURL}}<a href="{{.PlanURL}}">{{.Pkg}}</a>{{else}}{{.Pkg}}{{end}}</dd>
+<dt>Merges</dt><dd>{{.Merges}}</dd>
+<dt>Updated</dt><dd{{with .UpdatedAt}} title="{{.}}"{{end}}>{{or .Updated "—"}}</dd>
+</dl>
+<div class="label">Needs you</div>
+<p class="dtext">{{.Why}}</p>
+{{- if or .URL .InboxURL}}
+<div class="actions">
+{{- with .URL}}
+<a class="btn primary" href="{{.}}" rel="noreferrer noopener" target="_blank" data-key="g" aria-keyshortcuts="g">Open on GitHub <kbd>g</kbd></a>
+{{- end}}
+{{- with .InboxURL}}
+<a class="btn" href="{{.}}">Open in Needs you</a>
+{{- end}}
+</div>
+{{- end}}
+{{- else -}}
+<p class="empty">{{or .DetailNote "Select a pull request to see its state, CI and who merges it."}}</p>
+{{- end}}{{else -}}
+<p class="empty">Select a pull request to see its state, CI and who merges it.</p>
+{{- end}}
+{{- end}}

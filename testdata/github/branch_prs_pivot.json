@@ -1,0 +1,129 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4991,
+      "resetAt": "2026-11-06T06:07:31Z",
+      "limit": 5000,
+      "used": 9
+    },
+    "r0": {
+      "nameWithOwner": "acme/pivot",
+      "defaultBranchRef": {
+        "name": "main"
+      },
+      "b0": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 214,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/v1-email-reports",
+            "headRefOid": "64a260aca901aede716644da290221d81d0701e1",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (V1)",
+            "url": "https://github.com/acme/pivot/pull/214",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:32:07Z",
+            "updatedAt": "2026-11-02T04:41:47Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b1": {
+        "totalCount": 0,
+        "nodes": []
+      },
+      "b2": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 217,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/a3-embed-endpoint",
+            "headRefOid": "b2d3bffe898e6122800708825b68ab612824790b",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (A3)",
+            "url": "https://github.com/acme/pivot/pull/217",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:45:04Z",
+            "updatedAt": "2026-11-02T04:45:05Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b3": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 218,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/s1-scheduled-snapshots",
+            "headRefOid": "01e03359ad772d90e0346fc8fe73c30d4750bdcb",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title (S1)",
+            "url": "https://github.com/acme/pivot/pull/218",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T04:54:02Z",
+            "updatedAt": "2026-11-02T04:54:02Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      },
+      "b4": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "number": 219,
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": null,
+            "statusCheckRollup": null,
+            "headRefName": "share/t1-tile-filters",
+            "headRefOid": "9436f7c038a597ef7228fd2831d26ac3c0745e7b",
+            "baseRefName": "release/2.4",
+            "isCrossRepository": false,
+            "title": "PR title",
+            "url": "https://github.com/acme/pivot/pull/219",
+            "author": {
+              "login": "example-user"
+            },
+            "createdAt": "2026-11-02T05:19:04Z",
+            "updatedAt": "2026-11-02T05:19:04Z",
+            "mergedAt": null,
+            "closedAt": null
+          }
+        ]
+      }
+    }
+  }
+}

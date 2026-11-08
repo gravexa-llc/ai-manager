@@ -1,0 +1,25 @@
+worktree ~/Projects/pivot-app
+HEAD 281f83722c6693f201c06b5c552f63af6a1cf5ca
+branch refs/heads/main
+
+worktree ~/Projects/pivot-app/.claude/worktrees/agent-a73d6cff14b7bf150
+HEAD 64a260aca901aede716644da290221d81d0701e1
+branch refs/heads/share/v1-email-reports
+
+worktree ~/Projects/pivot-app/.claude/worktrees/agent-ab66668f3b601afd9
+HEAD 7072502611422b57221a0013ceeb51103298ff32
+branch refs/heads/worktree-agent-ab66668f3b601afd9
+locked claude agent agent-ab66668f3b601afd9 (pid 36430 start Fri Oct  9 21:16:46 2026)
+
+worktree ~/Projects/pivot-app/.claude/worktrees/agent-abecfc6e06b8948a1
+HEAD b2d3bffe898e6122800708825b68ab612824790b
+branch refs/heads/share/a3-embed-endpoint
+
+worktree ~/Projects/pivot-app/.claude/worktrees/agent-ad8899b1a3e874b39
+HEAD 01e03359ad772d90e0346fc8fe73c30d4750bdcb
+branch refs/heads/share/s1-scheduled-snapshots
+
+worktree ~/Projects/pivot-app/.claude/worktrees/agent-af1668eee1d87d413
+HEAD 9436f7c038a597ef7228fd2831d26ac3c0745e7b
+branch refs/heads/share/t1-tile-filters
+

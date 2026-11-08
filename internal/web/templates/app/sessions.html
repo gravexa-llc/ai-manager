@@ -1,0 +1,128 @@
+{{/* Sessions (GET /app/sessions; app_sessions.go): the monitored
+sessions by plan, the others under a collapsed Not monitored, and the
+selected session's detail (?s=<key>). .View is an *appSessionsView. */}}
+
+{{define "head" -}}
+<link rel="stylesheet" href="/static/app-sessions.css?v={{.AssetVersion}}">
+{{- end}}
+
+{{define "list" -}}
+{{with .View -}}
+{{range .Groups -}}
+<div class="ghead">{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}<span>{{len .Rows}}</span></div>
+<ul class="rows">
+{{range .Rows}}<li>{{template "session-item" .}}</li>
+{{end -}}
+</ul>
+{{end -}}
+{{if not .Groups}}<p class="empty">{{.Empty}}</p>
+{{end -}}
+{{if .Unmonitored -}}
+<details id="sessions-not-monitored" class="notmon"{{if .NotOpen}} open{{end}}>
+<summary class="ghead"><span>Not monitored ({{len .Unmonitored}})</span><span class="notmon-toggle" aria-hidden="true"></span></summary>
+<ul class="rows">
+{{range .Unmonitored -}}
+<li class="nmrow">
+{{template "session-item" .}}
+{{- if .Expired}}
+<code class="rmcmd" title="Remove the job yourself in a terminal; aimd never deletes it">{{.RmCmd}}</code>
+{{- else if .Watch.Key}}
+<form method="post" action="/app/sessions/watch" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="key" value="{{.Watch.Key}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn sm" title="Monitor it: it shows under Needs you and in notifications when it waits on you">Watch</button>
+</form>
+{{- else if .Watch.Off}}
+<button type="button" class="btn sm" disabled title="{{.Watch.Off}}">Watch</button>
+{{- end}}
+</li>
+{{end -}}
+</ul>
+<p class="hint notmon-hint">Not monitored: left out of Needs you and notifications. Run <code>/aim watch</code> in a session, or click Watch.</p>
+</details>
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{/* A session's or subagent's row (sessItem): it opens the detail. */}}
+{{define "session-item" -}}
+<a class="srow{{if .Sub}} subrow{{end}}{{if .Sel}} sel{{end}}" href="{{.Href}}" data-pane="detail" data-item="{{.Key}}"{{if .Sel}} aria-current="true"{{end}}{{with .Chime}} data-chime="{{.}}"{{end}}{{with .Search}} data-search="{{.}}"{{end}}>
+<span class="dot {{.Tone}}" aria-hidden="true"></span>
+<span class="ibody"><span class="ititle">{{.Title}}</span><span class="isub">{{.Role}} · {{if .Expired}}{{.Expired}}{{else}}{{.State}}{{end}}</span></span>
+<span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span>
+</a>
+{{- end}}
+
+{{define "detail" -}}
+{{with .View}}{{with .Detail -}}
+<div class="sd-tags"><span class="pill {{.Tone}}">{{.State}}</span><span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span></div>
+<h2>{{.Title}}</h2>
+<p class="subtitle">{{.Role}}</p>
+{{- if .Expired}}
+<div class="label">Expired</div>
+<p class="dtext">This background job is {{.Expired}}. Claude Code still lists it, but there's nothing left to resume. Remove it in a terminal:</p>
+<p class="code">{{.RmCmd}}</p>
+<p class="hint">aimd never deletes a job, and an expired one never counts as needing you.</p>
+{{- end}}
+{{- if .Waiting}}
+<div class="label">Waiting on you</div>
+<p class="dtext">{{.Waiting}}{{with .WaitAge}} · for {{.}}{{end}}</p>
+{{- end}}
+<div class="label">Why it's monitored</div>
+<p class="dtext">{{.Why}}</p>
+<div class="label">Where</div>
+<dl class="ctx">
+<dt>Plan</dt><dd>{{if .PlanURL}}<a href="{{.PlanURL}}">{{.Plan}}</a>{{else}}{{or .Plan "—"}}{{end}}</dd>
+<dt>Package</dt><dd>{{or .Pkg "—"}}</dd>
+<dt>Folder</dt><dd>{{if .Folder}}<code title="{{.FolderFull}}">{{.Folder}}</code>{{else}}—{{end}}</dd>
+<dt>Branch</dt><dd>{{if .Branch}}<code>{{.Branch}}</code>{{else}}—{{end}}</dd>
+{{- if .Started}}
+<dt>Started</dt><dd>{{.Started}}</dd>
+{{- end}}
+{{- if .Doing}}
+<dt>Last action</dt><dd>{{.Doing}}</dd>
+{{- end}}
+</dl>
+<div class="actions">
+{{- if .Go.Key}}
+<form method="post" action="/app/sessions/go" data-pane="detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="key" value="{{.Go.Key}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g" title="Bring it to the front in iTerm2 or Terminal">Go <kbd>g</kbd></button>
+</form>
+{{- else if .Go.Off}}
+<button type="button" class="btn primary" disabled data-key="g" aria-keyshortcuts="g" data-off="{{.Go.Off}}" title="{{.Go.Off}}">Go <kbd>g</kbd></button>
+{{- end}}
+{{- if .Unwatch}}
+<form method="post" action="/app/sessions/unwatch" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="key" value="{{.Key}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" title="Stop watching it: it leaves Needs you and notifications unless a plan monitors it">Stop monitoring</button>
+</form>
+{{- end}}
+{{- if .Watch.Key}}
+<form method="post" action="/app/sessions/watch" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="key" value="{{.Watch.Key}}">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" title="Monitor it: it shows under Needs you and in notifications when it waits on you">Watch</button>
+</form>
+{{- else if .Watch.Off}}
+<button type="button" class="btn" disabled title="{{.Watch.Off}}">Watch</button>
+{{- end}}
+</div>
+{{- with .Go.Off}}
+<p class="hint">{{.}}</p>
+{{- end}}
+{{- with .Watch.Off}}
+<p class="hint">{{.}}</p>
+{{- end}}
+{{- else -}}
+<p class="empty">{{or .DetailNote "Select a session to see why it's monitored and where it works."}}</p>
+{{- end}}{{else -}}
+<p class="empty">Select a session to see why it's monitored and where it works.</p>
+{{- end}}
+{{- end}}

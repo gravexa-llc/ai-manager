@@ -1,0 +1,46 @@
+{
+  "data": {
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4983,
+      "resetAt": "2026-11-06T19:36:41Z",
+      "limit": 5000,
+      "used": 17
+    },
+    "search": {
+      "issueCount": 1,
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "Y3Vyc29yOjE="
+      },
+      "nodes": [
+        {
+          "repository": {
+            "nameWithOwner": "example-org/brand"
+          },
+          "number": 6,
+          "state": "OPEN",
+          "isDraft": false,
+          "mergeable": "MERGEABLE",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "headRefName": "feat/footer-tagline",
+          "headRefOid": "d59f91342a250cdb7876b5a8a7351d1b30112c99",
+          "baseRefName": "main",
+          "isCrossRepository": false,
+          "title": "PR title",
+          "url": "https://github.com/example-org/brand/pull/6",
+          "author": {
+            "login": "other-user"
+          },
+          "body": "PR body",
+          "createdAt": "2026-10-26T22:24:28Z",
+          "updatedAt": "2026-10-26T22:24:41Z",
+          "mergedAt": null,
+          "closedAt": null
+        }
+      ]
+    }
+  }
+}

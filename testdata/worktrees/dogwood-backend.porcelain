@@ -1,0 +1,236 @@
+worktree ~/Projects/dogwood-backend
+HEAD f0a34b52f8299a03283794c283fbdbff8a035e0d
+branch refs/heads/main
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/d-2/old
+HEAD bebc70f5ed3c70a5d6be95448765bea6198048e3
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/deploy-builder
+HEAD 58687f637a9fe1bb942edc86c9b1f47cc8ac7955
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/deploy-surge
+HEAD 60c464d5538dd300c03a17fd70a65a8e92faaf46
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/main-synth
+HEAD e51027419ab799b21574b36183f603fc7e956eb9
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-446
+HEAD 69fde7e7b1da8617a8d71371ddbc359df02fc2c9
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-452
+HEAD 21a5499c40b14e8009e45e25dc2254b732a0729c
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-455
+HEAD 99b1c0649e0ea80e9340756f43777a956184e5a3
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-456
+HEAD 4de15caf7ba24b62ab5aba877d2bd2fda604bb21
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-459
+HEAD 5b12beb21da18ed10428b620e6ae57a53d9c4735
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-460
+HEAD 76b9126ab68d472065d2dffdcc92fe952e30b79d
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-460b
+HEAD 6852a98f5879e10956274df76d4eeefbe10cb467
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-462
+HEAD 178b0d5d73a69d7e4221e63826d2157fbb17ff71
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-463
+HEAD e6a835d81f35d85672c353a2410b8a316cdb2b71
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-464
+HEAD 1d8655e6da2e3b9419309376bb1e6c833c44d9cd
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-464c
+HEAD 3ea873cbb343472022bca3acd7a65507b4aa59ff
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-465
+HEAD 17a717a019f19aac7f061471baed3a04aacd85c1
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-465b
+HEAD a6ff62253224f7c3ebaa708629036d550fd9ccb6
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-465c
+HEAD 57db6fc9b336ff36f43c478bce44e4f3f9f2918e
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-467
+HEAD 98a173495cd007d68514da7bd6ca749c065a21d5
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-468
+HEAD c78aec772f0d005f8cabbc5a58e63edfaf01e549
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-469
+HEAD 32186bd13d9c0c336b682819d825c472f8bad553
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-470
+HEAD bb351ceae99174750cb9e47335ab86ede414515d
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-470b
+HEAD 53f887e1aae0a6735ba654fd63361e0df67826c7
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-472
+HEAD 187e8e9916612a2599f11a95135de09528f4f0ea
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-473
+HEAD 598c2503e28e0a2500ec46c08635334a1cae6f83
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-474
+HEAD 102082284bd5a281f4ce27908a02a9b4ec9a86e9
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-475
+HEAD 85862e26af968ac735e1565d49a0ac1f59089727
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-476
+HEAD 714a437d4b6e9dafe13c76c8e679bc0b88fec06d
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-477
+HEAD 6afe15a6bb2ac289a73cd4e46d5c3d2d2b6baefe
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-478
+HEAD 072c5dbf31102b051d67bb2d474bde3e49c3c49e
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-479
+HEAD ec7dd535d1c2feb89efd85a478dae38627e35cae
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-480
+HEAD 758d8b419629131d01e11cc724c23db49af8d9d0
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-481
+HEAD 2673467c75eb9904cd107fd7f46417aff6b0fde1
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-482
+HEAD 8f46dbf45919516d2db3ee2d150f20917036f40c
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-483
+HEAD b051c31682d20992b5ef1b4aafaa000a1c132d83
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/review-484
+HEAD dff288d1619e435e464c8632ad1afdd9b7298c9e
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/run-d3
+HEAD 5cce09ea12305740bbdca056c76ab445f443e880
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/run-d4
+HEAD c395368a6d3b17cf4e408121d36afd905dc67bb0
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/run-fixture
+HEAD bebc70f5ed3c70a5d6be95448765bea6198048e3
+detached
+
+worktree /private/tmp/claude-501/-Users-user-Projects-meadow-android/5213f886-247d-496b-a20e-50b0e6c1973f/scratchpad/surge-main-merge
+HEAD 2ec461e6121699c09d4f7873c5553d1e9d57d04c
+branch refs/heads/surge-merge-main
+
+worktree ~/Projects/dogwood-backend-412
+HEAD 57db6fc9b336ff36f43c478bce44e4f3f9f2918e
+branch refs/heads/fix-412-retry-backoff
+
+worktree ~/Projects/dogwood-backend-a2a
+HEAD dff288d1619e435e464c8632ad1afdd9b7298c9e
+branch refs/heads/surge-a-2a
+
+worktree ~/Projects/dogwood-backend-a2b
+HEAD afa357a5ce8931164fd6983bd9ee32b627c6aab5
+branch refs/heads/surge-a-2b
+
+worktree ~/Projects/dogwood-backend-b2
+HEAD 99b1c0649e0ea80e9340756f43777a956184e5a3
+branch refs/heads/surge-b-2
+
+worktree ~/Projects/dogwood-backend-b2a
+HEAD 2f22b332a93bbefc269060c36bf108aed2b4e245
+branch refs/heads/surge-b-2a-spike
+
+worktree ~/Projects/dogwood-backend-b2a-notes
+HEAD 21a5499c40b14e8009e45e25dc2254b732a0729c
+branch refs/heads/surge-b-2a-notes
+
+worktree ~/Projects/dogwood-backend-b3a
+HEAD e6a835d81f35d85672c353a2410b8a316cdb2b71
+branch refs/heads/surge-b-3a
+
+worktree ~/Projects/dogwood-backend-b3b
+HEAD 102082284bd5a281f4ce27908a02a9b4ec9a86e9
+branch refs/heads/surge-b-3b-1
+
+worktree ~/Projects/dogwood-backend-b3b2
+HEAD 072c5dbf31102b051d67bb2d474bde3e49c3c49e
+branch refs/heads/surge-b-3b-2
+
+worktree ~/Projects/dogwood-backend-b3b3
+HEAD 758d8b419629131d01e11cc724c23db49af8d9d0
+branch refs/heads/surge-b-3b-3
+
+worktree ~/Projects/dogwood-backend-d1
+HEAD 44dc88b27c009ab351f935e137fe04fdfaa0eafb
+branch refs/heads/surge-a-1d
+
+worktree ~/Projects/dogwood-backend-d2
+HEAD 53f887e1aae0a6735ba654fd63361e0df67826c7
+branch refs/heads/surge-d-2
+
+worktree ~/Projects/dogwood-backend-d4
+HEAD 2673467c75eb9904cd107fd7f46417aff6b0fde1
+branch refs/heads/surge-d-5-limits
+
+worktree ~/Projects/dogwood-backend-config-docs
+HEAD 5145584a750fe0f284902d1ac9957cf76f404d98
+branch refs/heads/surge-deploy-config
+
+worktree ~/Projects/dogwood-backend-w6
+HEAD 91faafbc5cdd7a3ac0233efca9483af566c9ad3f
+branch refs/heads/surge-a-6f
+
+worktree ~/Projects/dogwood-backend/.claude/worktrees/233-stale-row
+HEAD ed0af0472fc7bce16ede223c87ae1c56f5bfb47d
+branch refs/heads/fix/233-stale-row-cleanup
+
+worktree ~/Projects/dogwood-backend/.claude/worktrees/234-backfill
+HEAD ac8848a090f2dadf77c88cfc34824166e463919d
+detached
+
+worktree ~/Projects/dogwood-backend/.claude/worktrees/deploy-419
+HEAD ed0af0472fc7bce16ede223c87ae1c56f5bfb47d
+detached
+

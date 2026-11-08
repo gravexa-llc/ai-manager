@@ -1,0 +1,187 @@
+/* A plan's page (templates/app/plan.html). It builds on the shell's
+   components (app-shell.css) and its lifecycle classes, which set --fill,
+   --edge, --text and --bar. CSP forbids inline styles: the graph and the
+   timeline's bars are SVG placed with attributes, colored here. */
+
+/* Colors: the page's own tokens, light on :root and dark twice, as
+   in app-shell.css; rules below only use var(--…). The badges carry
+   --on-badge text (at least 4.5:1) in both themes. */
+:root {
+  --pg-edge: #BCC3CC; --pg-edge-met: #CDD3DA; --pg-arrow: #A3ABB5; --pg-cycle: #B91C1C;
+  --b-review: #0F6B63; --b-lead: #6D28D9; --b-snoozed: #5B6470; --b-working: #1D4ED8; --b-prov: #92400E;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pg-edge: #59616B; --pg-edge-met: #434A53; --pg-arrow: #6B747F; --pg-cycle: #F87171;
+    --b-review: #0F6B63; --b-lead: #6D28D9; --b-snoozed: #5B6470; --b-working: #1D4ED8; --b-prov: #92400E;
+  }
+}
+:root[data-theme="dark"] {
+  --pg-edge: #59616B; --pg-edge-met: #434A53; --pg-arrow: #6B747F; --pg-cycle: #F87171;
+  --b-review: #0F6B63; --b-lead: #6D28D9; --b-snoozed: #5B6470; --b-working: #1D4ED8; --b-prov: #92400E;
+}
+
+/* The plan wants a wide list pane: the mockup's proportions. */
+@media (min-width: 901px) {
+  html[data-page="plans"] .pane.list { flex: 1 1 600px; }
+  html[data-page="plans"] .pane.detail { flex: 1 1 340px; max-width: 480px; }
+}
+
+/* ---- Toolbar: view tabs, legend, notes ---- */
+
+.plan-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.plan-notes { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 12px; color: var(--muted); }
+.plan-hint { padding: 0 16px 16px; }
+
+/* Badges: the shell's .badge, one color per kind. */
+.badge.b-needs, .badge.b-waiting { background: var(--badge); }
+.badge.b-review { background: var(--b-review); }
+.badge.b-lead { background: var(--b-lead); }
+.badge.b-snoozed { background: var(--b-snoozed); }
+.badge.b-working { background: var(--b-working); }
+.badge.b-prov { background: var(--b-prov); }
+
+/* What the search doesn't match. */
+.dim { opacity: .4; }
+
+/* ---- The dependency graph (SVG) ---- */
+
+.pg-scroll { overflow: auto; padding: 12px; }
+.pg { display: block; max-width: none; font-family: var(--sans); }
+.pg-node { cursor: pointer; }
+.pg-node:focus { outline: none; }
+.pg-box { fill: var(--fill); stroke: var(--edge); stroke-width: 1.5; }
+.pg-node:hover .pg-box { stroke-width: 2.5; }
+.pg-node:focus-visible .pg-box, .pg-node.cursor .pg-box { stroke: var(--accent-line); stroke-width: 2.5; }
+.pg-node.sel .pg-box { stroke: var(--accent-line); stroke-width: 3; }
+.pg-node.cycle .pg-box { stroke-dasharray: 5 3; }
+.pg-id { fill: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.pg-title { fill: var(--text); font-size: 12px; font-weight: 600; }
+.pg-badge text { fill: var(--on-badge); font-size: 10px; font-weight: 700; }
+.pg-badge rect { fill: var(--b-snoozed); }
+.pg-badge.b-needs rect, .pg-badge.b-waiting rect { fill: var(--badge); }
+.pg-badge.b-review rect { fill: var(--b-review); }
+.pg-badge.b-lead rect { fill: var(--b-lead); }
+.pg-badge.b-working rect { fill: var(--b-working); }
+.pg-badge.b-prov rect { fill: var(--b-prov); }
+/* A provisional package, not in the plan file yet: a dotted edge. */
+.pg-node.prov .pg-box { stroke-dasharray: 2 3; }
+.pe { fill: none; stroke: var(--pg-edge); stroke-width: 1.5; }
+.pe.met { stroke: var(--pg-edge-met); }
+.pe.cycle { stroke: var(--pg-cycle); stroke-dasharray: 5 3; }
+.pe.off { opacity: .45; }
+.pe.on { stroke: var(--accent-line); stroke-width: 2.5; opacity: 1; }
+.pg-arrow { fill: var(--pg-arrow); }
+.pg-arrow.cycle { fill: var(--pg-cycle); }
+.pg-arrow.on { fill: var(--accent-line); }
+
+/* ---- Kanban ---- */
+
+.kb-scroll { overflow-x: auto; }
+.kb {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(170px, 1fr);
+  gap: 12px; padding: 16px; align-items: start;
+}
+.kb-col { padding: 10px; border-radius: 10px; background: var(--ground); }
+.kb-col .khead { margin: 0 0 8px; align-items: center; }
+.kb-col .khead .sw { margin-right: 4px; }
+.kcard .nid { color: var(--text); }
+.kcard.prov { border-style: dashed; }
+.kmeta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.kmeta .tag { height: 19px; font-size: 11px; }
+.kb-none { margin: 4px 0; font-size: 12px; color: var(--muted); }
+
+/* ---- Timeline ---- */
+
+.tl-scroll { overflow-x: auto; }
+.tl { min-width: 760px; padding: 12px 16px 0; }
+.tl-head, .tl-row { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: center; }
+.tl-head { padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.tl-axis { display: block; overflow: visible; }
+.tl-axis text { fill: var(--muted); font-size: 11px; }
+.tl-row {
+  min-height: 34px; border-bottom: 1px solid var(--line-soft);
+  color: var(--ink); font-size: 13px; text-decoration: none;
+}
+.tl-row:hover { background: var(--hover); color: var(--ink); }
+.tl-row.sel, .tl-row[aria-current="true"] { background: var(--sel); }
+.tl-row.cursor { box-shadow: inset 3px 0 0 var(--accent-line); }
+.tl-row:focus-visible { outline-offset: -2px; }
+.tl-name { overflow: hidden; padding-right: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.tl-name .nid { color: var(--text); }
+.tl-name .badge { margin-left: 4px; vertical-align: middle; }
+.tl-track { display: block; }
+.tl-grid { stroke: var(--line-soft); stroke-width: 1; }
+/* The bars take the lifecycles' colors, as the legend shows them. */
+.tl-bar.work { fill: var(--lc-working-bar); }
+.tl-bar.review { fill: var(--lc-in_review-bar); }
+.tl-bar.done { fill: var(--lc-done-bar); }
+
+/* ---- Detail pane ---- */
+
+.pd-head { display: flex; align-items: center; gap: 8px; }
+.pd-id { font-size: 13px; }
+.pd-close { margin-left: auto; }
+.pd-badges { margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.pd-badges li { padding: 3px 0; }
+.pd-signals { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 0; }
+.sig-bad { color: var(--bad-ink); border-color: var(--bad-edge); }
+.sig-warn, .sig-need { color: var(--warn-ink); border-color: var(--warn-edge); }
+.sig-ok { color: var(--ok-ink); border-color: var(--ok-edge); }
+.pd-warn { color: var(--warn-ink); }
+.pd-why { margin-top: 6px; }
+
+/* A provisional package's part of the pane: what's missing, the row
+   to paste and its Copy button, and what named it. */
+.pd-prov { margin-top: 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--warn-edge); }
+.pd-prov-head { margin: 0; font-size: 14px; font-weight: 700; color: var(--warn-ink); }
+.copyrow { display: flex; align-items: flex-start; gap: 8px; }
+.copyrow .code { flex: 1 1 auto; min-width: 0; margin: 0; }
+.pd-sources li { padding: 3px 0; font-size: 13px; color: var(--ink-2); }
+
+.deps { margin: 0; padding: 0; list-style: none; }
+.deps li { margin-bottom: 4px; }
+.dep {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%;
+  min-height: 34px; padding: 0 10px; border-radius: 7px; color: var(--ink-2);
+  font-size: 13px; font-weight: 600; text-decoration: none;
+}
+a.dep:hover { background: var(--hover-strong); color: var(--ink-2); }
+.dep-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dep-state { flex: 0 0 auto; color: var(--text); font-size: 12px; }
+.dep-why { display: block; margin: 0 10px 6px; }
+
+.pd-link + .pd-link::before { content: "; "; }
+.fact { color: var(--muted); font-size: 12px; }
+.fact-need, .fact-bad { color: var(--need-ink); }
+.fact-ok { color: var(--ok-ink); }
+.fact-title { color: var(--ink-2); }
+.ci { font-size: 12px; color: var(--muted); }
+.ci-bad { color: var(--bad-ink); }
+.ci-ok { color: var(--ok-ink); }
+
+.pd-actions .pd-linker[open] { flex: 1 1 100%; }
+.pd-linker > summary { list-style: none; }
+.pd-linker > summary::-webkit-details-marker { display: none; }
+.pd-linkbox { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.pd-linkbox form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.pd-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; color: var(--muted); }
+.pd-field select, .pd-field input {
+  max-width: 100%; min-height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--panel); color: var(--ink); font: inherit; font-size: 13px;
+}
+.pd-free { padding-top: 10px; border-top: 1px solid var(--line-soft); }
+
+.pd-links { margin-top: 18px; }
+.pd-links > summary { cursor: pointer; }
+.pd-linkrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.pd-linkrow.low { border-left: 3px dashed var(--warn-edge); padding-left: 8px; }
+.pd-linkrow form { margin-left: auto; }
+
+/* ---- The plan's pane ---- */
+
+.plan-alerts li, .plan-warnings li { padding: 4px 0; font-size: 13px; }
+.um { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.um-title { font-weight: 600; }
+.um-where { flex: 1 1 100%; margin: 0; }
+.um-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }

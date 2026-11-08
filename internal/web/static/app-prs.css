@@ -1,0 +1,7 @@
+/* The Pull requests page (templates/app/prs.html). The shell's rows,
+   pills and context list do most of it. */
+
+.srow .pill, .srow .tag { flex: 0 0 auto; }
+.srow .iwait { min-width: 36px; padding-top: 0; text-align: right; }
+.srow .ititle { font-weight: 600; }
+.dtext { margin: 0; font-size: 13px; line-height: 1.5; }

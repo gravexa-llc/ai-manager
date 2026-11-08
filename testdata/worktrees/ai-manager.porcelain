@@ -1,0 +1,19 @@
+worktree ~/Projects/ai-manager
+HEAD fa76ed9ceb3e019f05b51020cb4032d165f47368
+branch refs/heads/main
+
+worktree ~/Projects/ai-manager/.claude/worktrees/agent-a740b0899d775992b
+HEAD 2abc799537f209982446ba2d67865c5bd04fe879
+branch refs/heads/worktree-agent-a740b0899d775992b
+locked claude agent agent-a740b0899d775992b (pid 91470 start Fri Nov  6 01:23:32 2026)
+
+worktree ~/Projects/ai-manager/.claude/worktrees/agent-ab1d18655f3b9a17c
+HEAD 2abc799537f209982446ba2d67865c5bd04fe879
+branch refs/heads/worktree-agent-ab1d18655f3b9a17c
+locked claude agent agent-ab1d18655f3b9a17c (pid 91470 start Fri Nov  6 01:23:32 2026)
+
+worktree ~/Projects/ai-manager/.claude/worktrees/agent-adecb670ee2a01ec4
+HEAD 2abc799537f209982446ba2d67865c5bd04fe879
+branch refs/heads/worktree-agent-adecb670ee2a01ec4
+locked claude agent agent-adecb670ee2a01ec4 (pid 91470 start Fri Nov  6 01:23:32 2026)
+

@@ -1,0 +1,9 @@
+# worktree: ~/Projects/dogwood/.claude/worktrees/rc-build
+### git status -sb
+## HEAD (no branch)
+### git status --porcelain=v2 --branch
+# branch.oid 7466210f9e0668f3f2921bc54cf5b0d190823b17
+# branch.head (detached)
+### git rev-parse --abbrev-ref --symbolic-full-name @{u}
+fatal: HEAD does not point to a branch
+exit=128
