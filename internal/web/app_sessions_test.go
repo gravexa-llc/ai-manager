@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gravexa-llc/ai-manager/internal/focus"
+	"github.com/gravexa-llc/ai-manager/internal/inbox"
 	"github.com/gravexa-llc/ai-manager/internal/monitor"
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
@@ -140,8 +141,8 @@ func TestAppSessionsGroups(t *testing.T) {
 	// reason, and the expired job's `claude rm` instead.
 	not := section(t, list, "sessions-not-monitored")
 	wantIn(t, "not monitored", not,
-		`<details id="sessions-not-monitored" class="notmon">`,
-		`<summary class="ghead"><span>Not monitored (5)</span>`,
+		`<details id="sessions-not-monitored" class="group notmon" data-group="not-monitored">`,
+		`<summary class="ghead"><span>Not monitored</span><span>5</span></summary>`,
 		`<input type="hidden" name="key" value="pid:46">`, `<input type="hidden" name="key" value="job:live1">`,
 		`<button type="button" class="btn sm" disabled title="aimd doesn&#39;t know this session&#39;s Claude Code id yet`,
 		`<span class="isub">Background job · expired: its conversation was deleted after 30 days</span>`,
@@ -155,17 +156,46 @@ func TestAppSessionsGroups(t *testing.T) {
 	// the expired watched job doesn't count as needing you.
 	wantIn(t, "summary", get(t, e.h, "/app/sessions?fragment=summary"), "<p>6 monitored · 5 not monitored · 2 expired</p>")
 	menu := get(t, e.h, "/app/sessions?fragment=menu")
-	wantIn(t, "menu", menu, `data-needs-count="2"`, `Sessions<span class="mini" title="6 monitored">`)
+	wantIn(t, "menu", menu, `data-needs-count="`+strconv.Itoa(2+aimSteps)+`"`, `Sessions<span class="mini" title="6 monitored">`)
 	// The menu's count ran a sync pass of the inbox: it opened items
 	// for the two waiting sessions, and none for the expired job.
 	items, err := e.st.ListInbox(context.Background(), store.InboxFilter{Waiting: true})
 	must(t, err)
 	var keys []string
 	for _, it := range items {
-		keys = append(keys, it.SessionKey)
+		if it.Source == inbox.SourceSession {
+			keys = append(keys, it.SessionKey)
+		}
 	}
 	if got := strings.Join(keys, " "); got != "pid:50 pid:45" {
 		t.Errorf("inbox items for sessions %q, want pid:50 pid:45", got)
+	}
+}
+
+// Every group folds: the monitored ones start open, Not monitored
+// collapsed; the one holding the selected session, and every one under a
+// search, open whatever the browser remembers.
+func TestAppSessionsSections(t *testing.T) {
+	e, _ := newSessionsEnv(t, monitor.ModeOptIn, nil)
+	list := get(t, e.h, "/app/sessions?fragment=list")
+	if got := strings.Join(sectionKeys(list), " "); got != "plan:aim plan:-watched not-monitored" {
+		t.Errorf("sections %s", got)
+	}
+	wantSection(t, list, "plan:aim", true, false)
+	wantSection(t, list, "plan:-watched", true, false)
+	wantSection(t, list, "not-monitored", false, false)
+	// The plan's link in its header stays a link.
+	_, aim := sectionOf(t, list, "plan:aim")
+	wantIn(t, "aim", aim, `<summary class="ghead"><a href="/app/plans/aim">ai-manager — build plan</a><span>3</span></summary>`)
+
+	sel := get(t, e.h, "/app/sessions?s=pid%3A42&fragment=list")
+	wantSection(t, sel, "plan:aim", true, true)
+	wantSection(t, sel, "plan:-watched", true, false)
+	wantSection(t, sel, "not-monitored", false, false)
+	wantSection(t, get(t, e.h, "/app/sessions?s=pid%3A46&fragment=list"), "not-monitored", true, true)
+	found := get(t, e.h, "/app/sessions?q=watched&fragment=list")
+	for _, k := range sectionKeys(found) {
+		wantSection(t, found, k, true, true)
 	}
 }
 
@@ -210,7 +240,7 @@ func TestAppSessionsSelection(t *testing.T) {
 	wantIn(t, "ended", get(t, e.h, "/app/sessions?s=pid%3A999&fragment=detail"), "That session has ended")
 	wantIn(t, "ended agent", get(t, e.h, "/app/sessions?s=pid%3A43%2Fagent-zz&fragment=detail"), "That subagent has finished.")
 	wantIn(t, "not monitored", get(t, e.h, "/app/sessions?s=pid%3A46&fragment=list"),
-		`<details id="sessions-not-monitored" class="notmon" open>`)
+		`<details id="sessions-not-monitored" class="group notmon" data-group="not-monitored" open data-group-force>`)
 	wantIn(t, "not monitored detail", get(t, e.h, "/app/sessions?s=pid%3A46&fragment=detail"),
 		"Not monitored: it is left out of Needs you and notifications.", `action="/app/sessions/watch"`, `<input type="hidden" name="key" value="pid:46">`)
 
@@ -220,11 +250,13 @@ func TestAppSessionsSelection(t *testing.T) {
 		`<dt>Plan</dt><dd><a href="/app/plans/aim">ai-manager — build plan</a></dd>`, `<dt>Package</dt><dd>D1 Event receiver and live state</dd>`)
 	wantNotIn(t, "lead", lead, "Stop monitoring")
 
-	// A subagent: under its lead, Go to the lead's tab.
+	// A subagent: under its lead, its line with its last action, Go to the
+	// lead's tab.
 	agent := get(t, e.h, "/app/sessions?s=pid%3A43%2Fagent-d1&fragment=detail")
 	wantIn(t, "subagent", agent, "<h2>Agent · D1 Event receiver and live state</h2>", `<p class="subtitle">Subagent of aim lead</p>`,
-		"Agent of D1 on a registered plan; it runs inside aim lead.", `<dt>Last action</dt><dd>Edit: live.go</dd>`,
+		"Agent of D1 on a registered plan; it runs inside aim lead.", `title="its last action, as the plugin reported it">Edit: live.go</span>`,
 		`<input type="hidden" name="key" value="lead-1/agent-d1">`)
+	wantNotIn(t, "subagent", agent, "Last action")
 
 	// The search box: matching rows only, with Not monitored open, and the
 	// rows' links keep it.
@@ -232,7 +264,7 @@ func TestAppSessionsSelection(t *testing.T) {
 	if got := strings.Join(rowKeys(found), " "); got != "pid:46" {
 		t.Errorf("search rows = %s", got)
 	}
-	wantIn(t, "search", found, `class="notmon" open`, "No monitored session matches “stranger”.", `href="/app/sessions?q=stranger&amp;s=pid%3A46"`)
+	wantIn(t, "search", found, `data-group="not-monitored" open data-group-force>`, "No monitored session matches “stranger”.", `href="/app/sessions?q=stranger&amp;s=pid%3A46"`)
 	wantIn(t, "search none", get(t, e.h, "/app/sessions?q=zzz&fragment=list"), "No session matches “zzz”.")
 }
 
@@ -313,7 +345,7 @@ func TestAppSessionsWatch(t *testing.T) {
 	}
 	wantIn(t, "after watch", groupOf(t, get(t, e.h, "/app/sessions?fragment=list"), "No plan · watched"), `data-item="pid:46"`)
 	wantNotIn(t, "after watch", notMonitored(), `data-item="pid:46"`)
-	wantIn(t, "after watch", get(t, e.h, "/app/sessions?fragment=menu"), `data-needs-count="3"`)
+	wantIn(t, "after watch", get(t, e.h, "/app/sessions?fragment=menu"), `data-needs-count="`+strconv.Itoa(3+aimSteps)+`"`)
 
 	// Undo: back under Not monitored, and no Undo of the Undo.
 	fields := url.Values{}
@@ -334,7 +366,7 @@ func TestAppSessionsWatch(t *testing.T) {
 	wantIn(t, "stop toast", toast, "<span>Stopped watching watched one: it is no longer monitored",
 		`<form method="post" action="/app/sessions/watch" data-pane>`, `<input type="hidden" name="key" value="pid:45">`,
 		`<input type="hidden" name="undo" value="1">`)
-	wantIn(t, "stopped", section(t, page, "sessions-not-monitored"), `data-item="pid:45"`, `class="notmon" open`)
+	wantIn(t, "stopped", section(t, page, "sessions-not-monitored"), `data-item="pid:45"`, `data-group="not-monitored" open data-group-force>`)
 	// Its Undo, as a form, watches it again.
 	rec = e.post("/app/sessions/watch", url.Values{"key": {"pid:45"}, "undo": {"1"}, "return": {"/app/sessions?s=pid:45"}})
 	page = e.follow(rec, "/app/sessions?s=pid%3A45&toast=")

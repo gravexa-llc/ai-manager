@@ -32,6 +32,17 @@ type loop struct {
 	background bool
 	parent     string
 
+	// named: something that names the session's agents named this one, so
+	// it is an agent: a turn_start or agent_start in its loop, an
+	// agent_list that lists it, a worktree_create of agent-<id>, or its
+	// row in the store. The main loop always is. A loop known only from
+	// its tool calls (or asks, errors, a turn's end) isn't: Claude Code's
+	// own forks of an agent (compaction, memory) carry an agentId no
+	// agent list names, in the agent's cwd, and a fork's tool attempt
+	// fires tool.call. Such a loop is never live, working or waiting, and
+	// gets no agent row; its events still go to the timeline.
+	named bool
+
 	// status is the agent status ($.agent.list() vocabulary) as the events
 	// last set it, and statusAt when. A pending needs-you shows as
 	// "waiting" on top of it (rowState).
@@ -71,13 +82,55 @@ type loop struct {
 	fromCreate bool
 
 	lastAction string
-	startedAt  time.Time
-	endedAt    time.Time
+	// tokens is the loop's token count: a subagent's as agent_list last
+	// reported it (events.Agent.Tokens), the main loop's as its last tool
+	// or turn_complete did (events.Event.Tokens); 0 until one does, and
+	// the main loop's again after /clear. tokensAt is when the main loop's
+	// was sent (memory only).
+	tokens    int64
+	tokensAt  time.Time
+	startedAt time.Time
+	endedAt   time.Time
 
 	dirty bool // the agent row needs writing
 }
 
-func (l *loop) live() bool { return l.endedAt.IsZero() && !events.AgentEnded(l.status) }
+func (l *loop) live() bool { return l.named && l.endedAt.IsZero() && !events.AgentEnded(l.status) }
+
+// mainTokens takes the main loop's token count from one of its tool or
+// turn_complete events. The latest count stands, up or down (a compacted
+// context shrinks), and one older than the count it has is ignored; an
+// event without one keeps the last. A subagent's count comes on
+// agent_list only.
+func (l *loop) mainTokens(e events.Event) {
+	if l.id != "" || e.Tokens <= 0 || e.At.Before(l.tokensAt) {
+		return
+	}
+	l.tokensAt = e.At
+	if l.tokens != e.Tokens {
+		l.tokens, l.dirty = e.Tokens, true
+	}
+}
+
+// name marks the loop as one of the session's agents (named).
+func (l *loop) name() {
+	if !l.named {
+		l.named, l.dirty = true, true
+	}
+}
+
+// begin records that a turn of the loop (for a subagent, a run: each run
+// is one turn) started at a time.
+func (l *loop) begin(at time.Time) {
+	if !at.Before(l.turnAt) {
+		l.inTurn, l.turnAt = true, at
+	}
+	if at.After(l.errAt) {
+		l.errAt, l.errReason = time.Time{}, ""
+	}
+	l.progress(at, "")
+	l.setStatus(events.AgentRunning, at)
+}
 
 // setStatus records an agent status at a time, unless a later one is
 // already recorded.
@@ -184,6 +237,10 @@ type session struct {
 	interactive *bool
 	background  bool   // session_start said it is a background session
 	kind        string // the row's kind, if known
+	// pluginBuild and pluginRoot: the plugin build the session loaded, and
+	// its folder, as session_start said.
+	pluginBuild string
+	pluginRoot  string
 
 	// Where the main loop is now.
 	cwd      string
@@ -224,7 +281,7 @@ func (s *session) loop(id string) *loop {
 	}
 	l := &loop{id: id, kind: store.AgentSubagent, dirty: true}
 	if id == "" {
-		l.kind = store.AgentLead
+		l.kind, l.named = store.AgentLead, true
 	}
 	s.loops[id] = l
 	s.order = append(s.order, id)
@@ -338,7 +395,7 @@ func (s *session) answeredBy(cutoff time.Time) bool {
 func needText(l *loop) string {
 	var what string
 	switch l.needSource {
-	case events.SourceToolCheck, events.SourcePermissionRequest:
+	case events.SourcePermissionRequest:
 		what = "permission prompt"
 	case events.SourceAskUserQuestion:
 		what = "question"
@@ -349,8 +406,8 @@ func needText(l *loop) string {
 	default:
 		what = "waiting"
 	}
-	// The wait detail knows a question or a plan approval even when the ask
-	// came through tool.check first.
+	// The wait detail knows a question or a plan approval even when another
+	// signal (a permission dialog for the call, a notification) came first.
 	if l.needWait != nil {
 		switch l.needWait.Kind {
 		case events.WaitQuestion:
@@ -371,6 +428,9 @@ func needText(l *loop) string {
 // apply folds one event into the session. resolve maps a cwd to its
 // worktree and branch.
 func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (string, string)) {
+	if e.Kind == events.AgentStart && e.AgentID == "" {
+		return // SubagentStart always names its agent: there is nothing to apply
+	}
 	if e.At.After(s.lastEventAt) {
 		s.lastEventAt = e.At
 	}
@@ -396,6 +456,8 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 		set(&s.root, e.Worktree)
 		set(&s.startBranch, e.Branch)
 		set(&s.iterm, e.ItermSessionID)
+		set(&s.pluginBuild, e.PluginBuild)
+		set(&s.pluginRoot, e.PluginRoot)
 		if e.Interactive != nil {
 			v := *e.Interactive
 			s.interactive = &v
@@ -426,17 +488,24 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 		}
 
 	case events.TurnStart:
-		if !e.At.Before(l.turnAt) {
-			l.inTurn, l.turnAt = true, e.At
-		}
-		if e.At.After(l.errAt) {
-			l.errAt, l.errReason = time.Time{}, ""
-		}
-		l.progress(e.At, "")
-		l.setStatus(events.AgentRunning, e.At)
+		// A subagent's turn is a run of it: turn.start names its loop as
+		// agent.spawn answered it, a resumed run's (SendMessage to a
+		// finished agent) included, which goes on under the same id.
+		l.name()
+		l.begin(e.At)
 		if l.id == "" && e.At.After(s.idleAt) {
 			s.idleAt = time.Time{}
 		}
+
+	case events.AgentStart:
+		// classic.SubagentStart: a run of the agent begins (its first, or a
+		// resume), as turn_start says, with its type. It comes just after
+		// that run's turn_start, or in its place.
+		if e.AgentType != "" && l.agentType != e.AgentType {
+			l.agentType, l.dirty = e.AgentType, true
+		}
+		l.name()
+		l.begin(e.At)
 
 	case events.TurnComplete:
 		if !e.At.Before(l.turnAt) {
@@ -447,6 +516,7 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 			}
 		}
 		l.progress(e.At, "")
+		l.mainTokens(e)
 		if e.Reason == events.ReasonError && !e.At.Before(l.errAt) {
 			l.errAt = e.At
 			if l.errReason == "" {
@@ -477,13 +547,16 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 
 	case events.Tool:
 		l.progress(e.At, e.ToolUseID)
+		l.mainTokens(e)
 		label := e.Label
 		if label == "" {
 			label = e.Tool
 		}
 		if label != "" {
-			l.lastAction, s.lastAction = label, label
-			l.dirty = true
+			l.lastAction, l.dirty = label, true
+			if l.named {
+				s.lastAction = label // a fork's attempt isn't the session's
+			}
 		}
 		if l.status == "" || l.status == events.AgentPending {
 			l.setStatus(events.AgentRunning, e.At)
@@ -543,6 +616,7 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 			break // EnterWorktree in the main loop: its cwd says the rest
 		}
 		a := s.loop(id)
+		a.name()
 		if a.startedAt.IsZero() {
 			a.startedAt = e.At
 		}
@@ -558,6 +632,7 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 			if a.id == "" {
 				continue
 			}
+			a.name()
 			if a.startedAt.IsZero() {
 				a.startedAt = e.At
 				a.dirty = true
@@ -570,6 +645,11 @@ func (s *session) apply(e events.Event, resolve func(s *session, cwd string) (st
 			}
 			if it.ParentID != "" && a.parent != it.ParentID {
 				a.parent, a.dirty = it.ParentID, true
+			}
+			// The latest count stands, up or down (a compacted context
+			// shrinks); a snapshot without one keeps the last.
+			if it.Tokens > 0 && a.tokens != it.Tokens {
+				a.tokens, a.dirty = it.Tokens, true
 			}
 			// A snapshot taken just after a loop's turn ended can still say
 			// running; foreground agents drop out of the list once done.
@@ -616,6 +696,12 @@ func (s *session) end(e events.Event) {
 func (s *session) clearConversation(at time.Time) {
 	m := s.main()
 	m.inTurn, m.lastReason, m.errAt, m.errReason = false, "", time.Time{}, ""
+	// A new conversation: its own first response counts, not a late event
+	// of the old one.
+	m.tokensAt = at
+	if m.tokens != 0 {
+		m.tokens, m.dirty = 0, true
+	}
 	m.clearNeed()
 	m.setStatus(events.AgentIdle, at)
 	s.idleAt = time.Time{}

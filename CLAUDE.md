@@ -24,8 +24,10 @@ Notes for anyone changing this repo, human or Claude Code. `CONTRIBUTING.md` cov
 - Never run `aim prune --apply` against real worktrees while testing.
 - Load the plugin with `--plugin-dir`, never at user scope, while you work on it.
 
-## Fixtures (`testdata/`)
-Scrub before committing: replace the home path with `~`, remove tokens, replace prompt, assistant and tool-output text with short placeholders, and use made-up owners, repos, branch names and session names (`acme/app`, `example-org/web`).
+## Test data
+Tests, fixtures (`testdata/`), docs and code comments use made-up data only: owners, repos, branch and session names, and paths like `acme/app`, `example-org/web` and `~/Projects/app`. Debugging against your own sessions and repos is fine, but don't copy their names, ids, paths or output into the repo.
+
+Scrub recorded fixtures before committing: replace the home path with `~`, remove tokens, and replace prompt, assistant and tool-output text with short placeholders.
 
 ## Pull requests
 - One change per PR, on its own branch. `make check` passes first.

@@ -11,13 +11,14 @@ var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 // Open PRs in the states the rule tells apart.
 var (
-	ready     = store.PR{Repo: "o/app", Number: 1, State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", ChecksState: "SUCCESS"}
-	readyNoCI = store.PR{Repo: "o/app", Number: 2, State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", ChecksState: "NONE"}
-	draft     = store.PR{Repo: "o/app", Number: 3, State: store.PROpen, Draft: true, MergeStateStatus: "DRAFT"}
-	red       = store.PR{Repo: "o/app", Number: 4, State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "UNSTABLE", ChecksState: "FAILURE"}
-	conflict  = store.PR{Repo: "o/app", Number: 5, State: store.PROpen, Mergeable: "CONFLICTING", MergeStateStatus: "DIRTY"}
-	merged    = store.PR{Repo: "o/app", Number: 6, State: store.PRMerged, Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN"}
-	closed    = store.PR{Repo: "o/app", Number: 7, State: store.PRClosed}
+	ready     = store.PR{Repo: "o/app", Number: 1, HeadBranch: "feat-1", State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", ChecksState: "SUCCESS"}
+	readyNoCI = store.PR{Repo: "o/app", Number: 2, HeadBranch: "feat-2", State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN", ChecksState: "NONE"}
+	draft     = store.PR{Repo: "o/app", Number: 3, HeadBranch: "feat-3", State: store.PROpen, Draft: true, MergeStateStatus: "DRAFT"}
+	red       = store.PR{Repo: "o/app", Number: 4, HeadBranch: "feat-4", State: store.PROpen, Mergeable: "MERGEABLE", MergeStateStatus: "UNSTABLE", ChecksState: "FAILURE"}
+	conflict  = store.PR{Repo: "o/app", Number: 5, HeadBranch: "feat-5", State: store.PROpen, Mergeable: "CONFLICTING", MergeStateStatus: "DIRTY"}
+	merged    = store.PR{Repo: "o/app", Number: 6, HeadBranch: "feat-6", State: store.PRMerged, Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN"}
+	closed    = store.PR{Repo: "o/app", Number: 7, HeadBranch: "feat-7", State: store.PRClosed}
+	unread    = store.PR{Repo: "o/app", Number: 8, State: store.PROpen, URL: "https://github.com/o/app/pull/8"}
 )
 
 func requested(p store.PR) store.PR {
@@ -82,6 +83,14 @@ func TestDecide(t *testing.T) {
 			Verdict{WaitingOn: WaitingNone, Merges: MergesLead, Reason: "closed without merging"}},
 		{"merged, not on a plan", Input{PR: merged},
 			Verdict{WaitingOn: WaitingNone, Reason: "merged"}},
+		// A PR the link API stored by URL, never read from GitHub: its
+		// OPEN is a guess, so it waits on nobody, agent or lead.
+		{"not read yet, on a plan", onPlan(unread, MergesYou),
+			Verdict{WaitingOn: WaitingNone, Merges: MergesYou, Reason: NotReadYet}},
+		{"not read yet, an agent works on it", Input{PR: unread, Monitored: true, Plan: "sharing", Merges: MergesLead, AgentWorking: true},
+			Verdict{WaitingOn: WaitingNone, Merges: MergesLead, Reason: NotReadYet}},
+		{"not read yet, not on a plan", Input{PR: unread},
+			Verdict{WaitingOn: WaitingNone, Reason: NotReadYet}},
 	} {
 		want := tc.want
 		want.Monitored, want.Plan, want.Pkg = tc.in.Monitored, tc.in.Plan, tc.in.Pkg

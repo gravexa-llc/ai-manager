@@ -92,6 +92,7 @@ type env struct {
 	h        http.Handler
 	notes    *notes
 	backfill *fakeBackfill
+	refresh  *fakeRefresh
 }
 
 func newEnv(t *testing.T) *env {
@@ -121,12 +122,14 @@ func newEnv(t *testing.T) *env {
 	e.rescan()
 	e.notes = &notes{}
 	e.backfill = &fakeBackfill{st: e.st, prs: map[string][]store.PR{}}
+	e.refresh = &fakeRefresh{}
 	e.svc = planapi.New(planapi.Options{
 		Store:    e.st,
 		Config:   cfg,
 		Scanner:  e.scanner,
 		LastScan: e.scan.Load,
 		Backfill: e.backfill.run,
+		Refresh:  e.refresh.run,
 		Notify:   e.notes.notify,
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		MinGap:   50 * time.Millisecond,
@@ -287,6 +290,31 @@ func (n *notes) count(topic string) int {
 		}
 	}
 	return c
+}
+
+// fakeRefresh stands in for the daemon's RefreshPRs: it records what it
+// is asked to read, as "owner/repo#n", and queues every PR.
+type fakeRefresh struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (f *fakeRefresh) run(prs []store.PRKey) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, k := range prs {
+		f.calls = append(f.calls, store.PRRef(k.Repo, k.Number))
+	}
+	return len(prs)
+}
+
+// take returns the PRs asked for since the last take.
+func (f *fakeRefresh) take() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.calls
+	f.calls = nil
+	return out
 }
 
 // fakeBackfill stands in for the daemon's GitHub backfill: it stores the

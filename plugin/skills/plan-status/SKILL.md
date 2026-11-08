@@ -7,7 +7,7 @@ description: Answers "what's ready?" from ai-manager's plan_status tool and turn
 
 ## Get the facts
 
-Call the `plan_status` tool first, every time. It is listed as `mcp__ai-manager__plan_status`; in a repo with no plan registered at session start it waits behind ToolSearch, so load it there first. Its answer comes from aimd, which joins the plan file with GitHub PRs, CI and live agents: per plan, the summary (counts, `ready`, `needs_you_packages`, `unlocked`) and the board (every package with its lane, needs, lifecycle, `blocked_by`, badges and links; `unmatched`; `warnings`; `alerts`).
+Call the `plan_status` tool first, every time. It is listed as `mcp__ai-manager__plan_status`; in a repo with no plan registered at session start it waits behind ToolSearch, so load it there first. Its answer comes from aimd, which joins the plan file with GitHub PRs, CI and live agents: per plan, the summary (counts, `ready`, `needs_you_items`, `needs_you_packages`, `unlocked`) and the board (every package with its lane, needs, lifecycle, `blocked_by`, badges and links; `unmatched`; `warnings`; `alerts`).
 
 If the tool isn't available or it fails, say so: "ai-manager's plan_status tool isn't available. Is aimd running and the plugin loaded?" Then stop. Don't work the status out from the plan file, branches or memory, and don't dispatch without it: those miss merges, CI and who is waiting.
 
@@ -15,7 +15,7 @@ If the tool isn't available or it fails, say so: "ai-manager's plan_status tool 
 
 Keep it short, in this order:
 
-1. **Needs the user**, oldest first: agents or sessions waiting on a permission or a question; PRs that are green and mergeable, red or in conflict; `you:` steps; ready packages the user owns.
+1. **Needs the user**, oldest first: the summary's `needs_you_items`, each with its `reason`: agents or sessions waiting on a permission or a question, PRs waiting on the user's review or merge, and the user's own steps that are ready (kind `your_step`: a package the user owns, or one with a `you:` step, once everything it needs is done). Then PRs that are red or in conflict.
 2. **Ready to dispatch**: the ready list.
 3. **Blocked**: each package with the IDs it waits on.
 4. **Working** and **in review**: ID, agent or PR, and badges such as quiet, stalled or collision.

@@ -147,6 +147,11 @@ func (e *boardEnv) registerSharing() {
 
 const aimRepo = "example-user/ai-manager"
 
+// aimSteps counts the aim plan's packages that are your step and ready:
+// R1 and B4, ready with a "you:" step. Each is a Your step item in Needs
+// you (yourstep.go), so it counts wherever the inbox's Open items do.
+const aimSteps = 2
+
 // registerAim registers the roadmap fixture with fake ai-manager PRs: the
 // merged packages by their Plan: line, D1 open with red CI and a spawned
 // agent, C4 a draft, D3 matched only by a branch token (low confidence),

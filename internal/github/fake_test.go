@@ -338,6 +338,21 @@ func (f *fakeGitHub) branchAnswer(req fakeRequest) map[string]any {
 			}
 			obj[fmt.Sprintf("b%d", j)] = f.connection(repo, branch)
 		}
+		// PRsByNumber's fields, answered from every PR the repo's
+		// branches have.
+		for _, num := range numbersIn(req.Query, alias) {
+			pa := fmt.Sprintf("p%d", num)
+			if node := f.prByNumber(repo, num); node != nil {
+				obj[pa] = node
+				continue
+			}
+			obj[pa] = nil
+			errs = append(errs, map[string]any{
+				"type":    "NOT_FOUND",
+				"path":    []string{alias, pa},
+				"message": fmt.Sprintf("Could not resolve to a PullRequest with the number of %d.", num),
+			})
+		}
 		data[alias] = obj
 	}
 	out := map[string]any{"data": data}
@@ -370,6 +385,55 @@ func (f *fakeGitHub) connection(repo *fakeRepo, branch string) map[string]any {
 	}
 	conn["nodes"] = nodes
 	return conn
+}
+
+var numberFieldRE = regexp.MustCompile(`^\s*p(\d+): pullRequest\(number: (\d+)\) \{ \.\.\.PRFields \}$`)
+
+// numbersIn returns the PR numbers a query asks for under a repo alias
+// (PRsByNumber's pN: pullRequest(number: N) fields), checking that each
+// alias names its own number.
+func numbersIn(q, alias string) []int {
+	var out []int
+	in := false
+	for line := range strings.Lines(q) {
+		line = strings.TrimRight(line, "\n")
+		switch {
+		case strings.HasPrefix(line, "  "+alias+": repository("):
+			in = true
+		case in && line == "  }":
+			return out
+		case in:
+			if m := numberFieldRE.FindStringSubmatch(line); m != nil && m[1] == m[2] {
+				n, _ := strconv.Atoi(m[1])
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
+// prByNumber finds a PR node by number among the repo's branches and the
+// extra nodes. Caller holds f.mu.
+func (f *fakeGitHub) prByNumber(repo *fakeRepo, number int) map[string]any {
+	for branch := range repo.branches {
+		nodes, _ := f.connection(repo, branch)["nodes"].([]any)
+		for _, n := range nodes {
+			if node := n.(map[string]any); node["number"] == float64(number) {
+				return node
+			}
+		}
+	}
+	for k, nodes := range f.extra {
+		if !strings.HasPrefix(k, strings.ToLower(repo.nameWithOwner)+"|") {
+			continue
+		}
+		for _, node := range nodes {
+			if fmt.Sprint(node["number"]) == fmt.Sprint(number) {
+				return node
+			}
+		}
+	}
+	return nil
 }
 
 // branchCount returns how many pullRequests connections a query holds.

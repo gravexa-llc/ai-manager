@@ -1,6 +1,7 @@
 package live
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gravexa-llc/ai-manager/internal/events"
@@ -199,20 +200,19 @@ func TestReplayPermissionAskMainLoop(t *testing.T) {
 		t.Errorf("lead = %q, want waiting", lead.State)
 	}
 
-	// classic.PermissionRequest for the same call: deduplicated.
-	first, rest = split(t, rest, kind(events.NeedsYou))
-	h.replay(first)
-	if s2 := h.session(sid); s2.State != StateNeedsYou || !s2.NeedsYouSince.Equal(asked.At) {
-		t.Errorf("after the second signal: %q since %v", s2.State, s2.NeedsYouSince)
+	// The dialog (classic.PermissionRequest) is the only signal: tool.check's
+	// ask raises none, since the mode's decider takes it first.
+	if asked.Source != events.SourcePermissionRequest {
+		t.Errorf("needs_you source = %q, want %q", asked.Source, events.SourcePermissionRequest)
 	}
 	n := 0
-	for _, e := range h.events(sid) {
-		if e.Event == string(events.NeedsYou) {
+	for _, e := range evs {
+		if e.Kind == events.NeedsYou {
 			n++
 		}
 	}
 	if n != 1 {
-		t.Errorf("%d needs_you rows, want 1 (the second is a duplicate)", n)
+		t.Errorf("%d needs_you in the replay, want 1", n)
 	}
 
 	// The call finishes (denied, under -p): answered.
@@ -225,8 +225,8 @@ func TestReplayPermissionAskMainLoop(t *testing.T) {
 	}
 	h.replay(rest)
 	checkSession(t, h.session(sid), StateGone, "")
-	if st := h.status().Events; st.Deduped != 1 {
-		t.Errorf("deduped = %d, want 1", st.Deduped)
+	if st := h.status().Events; st.Deduped != 0 {
+		t.Errorf("deduped = %d, want 0", st.Deduped)
 	}
 }
 
@@ -284,6 +284,16 @@ func TestReplayNamedAgentResumed(t *testing.T) {
 	evs := fixture(t, "named-agent-sendmessage-resume.jsonl")
 	sid := evs[0].SessionID
 	const scout = "ab38c36cb55a33059"
+	// classic.SubagentStart fired for both runs, under the one id.
+	var starts []string
+	for _, e := range evs {
+		if e.Kind == events.AgentStart {
+			starts = append(starts, e.AgentID+" "+e.AgentType)
+		}
+	}
+	if len(starts) != 2 || starts[0] != starts[1] || !strings.HasPrefix(starts[0], scout+" ") {
+		t.Errorf("agent_start events = %q, want two for %s", starts, scout)
+	}
 	isStatus := func(status string) func(events.Event) bool {
 		return func(e events.Event) bool {
 			return e.Kind == events.AgentList && len(e.Agents) == 1 && e.Agents[0].Status == status

@@ -33,7 +33,7 @@ func TestPRWait(t *testing.T) {
 	set := Compute(in)
 	// #7 is linked to aim · T1, whose agent (pid:3) is live.
 	check("linked, its agent live", set, clean(7, "x"), want{"", "agent", "lead", "aim", "T1"})
-	check("linked, review requested on a lead-merged plan", set, store.PR{Repo: "o/app", Number: 7, State: store.PROpen, ReviewRequestedAt: t0},
+	check("linked, review requested on a lead-merged plan", set, store.PR{Repo: "o/app", Number: 7, HeadBranch: "aim/t1-thing", State: store.PROpen, ReviewRequestedAt: t0},
 		want{"review_requested", "you", "lead", "aim", "T1"})
 	// #8 is on pid:3's branch (aim · T1's agent): on aim, through the
 	// session; pid:3 isn't working (no state).
@@ -44,7 +44,7 @@ func TestPRWait(t *testing.T) {
 	check("an unmonitored session's branch", set, clean(12, "loose-branch"), want{"", "none", "", "", ""})
 	// A review request needs you on any PR, counted or not: someone asked
 	// you by name (another person's project, say).
-	check("nobody's, review requested", set, store.PR{Repo: "o/app", Number: 13, State: store.PROpen, ReviewRequestedAt: t0},
+	check("nobody's, review requested", set, store.PR{Repo: "o/app", Number: 13, HeadBranch: "spike", State: store.PROpen, ReviewRequestedAt: t0},
 		want{"review_requested", "you", "", "", ""})
 	check("from a fork", set, store.PR{Repo: "o/app", Number: 10, HeadBranch: "aim/t1-thing", IsCrossRepository: true, State: store.PROpen},
 		want{"", "none", "", "", ""})
@@ -54,7 +54,7 @@ func TestPRWait(t *testing.T) {
 	in.Plans[0].Packages[0].Links[2].Agent.State = "turn_done"
 	set = Compute(in)
 	check("linked, the plan merges: you", set, clean(7, "x"), want{"ready_to_merge", "you", "you", "aim", "T1"})
-	check("linked, red CI, no agent", set, store.PR{Repo: "o/app", Number: 7, State: store.PROpen, ChecksState: "FAILURE"},
+	check("linked, red CI, no agent", set, store.PR{Repo: "o/app", Number: 7, HeadBranch: "aim/t1-thing", State: store.PROpen, ChecksState: "FAILURE"},
 		want{"", "lead", "you", "aim", "T1"})
 	// A live session works on #8's branch, then ends.
 	in.Sessions[2].State = "working"

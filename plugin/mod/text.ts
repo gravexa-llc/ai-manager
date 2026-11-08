@@ -412,6 +412,67 @@ export function prUrlIn(text: string): string | undefined {
   return PR_URL.exec(text)?.[0]
 }
 
+// --- gh pr merge, gh pr close ----------------------------------------------
+
+const GH_PR_END = /(?:^|[\s;&|()`/])gh\s+pr\s+(?:merge|close)(?![\w-])/
+
+/** The cheap check on every Bash call: does the command run `gh pr merge` or `gh pr close`? */
+export function mentionsPrEnd(command: string): boolean {
+  return GH_PR_END.test(command)
+}
+
+/** A `gh pr merge` or `gh pr close` a command runs, and the PR it names, as gh takes it. */
+export type PrEnd = {
+  action: 'merge' | 'close'
+  /** The PR argument: a number, a URL or a branch; '' for the current branch's PR. */
+  ref: string
+  /** -R/--repo when given (`owner/repo`, or as gh takes it), else ''. */
+  repo: string
+}
+
+// gh pr merge and gh pr close flags that take a value, so the value is
+// not read as the PR argument.
+const END_VALUE_FLAGS = new Set([
+  '--body', '-b', '--body-file', '-F', '--subject', '-t', '--author-email', '-A',
+  '--match-head-commit', '--repo', '-R', '--comment', '-c',
+])
+
+/**
+ * The `gh pr merge` and `gh pr close` calls a Bash command runs, in order.
+ * Only which PR: what they did is read from GitHub.
+ */
+export function prEnds(command: string): PrEnd[] {
+  if (!mentionsPrEnd(command)) return []
+  const words = shellWords(splitHeredocs(command).shell)
+  const out: PrEnd[] = []
+  for (let i = 0; i + 2 < words.length; i++) {
+    const w = words[i] ?? ''
+    const verb = words[i + 2]
+    if (!(w === 'gh' || w.endsWith('/gh')) || words[i + 1] !== 'pr' || (verb !== 'merge' && verb !== 'close')) continue
+    const end: PrEnd = { action: verb, ref: '', repo: '' }
+    let j = i + 3
+    for (; j < words.length; j++) {
+      const a = words[j] ?? ''
+      if (OPERATORS.includes(a) || a === ')') break
+      if (a === '--repo' || a === '-R') {
+        end.repo = words[j + 1] ?? ''
+        j += 1
+      } else if (a.startsWith('--repo=')) end.repo = a.slice('--repo='.length)
+      else if (a.startsWith('-R') && a.length > 2) end.repo = a.slice(2)
+      else if (END_VALUE_FLAGS.has(a)) j += 1
+      else if (!a.startsWith('-') && end.ref === '') end.ref = a
+    }
+    out.push(end)
+    i = j
+  }
+  return out
+}
+
+/** The first `owner/repo#123` in text, as gh prints a PR it merged or closed. */
+export function prRefIn(text: string): string | undefined {
+  return /\b[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+#[0-9]+\b/.exec(text)?.[0]
+}
+
 /** A path made absolute against a directory, `.` and `..` resolved. */
 export function absolute(path: string, dir: string): string {
   const joined = path.startsWith('/') ? path : `${dir.replace(/\/+$/, '')}/${path}`

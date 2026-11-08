@@ -41,6 +41,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/prwait"
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/timezone"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
 
@@ -111,6 +112,10 @@ type Options struct {
 	// their conversation (*sessions.Jobs; app_sessions.go). Nil means none
 	// has.
 	Jobs ExpiredJobs
+	// PluginBuilds tells which plugin build is on disk in a plugin folder
+	// now (*pluginbuild.Cache), so a session that loaded an older one is
+	// flagged. Nil means no session is flagged.
+	PluginBuilds PluginBuilds
 	// NotifyDisabled is config notify.enabled = false: aimd sends no
 	// notifications whatever the Settings page's switch says, and the page
 	// says so.
@@ -119,8 +124,24 @@ type Options struct {
 	HomeDir string
 	// Now is the clock for ages; time.Now if nil.
 	Now func() time.Time
+	// SystemZone is the machine's time zone, the Time zone setting's
+	// System; nil reads it from /etc/localtime (timezone.Machine).
+	SystemZone func() timezone.Zone
 	// Logger receives handler errors; nil discards them.
 	Logger *slog.Logger
+}
+
+// machineZone is the machine's time zone, for a Server without
+// Options.SystemZone. The tests set it to UTC.
+var machineZone = timezone.NewMachine("/etc/localtime").Zone
+
+// systemZone is the Time zone setting's System: Options.SystemZone, or
+// the machine's.
+func (s *Server) systemZone() timezone.Zone {
+	if s.opts.SystemZone != nil {
+		return s.opts.SystemZone()
+	}
+	return machineZone()
 }
 
 // Server holds aimd's routes.
@@ -247,6 +268,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		js := withMonitored(withTerminal(sessionJSON(row, now), appOf(terms, row)), mon, row)
+		js.PluginOnDisk, js.PluginOutdated = s.pluginOf(r.Context(), row)
 		if detail {
 			js.WaitingOn = s.waitingOn(js)
 		}
@@ -308,6 +330,8 @@ func sessionJSON(r store.Session, now time.Time) api.Session {
 		NeedsYou:       r.State == needsYou,
 		LastAction:     r.LastAction,
 		LastSaid:       r.LastSaid,
+		PluginBuild:    r.PluginBuild,
+		PluginRoot:     r.PluginRoot,
 		StartedAt:      r.StartedAt,
 		FirstSeenAt:    r.FirstSeenAt,
 		LastSeenAt:     r.LastSeenAt,
@@ -411,6 +435,7 @@ func prJSON(r store.PR, v prwait.Verdict) api.PR {
 		URL:               r.URL,
 		Author:            r.Author,
 		State:             r.State,
+		Unread:            r.Unread(),
 		Draft:             r.Draft,
 		HeadBranch:        r.HeadBranch,
 		HeadRefOID:        r.HeadRefOID,

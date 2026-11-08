@@ -16,9 +16,10 @@ import (
 
 // githubLoop runs one GitHub tick every poll.github_active, starting once
 // the first worktree scan has said which branches exist. A dashboard
-// connecting asks for the open-PR search between ticks if it is due.
-// Ticks run one at a time, and a tick that runs past the next one skips
-// it rather than queuing it (nextTick).
+// connecting asks for the open-PR search between ticks if it is due, and
+// RefreshPRs for a read of some PRs by number, at most one every
+// refreshMinGap. Ticks and reads run one at a time, and a tick that runs
+// past the next one skips it rather than queuing it (nextTick).
 func (d *Daemon) githubLoop(ctx context.Context) {
 	select {
 	case <-ctx.Done():
@@ -33,6 +34,7 @@ func (d *Daemon) githubLoop(ctx context.Context) {
 	}
 	t := time.NewTimer(tick())
 	defer t.Stop()
+	var refresh <-chan time.Time // armed while a read is waiting for its gap
 	for {
 		select {
 		case <-ctx.Done():
@@ -41,7 +43,124 @@ func (d *Daemon) githubLoop(ctx context.Context) {
 			t.Reset(tick())
 		case <-d.searchKick:
 			d.maybeSearch(ctx, time.Now(), true)
+		case <-d.refreshKick:
+			if refresh == nil {
+				d.mu.Lock()
+				wait := time.Until(d.lastRefresh.Add(refreshMinGap))
+				d.mu.Unlock()
+				refresh = time.After(max(wait, 0))
+			}
+		case <-refresh:
+			refresh = nil
+			d.readRefreshes(ctx)
 		}
+	}
+}
+
+// Reads on request (RefreshPRs).
+const (
+	// refreshMinGap is the least time between two reads of PRs the plugin
+	// saw a tool call create, merge or close. Requests in between join the
+	// next read.
+	refreshMinGap = 10 * time.Second
+	// refreshMax caps the PRs waiting for such a read; more are dropped,
+	// and the polls read them later.
+	refreshMax = 50
+)
+
+// RefreshPRs asks for these PRs to be read from GitHub by number soon,
+// rather than at the next poll: the plugin saw a tool call create, merge
+// or close them. GitHub stays the source of truth: what is stored is what
+// it answers. Requests are joined into one read, at most one every
+// refreshMinGap, and none while the budget says stop. It returns how many
+// PRs it queued that weren't waiting already. It never blocks.
+func (d *Daemon) RefreshPRs(prs []store.PRKey) int {
+	d.mu.Lock()
+	queued := 0
+	for _, k := range prs {
+		key := prKey(k.Repo, k.Number)
+		if _, ok := d.refreshWant[key]; ok || k.Number < 1 || !strings.Contains(k.Repo, "/") {
+			continue
+		}
+		if len(d.refreshWant) >= refreshMax {
+			d.log.Warn("PR refresh: too many waiting; the polls read the rest", "waiting", len(d.refreshWant))
+			break
+		}
+		d.refreshWant[key] = k
+		queued++
+	}
+	d.mu.Unlock()
+	if queued > 0 {
+		kick(d.refreshKick)
+	}
+	return queued
+}
+
+// readRefreshes reads the PRs RefreshPRs queued, by number, and stores
+// what GitHub answers. A repo whose read fails is listed as unreadable
+// like a poll's; one that reads isn't cleared from the list, since this
+// read is only part of what the polls ask.
+func (d *Daemon) readRefreshes(ctx context.Context) {
+	now := time.Now()
+	d.mu.Lock()
+	want := d.refreshWant
+	d.refreshWant = map[string]store.PRKey{}
+	d.lastRefresh = now
+	d.mu.Unlock()
+	if len(want) == 0 {
+		return
+	}
+	if b := d.budget(); b.Verdict == github.BudgetStop {
+		d.log.Info("PR refresh skipped: the GitHub budget says stop; the polls read them later", "prs", len(want))
+		return
+	}
+	keys := make([]string, 0, len(want))
+	for k := range want {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	byRepo := map[string]*github.RepoNumbers{}
+	var repos []*github.RepoNumbers
+	for _, k := range keys {
+		pk := want[k]
+		owner, name, _ := strings.Cut(pk.Repo, "/")
+		rn := byRepo[strings.ToLower(pk.Repo)]
+		if rn == nil {
+			rn = &github.RepoNumbers{Owner: owner, Name: name}
+			byRepo[strings.ToLower(pk.Repo)] = rn
+			repos = append(repos, rn)
+		}
+		rn.Numbers = append(rn.Numbers, pk.Number)
+	}
+	req := make([]github.RepoNumbers, len(repos))
+	for i, rn := range repos {
+		req[i] = *rn
+	}
+	res := d.gh.PRsByNumber(ctx, req)
+	if ctx.Err() != nil {
+		return
+	}
+	var prs []github.PR
+	errsChanged := false
+	d.mu.Lock()
+	for _, r := range res.Repos {
+		if r.Err != nil {
+			errsChanged = d.noteRepoErrLocked(readNumbers, r.Owner+"/"+r.Name, r.Err, now) || errsChanged
+		}
+		prs = append(prs, numberPRs(r)...)
+	}
+	d.mu.Unlock()
+	if errsChanged {
+		d.notify(api.TopicStatus)
+	}
+	changed, err := d.writePRs(ctx, prs)
+	if err != nil {
+		d.log.Warn("PR refresh: store", "err", err)
+		return
+	}
+	d.log.Info("read PRs on request", "asked", len(want), "read", len(prs), "queries", res.Queries, "cost", res.Cost)
+	if changed {
+		d.notify(api.TopicPRs)
 	}
 }
 
@@ -60,10 +179,11 @@ func nextTick(start, end time.Time, interval time.Duration) time.Time {
 }
 
 // githubTick is one GitHub tick: one BranchPRs call for the active repos,
-// plus the idle ones on every idleEvery-th tick (tick 0 included), then the
-// open-PR search if it is due. The budget decides what runs: "idle-only"
-// skips every tick that isn't an idle tick, and "stop" skips everything
-// until its ResumeAt.
+// plus the idle ones on every idleEvery-th tick (tick 0 included), and on
+// those idle ticks one PRsByNumber call for the open PRs aimd has never
+// read (trackedRepos), then the open-PR search if it is due. The budget
+// decides what runs: "idle-only" skips every tick that isn't an idle
+// tick, and "stop" skips everything until its ResumeAt.
 func (d *Daemon) githubTick(ctx context.Context) {
 	now := time.Now()
 	d.mu.Lock()
@@ -90,7 +210,7 @@ func (d *Daemon) githubTick(ctx context.Context) {
 		}
 	}
 
-	active, idle := d.trackedRepos(ctx, now, idleTick)
+	active, idle, unread := d.trackedRepos(ctx, now, idleTick)
 	d.mu.Lock()
 	d.ghStatus.ActiveRepos, d.ghStatus.IdleRepos = countRepos(active), countRepos(idle)
 	d.mu.Unlock()
@@ -98,16 +218,30 @@ func (d *Daemon) githubTick(ctx context.Context) {
 	if idleTick {
 		req = append(req, idle...)
 	}
-	if len(req) > 0 {
-		res := d.gh.BranchPRs(ctx, req)
+	if len(req) > 0 || len(unread) > 0 {
+		var res github.BranchPRsResult
+		if len(req) > 0 {
+			res = d.gh.BranchPRs(ctx, req)
+		}
+		var nums github.NumberPRsResult
+		if len(unread) > 0 && ctx.Err() == nil {
+			nums = d.gh.PRsByNumber(ctx, unread)
+		}
 		if ctx.Err() != nil {
 			return
 		}
-		d.applyBranchPRs(ctx, now, res)
+		d.applyBranchPRs(ctx, now, res, nums, idleTick)
 	} else {
 		d.mu.Lock()
 		d.ghStatus.LastQueries, d.ghStatus.LastCost = 0, 0
+		cleared := idleTick && len(d.repoErrs) > 0
+		if idleTick {
+			clear(d.repoErrs) // nothing left to read
+		}
 		d.mu.Unlock()
+		if cleared {
+			d.notify(api.TopicStatus)
+		}
 		d.ran(api.SourceGitHub, now, nil, 0)
 	}
 	d.maybeSearch(ctx, now, idleTick)
@@ -296,7 +430,13 @@ func (d *Daemon) searchOwners() []string {
 // stored open PRs that nothing else tracks and the last search didn't
 // find, so a PR whose worktree was removed right after it merged still
 // gets its final state.
-func (d *Daemon) trackedRepos(ctx context.Context, now time.Time, idleTick bool) (active, idle []github.RepoBranches) {
+//
+// unread, on idle ticks only, are the stored open PRs with no head branch
+// (not from a fork) that the last good search didn't find: the
+// placeholders the link API stores for a PR it knows only by URL
+// (store.PR.Unread). No branch query can find them, so they are read by
+// number.
+func (d *Daemon) trackedRepos(ctx context.Context, now time.Time, idleTick bool) (active, idle []github.RepoBranches, unread []github.RepoNumbers) {
 	d.mu.Lock()
 	sessionRepos := map[string]bool{}
 	for _, l := range d.live {
@@ -344,18 +484,31 @@ func (d *Daemon) trackedRepos(ctx context.Context, now time.Time, idleTick bool)
 	d.mu.Unlock()
 
 	if !idleTick {
-		return active, idle
+		return active, idle, nil
 	}
 	open, err := d.st.ListPRs(ctx, store.PRFilter{State: store.PROpen})
 	if err != nil {
 		d.log.Warn("list open PRs", "err", err)
-		return active, idle
+		return active, idle, nil
 	}
 	orphans := map[string]*github.RepoBranches{}
 	var order []string
+	numbers := map[string]*github.RepoNumbers{}
+	var numOrder []string
 	for _, p := range open {
 		owner, name, ok := strings.Cut(p.Repo, "/")
-		if !ok || p.IsCrossRepository || p.HeadBranch == "" || searchOpen[prKey(p.Repo, p.Number)] {
+		if !ok || p.IsCrossRepository || searchOpen[prKey(p.Repo, p.Number)] {
+			continue
+		}
+		if p.HeadBranch == "" {
+			k := strings.ToLower(p.Repo)
+			rn := numbers[k]
+			if rn == nil {
+				rn = &github.RepoNumbers{Owner: owner, Name: name}
+				numbers[k] = rn
+				numOrder = append(numOrder, k)
+			}
+			rn.Numbers = append(rn.Numbers, p.Number)
 			continue
 		}
 		if tracked[strings.ToLower(p.Repo)+":"+p.HeadBranch] {
@@ -375,7 +528,85 @@ func (d *Daemon) trackedRepos(ctx context.Context, now time.Time, idleTick bool)
 	for _, k := range order {
 		idle = append(idle, *orphans[k])
 	}
-	return active, idle
+	for _, k := range numOrder {
+		unread = append(unread, *numbers[k])
+	}
+	return active, idle, unread
+}
+
+// The kinds of read a repo can fail, each tracked on its own in repoErrs:
+// a branch read that works doesn't hide a PR number GitHub can't find.
+const (
+	readBranches = "branches" // BranchPRs
+	readNumbers  = "numbers"  // PRsByNumber
+)
+
+// repoErr is why a repo's last read of one kind failed.
+type repoErr struct {
+	repo  string    // owner/name as asked
+	err   string    // the error
+	since time.Time // when this run of failures began
+}
+
+// noteRepoErrLocked records the outcome of one read of a repo: err nil
+// clears what a failed read of the same kind left. A new failure, or a
+// different error, is logged. It reports whether the unreadable set
+// changed. d.mu is held.
+func (d *Daemon) noteRepoErrLocked(kind, repo string, err error, now time.Time) bool {
+	key := kind + ":" + strings.ToLower(repo)
+	old, had := d.repoErrs[key]
+	if err == nil {
+		delete(d.repoErrs, key)
+		return had
+	}
+	msg := err.Error()
+	if had && old.err == msg {
+		return false
+	}
+	d.log.Warn("GitHub repo unreadable", "repo", repo, "read", kind, "err", err)
+	since := now
+	if had {
+		since = old.since
+	}
+	d.repoErrs[key] = repoErr{repo: repo, err: msg, since: since}
+	return true
+}
+
+// unreadableLocked lists the repos whose last read failed, one entry per
+// repo (its branch read's error first), sorted by repo. d.mu is held.
+func (d *Daemon) unreadableLocked() []api.RepoError {
+	byRepo := map[string]api.RepoError{}
+	for _, kind := range []string{readBranches, readNumbers} {
+		for k, e := range d.repoErrs {
+			if !strings.HasPrefix(k, kind+":") {
+				continue
+			}
+			r := strings.ToLower(e.repo)
+			if _, have := byRepo[r]; !have {
+				byRepo[r] = api.RepoError{Repo: e.repo, Error: e.err, Since: e.since}
+			}
+		}
+	}
+	if len(byRepo) == 0 {
+		return nil
+	}
+	out := make([]api.RepoError, 0, len(byRepo))
+	for _, e := range byRepo {
+		out = append(out, e)
+	}
+	slices.SortFunc(out, func(a, b api.RepoError) int { return strings.Compare(strings.ToLower(a.Repo), strings.ToLower(b.Repo)) })
+	return out
+}
+
+// numberPRs returns the PRs a PRsByNumber answer read for one repo.
+func numberPRs(r github.RepoNumberPRs) []github.PR {
+	var out []github.PR
+	for _, np := range r.Numbers {
+		if np.Err == nil && np.PR != nil {
+			out = append(out, *np.PR)
+		}
+	}
+	return out
 }
 
 // countRepos counts distinct owner/name pairs.
@@ -387,12 +618,18 @@ func countRepos(rbs []github.RepoBranches) int {
 	return len(seen)
 }
 
-// applyBranchPRs writes one BranchPRs answer and records the tick's health.
-func (d *Daemon) applyBranchPRs(ctx context.Context, now time.Time, res github.BranchPRsResult) {
+// applyBranchPRs writes one tick's BranchPRs and PRsByNumber answers and
+// records the tick's health. A repo either couldn't read counts as a
+// partial error and is listed in Status as unreadable until a read of the
+// same kind succeeds; full is true on an idle tick, which asks about every
+// repo, so a repo it didn't ask about is no longer listed.
+func (d *Daemon) applyBranchPRs(ctx context.Context, now time.Time, res github.BranchPRsResult, nums github.NumberPRsResult, full bool) {
 	var prs []github.PR
 	var repos []store.Repo // default branches not stored yet, or changed
 	partial := 0
 	d.mu.Lock()
+	errsChanged := false
+	asked := map[string]bool{}
 	for _, r := range res.Repos {
 		if r.DefaultBranch != "" {
 			d.defaultBranch[strings.ToLower(r.Owner+"/"+r.Name)] = r.DefaultBranch
@@ -404,28 +641,43 @@ func (d *Daemon) applyBranchPRs(ctx context.Context, now time.Time, res github.B
 			}
 		}
 		d.noteCanonicalLocked(r.Owner+"/"+r.Name, r.Repo)
-		key := r.Owner + "/" + r.Name
-		msg := ""
 		if r.Err != nil {
 			partial++
-			msg = r.Err.Error()
 		}
-		if old := d.repoErrs[key]; old != msg {
-			if msg != "" {
-				d.log.Warn("GitHub repo unreadable", "repo", key, "err", r.Err)
-				d.repoErrs[key] = msg
-			} else {
-				delete(d.repoErrs, key)
-			}
-		}
+		asked[readBranches+":"+strings.ToLower(r.Owner+"/"+r.Name)] = true
+		errsChanged = d.noteRepoErrLocked(readBranches, r.Owner+"/"+r.Name, r.Err, now) || errsChanged
 		for _, b := range r.Branches {
 			if b.Err == nil {
 				prs = append(prs, b.PRs...)
 			}
 		}
 	}
-	d.ghStatus.LastQueries, d.ghStatus.LastCost = res.Queries, res.Cost
+	var read []github.PR
+	for _, r := range nums.Repos {
+		if r.Err != nil {
+			partial++
+		}
+		asked[readNumbers+":"+strings.ToLower(r.Owner+"/"+r.Name)] = true
+		errsChanged = d.noteRepoErrLocked(readNumbers, r.Owner+"/"+r.Name, r.Err, now) || errsChanged
+		read = append(read, numberPRs(r)...)
+	}
+	if full {
+		for k := range d.repoErrs {
+			if !asked[k] {
+				delete(d.repoErrs, k)
+				errsChanged = true
+			}
+		}
+	}
+	prs = append(prs, read...)
+	d.ghStatus.LastQueries, d.ghStatus.LastCost = res.Queries+nums.Queries, res.Cost+nums.Cost
 	d.mu.Unlock()
+	if errsChanged {
+		d.notify(api.TopicStatus)
+	}
+	if len(read) > 0 {
+		d.log.Info("read PRs by number", "prs", len(read), "repos", len(nums.Repos))
+	}
 
 	// The state engine (internal/state) reads default branches from the
 	// store, so it never matches a repo's default branch to a package. A

@@ -24,6 +24,12 @@ type Settings struct {
 	// Theme is the app's colors: "system" follows the Mac's
 	// appearance, "dark" and "light" force one.
 	Theme string `json:"theme"`
+	// TimeZone is the zone the dashboard writes clock times in: "system"
+	// (the machine's), or an IANA name such as "America/New_York".
+	TimeZone string `json:"time_zone"`
+	// SystemTimeZone names the machine's zone, which "system" is
+	// (read-only).
+	SystemTimeZone string `json:"system_time_zone"`
 	// Merges says who merges each registered plan's PRs, in registration
 	// order.
 	Merges []PlanMerges `json:"merges"`
@@ -53,5 +59,6 @@ type SettingsUpdate struct {
 	KeepDoneDays      *int               `json:"keep_done_days"`
 	Shortcuts         *bool              `json:"shortcuts"`
 	Theme             *string            `json:"theme"`
+	TimeZone          *string            `json:"time_zone"`
 	Merges            map[string]*string `json:"merges"`
 }

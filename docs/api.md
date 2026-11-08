@@ -221,6 +221,7 @@ Auth: none. The slug matches in any case. This is the full derived state from th
     {
       "id": "API1",
       "title": "Search endpoint",
+      "what": "`GET /search` over the index, **paged**.",
       "repo": "recipes-api",
       "size": "S",
       "lane": "Schema",
@@ -260,8 +261,14 @@ Auth: none. The slug matches in any case. This is the full derived state from th
     {"name": "Web", "packages": ["UI1", "UI2"], "rule": "Parallel with the API."}
   ],
   "unmatched": [
+    {"kind": "pr", "ref": "example-org/recipes-api#47", "repo": "example-org/recipes-api", "branch": "try/tokenizer",
+     "number": 47, "title": "Try a new tokenizer", "state": "OPEN", "since": "2026-11-05T22:41:09Z", "new": true},
     {"kind": "pr", "ref": "example-org/recipes-api#45", "repo": "example-org/recipes-api", "branch": "fix/readme",
-     "number": 45, "title": "Fix a typo in the README", "state": "OPEN"}
+     "number": 45, "title": "Fix a typo in the README", "state": "OPEN", "since": "2026-08-12T09:03:55Z"}
+  ],
+  "hidden_unmatched": [
+    {"kind": "branch", "ref": "example-org/recipes-api:old/experiment", "repo": "example-org/recipes-api",
+     "branch": "old/experiment", "since": "2026-07-01T10:00:00Z", "hidden_at": "2026-11-06T08:15:30.200Z"}
   ],
   "warnings": [],
   "alerts": [],
@@ -273,6 +280,7 @@ Package fields:
 
 | Field | Meaning |
 |---|---|
+| `what` | The package table's What cell (or its Description, Summary or Scope column), as written: markdown, left out when empty. The plan page shows it under the title. |
 | `repo`, `size`, `owner`, `lane` | The plan's cells as written, each left out when empty. |
 | `needs`, `needs_note`, `needs_you` | `needs` are the IDs in the Needs cell, `needs_note` the rest of the cell, and `needs_you` its `you:` step. |
 | `yours` | A package owned by `you`. |
@@ -293,7 +301,7 @@ Link fields:
 | `id` | The stored link's id, for `DELETE /api/links/{id}`. It is `0` (left out) for a link reached through another. |
 | `inferred` | The matcher made the link, or the link it was reached through. |
 | `via` | Set when the link was reached through another target linked to the package: a PR's branch, the worktree on that branch, or the agent in that worktree. |
-| `pr`, `worktree`, `agent` | What the link points at, when aimd has it. `agent` has `session_id`, `job_id`, `agent_id`, `kind`, `name`, `state`, `live`, `needs_you`, `needs_you_since`, `reason`, `last_action` (as the plugin reported it, e.g. `Bash: make check`), `last_event_at` and `worktree_path`. |
+| `pr`, `worktree`, `agent` | What the link points at, when aimd has it. `agent` has `session_id`, `job_id`, `agent_id`, `kind`, `name`, `state`, `live`, `needs_you`, `needs_you_since`, `reason`, `last_action` (as the plugin reported it, e.g. `Bash: make check`), `last_event_at`, `worktree_path`, `started_at` (when the session started, or the subagent's first event) and `tokens`. `tokens` is the agent's token count as Claude Code's agent list shows it ("↓ 284.1k tokens"): its latest model response's input, cache read, cache write and output tokens added up, about the size of its context now; a session's is its main loop's. It isn't a running total: each response replaces it, so it can go down after a compaction. It is left out before the first response, and for a session whose plugin is older than the main loop's count. |
 
 Board fields:
 
@@ -302,7 +310,8 @@ Board fields:
 | `merges` | Who merges the plan's PRs, from its `Merges:` line: `you` (the default, also with no line) or `lead` (the plan's lead session merges its agents' PRs). A line with any other value reads as `you` and is an `unknown-merges` warning. It decides whether a ready PR of the plan needs you; see [`GET /api/prs`](#get-apiprs-pull-requests-and-what-they-wait-on). |
 | `total`, `counts`, `provisional` | `total` counts the packages on the board, and `counts` counts them by lifecycle, provisional packages included. `provisional` counts those alone. |
 | `lanes` | The plan's lanes table, in file order: `name`, `packages` (the IDs the row lists), `rule` (the row's other cells) and `single_writer` (the row says at most one agent at a time works in the lane). A package's `lane` names one. The board draws them as swimlanes. |
-| `unmatched` | Same-repo PRs in the plan's repos that no package of any plan links: open ones, and ones closed after the plan was registered. Then branches with a worktree and no PR that nothing links. Each has the matcher's `note` when it has one (`ambiguous: …`, `you unlinked it from …`). |
+| `unmatched` | Same-repo PRs in the plan's repos that no package of any plan links: open ones, and ones closed after the plan was registered. Then branches with a worktree and no PR that nothing links. Each has the matcher's `note` when it has one (`ambiguous: …`, `you unlinked it from …`), `since`, when it appeared (a PR's GitHub `createdAt`, or when aimd first stored it while it hasn't read it from GitHub; a branch's first sighting in a worktree), and `new` when that is after the plan was registered (or isn't known). The plan page lists the new ones first and the others under "Older". |
+| `hidden_unmatched` | What would be in `unmatched` but that you said isn't part of this plan (**Not part of this plan** on its page), with `hidden_at`, most recently hidden first. It is this plan's alone: other plans' `unmatched` still list it. |
 | `warnings` | Parser warnings (`unknown-merges` among them) and dependency cycles: `kind`, `line`, `id`, `message`. |
 | `alerts` | `unlocked` lists every package whose last change was blocked → ready. Also `stalled`, `lane_collision` (with `lane`), and `off_plan` (with the agent in `ref`). |
 
@@ -362,9 +371,10 @@ Auth: none. A `since` that isn't RFC 3339 gets `400`, and an unknown slug gets `
 
 - the monitored sessions on the plan that wait on you: a permission prompt, a question, a plan approval, or a background job's reply;
 - the PRs on it that need you: your review is requested, or it is ready to merge and the plan merges `you`;
-- a provisional package whose row is still missing.
+- a provisional package whose row is still missing;
+- your steps that are ready: a package that is `yours` (`Owner` you) or has a `needs_you` step, and whose `lifecycle` is `ready`. Its item's `reason` is `your step is ready`, or `your step is ready: <its you: step>`.
 
-Red CI, conflicts and changes requested wait on an agent or on the lead, so they don't count. Your own steps and `you:` steps are on the board instead: a package's `yours` and `needs_you`, and its `you` badge. The count changes with the `inbox` topic on `GET /api/stream` as well as `plans`.
+Red CI, conflicts and changes requested wait on an agent or on the lead, so they don't count. Neither does your step before it's ready: until then it's on the board only, as a package's `yours` and `needs_you`, and its `you` badge. The count changes with the `inbox` topic on `GET /api/stream` as well as `plans`.
 
 ### `POST /api/plans/detect`: does this file look like a plan?
 
@@ -464,9 +474,36 @@ aimd links the PR to every package the agent is linked to, with that link's meth
 - a stored spawn or manual link for `session_id/agent_id`, where an empty `agent_id` means the main loop;
 - failing that, the agent as the last board reached it, such as an agent working in a linked worktree.
 
-If aimd has no row for the PR yet, it stores one as `OPEN` with only the URL known. So the card shows the PR in review before the next GitHub poll fills in the rest.
+If aimd has no row for the PR yet, it stores one as `OPEN` with only the URL known: a placeholder, which `GET /api/prs` and the boards mark `"unread": true`. So the card shows the PR in review before GitHub is read, and the dashboard shows it as not read from GitHub yet rather than as an open PR. aimd then reads it by number at once, as [`POST /api/prs/refresh`](#post-apiprsrefresh-read-a-pr-from-github-now) does, which fills in the rest within seconds. Its idle GitHub ticks (every `poll.github_idle`) read any placeholder still left, so a read that failed is tried again.
 
 An agent linked to nothing gets `404`, with a message saying to link it first. A URL that isn't `https://github.com/<owner>/<repo>/pull/<n>` gets `400`.
+
+### `POST /api/prs/refresh`: read a PR from GitHub now
+
+Auth: write. It answers `202`.
+
+The plugin sends it after a tool call that worked created, merged or closed a PR: `gh pr create` by an agent no package claims, `gh pr merge`, `gh pr close`, or the GitHub MCP server's `merge_pull_request` (or an `update_pull_request` that closes). aimd reads that PR from GitHub by number soon, instead of at its next poll, and stores what GitHub answers. The request only says which PR to read: nothing in it is taken as the PR's state.
+
+```json
+{"ref": "12", "repo": "example-org/recipes-api", "cwd": "/Users/me/Projects/recipes-api", "action": "merge"}
+```
+
+| Field | Meaning |
+|---|---|
+| `ref` | The PR as the command named it: a pull request URL, `owner/repo#123`, a number (`123` or `#123`), or a head branch. Empty means the PR of the branch checked out at `cwd`, as `gh pr merge` takes no argument. |
+| `repo` | The repo a number or branch is in, when the command named one (`-R`/`--repo`): `owner/repo`, or its GitHub URL. Without it, the repo at `cwd`. |
+| `cwd` | The absolute folder the command ran in. |
+| `action` | `create`, `merge` or `close`. It is logged and changes nothing. |
+
+A branch names its stored open PRs in that repo, and none when aimd has none: its branch poll finds a new one. The answer lists the PRs aimd will read (`prs`, as `owner/repo#123`) and how many weren't waiting already (`queued`):
+
+```json
+{"prs": ["example-org/recipes-api#12"], "queued": 1}
+```
+
+Requests are joined into one read, at most one every 10 seconds, so a burst of merges costs one GitHub query a repo chunk (1 point). None run while the budget says stop: the polls read those PRs later. A repo GitHub can't read is listed in `GET /api/status`'s `github.unreadable`.
+
+A number or branch with neither `repo` nor an absolute `cwd`, a `cwd` outside every GitHub repo aimd knows, or a `ref` that is no PR or branch gets `400`.
 
 ### `POST /api/links/manual`: link by hand
 
@@ -586,6 +623,17 @@ Auth: none. `cwd` must be absolute, or the answer is `400`. A directory outside 
 Auth: none, except for `waiting_on` (below). The types are `api.Sessions` and `api.Session`. It lists the live sessions as aimd has them. Headless `claude -p` runs are left out and counted in `hidden_headless`, unless `all=1` is given.
 
 Each session also says whether it is monitored (`monitored`, `monitored_why`; see [Monitored sessions](#monitored-sessions)) and which terminal app it runs in (`terminal`, `terminal_app`; see [Terminal apps](#terminal-apps)).
+
+### Which plugin build it runs: `plugin_build`
+
+A session loads the plugin when it starts and keeps that build until it restarts, so after a `git pull` in the checkout the plugin is read from, the sessions already running still run the old one. The plugin reports which build it loaded on `session_start`, and aimd keeps it on the session's row.
+
+| Field | Meaning |
+|---|---|
+| `plugin_build` | The build the session loaded: `git describe --tags --always` of the last commit that changed the plugin's folder, with `-dirty` when its tracked files differed from it, e.g. `v1.0.0-12-gabc1234`. Commits that don't touch the plugin don't change it. Left out when not reported: a plugin from before the field, or a folder that isn't a git checkout. |
+| `plugin_root` | The folder it loaded the plugin from (the one holding `.claude-plugin/plugin.json`). |
+| `plugin_on_disk` | The build in that folder now, worked out by aimd the same way and cached for a minute. aimd only looks in a folder whose `plugin.json` names this plugin. Left out when it can't tell. |
+| `plugin_outdated` | `true` when `plugin_build` and `plugin_on_disk` are both known and differ: the session runs an older plugin, and a restart (quit, then `claude --resume`) loads the one on disk. The dashboard's Sessions page marks it **Older plugin**. |
 
 ### What a session waits on: `waiting_on`
 
@@ -796,7 +844,7 @@ Like every hook, they never fail the command.
 
 - **Needs you** lists only monitored sessions and the PRs that count.
 - **Sessions** (`/app/sessions`) lists the monitored sessions by plan: a group per plan, in registration order, headed by the plan's title and linked to its page, then **No plan · watched** for the rest. A session's detail says why it is monitored.
-- **Every other session** is listed only in a collapsed **Not monitored (N)** group. It's a `<details>` that works without JavaScript and stays open across live refreshes. Each row there has a **Watch** button. A session aimd has no session id for yet gets a disabled one, with the reason as its title.
+- **Every other session** is listed only in a collapsed **Not monitored** group. Like every group on the page it's a `<details>` that works without JavaScript, and the browser remembers it open or folded across live refreshes and visits. Each row there has a **Watch** button. A session aimd has no session id for yet gets a disabled one, with the reason as its title.
 - **A watched session's detail** has **Stop monitoring**.
 - **Watch and Stop monitoring** post to `/app/sessions/watch` and `/app/sessions/unwatch` with the page's CSRF token, and answer with a toast that has an Undo.
 - **With `monitor = "all"`,** there is no Not monitored group and no Watch button.
@@ -837,8 +885,9 @@ The types are `api.PRs` and `api.PR`. The rule for what each PR waits on is in `
 | `monitored` | The PR counts for Needs you (see [PRs](#prs) above): a registered plan's board links it, or it is a same-repo PR on the branch a monitored session works on. With `monitor = "all"`, every PR counts. |
 | `plan`, `pkg` | The registered plan (and package) it is on: the first board that links it, else the plan of the monitored session on its branch. `plan_slug` and `plan_pkg` are only what the PR body's `Plan:` line says. |
 | `review_requested`, `review_requested_since` | Your review is requested on it, as the last review-request search of its owner found, and when aimd first saw the request. This is the fact; `needs_you` says whether it counts. |
+| `unread` | aimd has never read the PR from GitHub: an agent reported it by URL ([`POST /api/links/pr`](#post-apilinkspr-a-linked-agent-created-a-pr)) before a poll read it. Only `repo`, `number` and `url` are known, and `state`'s `OPEN` is a guess. It waits on `none` with the reason `not read from GitHub yet`, and never needs you. An open row counts as unread while it has neither a `head_branch` nor an `updated_at`, which every PR GitHub sends has. |
 
-The rule, in order, for an open PR:
+The rule, in order, for an open PR that has been read from GitHub:
 
 1. **Review requested** (`review_requested`, waiting on you): your review is requested. This holds on any open PR, even one that doesn't count (another person's project), on a lead-merged plan, on a draft and while an agent works, because someone asked you by name. Steps 2–4 apply only to a PR that counts.
 2. **Agent** (`agent`): a live agent still works on its package (a board's agent link that runs and hasn't finished its turn), or a live session works on its branch (working, quiet, or waiting on you mid-turn).
@@ -861,6 +910,8 @@ A merged or closed PR, or one that doesn't count and has no review request, wait
 Auth: write. `aim go` calls this. The logic is in `internal/focus` and `internal/term`.
 
 The endpoint takes any live session, background ones included: it attaches them. Only the dashboard holds back its Go buttons, as described in [Terminal apps](#terminal-apps). The dashboard's Go buttons post to their own pages' routes (`/app/inbox/go`, `/app/overview/go`, `/app/sessions/go`, `/app/plans/{slug}/go`), which call the same logic and answer with a toast. A plain form post here needs the token.
+
+A plan's page posts `/app/plans/{slug}/go` with `to`, what its button said: `agent` or `lead`. With `pkg`, it is the package's Go: to a live agent linked to it, or else to the plan's lead. Without `pkg`, it is the plan's Go to lead. The plan's lead is the newest of the sessions that registered it (`POST /api/plans` with `session_id`) that Go can reach under the rules in [Terminal apps](#terminal-apps). aimd decides the target again from its own state and takes no session from the form. It answers `409` with the reason when Go is off now, or when it would go to the other of agent and lead than `to` says.
 
 Request:
 
@@ -929,7 +980,8 @@ The inbox at `/app/inbox` has one item per waiting episode. An episode begins wh
 
 - a monitored session starts waiting on you: a permission prompt, a question, a plan approval, or a background job's reply;
 - a PR starts needing you: your review is requested, on any PR, or it is ready to merge and the merge is yours (see [`GET /api/prs`](#get-apiprs-pull-requests-and-what-they-wait-on));
-- a [provisional package](#provisional-packages)'s plan row is still missing.
+- a [provisional package](#provisional-packages)'s plan row is still missing;
+- a registered plan's package is your step and ready: it is `yours` (`Owner` you) or has a `needs_you` step (`you:` in its Needs cell), and its `lifecycle` is `ready`. The dashboard's plan page badges the same packages "needs you".
 
 The rules are in `internal/inbox`, and the types in `internal/web/api/inbox.go`.
 
@@ -942,6 +994,7 @@ An item's `id` is its row id. It is stable across aimd restarts, and it is what 
 | `session` | `session:<row id>`: the session's row, which outlives `/clear` and a background job's respawn | From `needs_you_since` until the session stops needing you. A wait that begins later, or a different kind of wait, is a new episode. The poll's generic reason ("permission prompt") and the plugin's richer one ("permission prompt: Bash: …") are the same episode. |
 | `pr` | `owner/repo#123` | From the moment the PR rule says it needs you until it says it doesn't. Review requested and ready to merge are separate episodes. |
 | `plan` | `planrow:<slug>/<ID>` | A provisional package whose row is still missing from its plan file. It runs from 10 minutes after aimd first saw the package's work, once its plan has a monitored lead, until one of these: the row lands (`its row is in search-plan.md now`); you Mark the package done; or the package goes (expired, or the plan unregistered). |
+| `plan` | `step:<slug>/<ID>` (the slug in lower case, the ID in upper case) | Your step: from when the package became ready (its `since`) until it isn't your step and ready any more: it is done (`it was marked done`, `it is ✅ in search-plan.md now`, `it is done: its PR merged`), work on it began, it has a PR in review, it is blocked again (`it is blocked again: it needs UI1`), or the package goes (its plan unregistered, or its row taken out of the file). Undo of Mark done makes it ready again: a new episode. A provisional package is never one. |
 
 `kind` is one of:
 
@@ -949,7 +1002,8 @@ An item's `id` is its row id. It is stable across aimd restarts, and it is what 
 - `reply`: a background job waiting for a reply;
 - `prompt`: a dialog the poller can't name, such as `dialog open` or `waiting`;
 - `review` or `merge`;
-- `plan_row`: "Plan row missing".
+- `plan_row`: "Plan row missing";
+- `your_step`: "Your step".
 
 ### States and moves
 
@@ -957,7 +1011,7 @@ An item's `id` is its row id. It is stable across aimd restarts, and it is what 
 
 | Move | From | To | Notes |
 |---|---|---|---|
-| `go` | open, progress | progress | For a session, it switches to the terminal tab first, where Go is allowed ([Terminal apps](#terminal-apps)); otherwise it answers `422` with the reason. For a PR, the page opens it on GitHub. `due_at` is 10 minutes later: if the item still waits then, it returns to Open by itself. |
+| `go` | open, progress | progress | For a session, it switches to the terminal tab first, where Go is allowed ([Terminal apps](#terminal-apps)); otherwise it answers `422` with the reason. For a PR, the page opens it on GitHub. For your step, the page opens the package on its plan's page (**Open in plan**). `due_at` is 10 minutes later: if the item still waits then, it returns to Open by itself. |
 | `snooze` (`15m`, `1h`, `tomorrow`, `change`) | open, progress | snoozed | `tomorrow` is 9:00 local time the next day (before 4:00, the same day). A timed snooze returns to Open at `due_at`, or earlier when the wait changes (new commits, CI, the question). `change` has no `due_at`. |
 | `done` | open, progress, snoozed | done | |
 | `open` (back to Open) | progress, snoozed, done | open | |
@@ -1010,6 +1064,7 @@ Notifications go only for sessions whose wait is an Open item, never In progress
 
 - **A PR item** has `pr`, `pr_url` and `why` (the PR rule's reason) instead of the session fields.
 - **A `plan_row` item** has `plan` and `pkg`, the title `<ID> isn't in <plan file>`, the suggested row as its `detail`, `why`, and the branch or PR that named the package when one did. Go refuses it (`422`): add the row instead.
+- **A `your_step` item** has `plan` and `pkg`, the title `<ID> <title>`, its `you:` step as its `detail` (empty for a package whose `Owner` is you), `why` (`your step is ready`, with the step after a colon), and `repo` when its row names one. Its `since` is when the package became ready. A change of its `you:` step is a change: it wakes a snooze "until it changes". Marking the package done (`POST /api/plans/{slug}/packages/{id}/done`, or the dashboard's **Mark done**) ends it. The dashboard offers Mark done on the item only for a package whose `Owner` is you: an item there by its `you:` step alone is an agent's package, finished by its PR or its ✅, and is dismissed with `done`.
 - `due_at` and `snooze` are there while an item is In progress or Snoozed; `ended_at` and `end_reason` once its episode ended.
 
 A bad `tab` gets `400`.
@@ -1091,9 +1146,11 @@ The Settings page at `/app/settings` and these endpoints read and change the sam
 | `keep_done_days` | `30` | `7`, `30`, `90` | How long Done items whose episode ended are kept. A shorter history deletes the older ones at the next sync pass. |
 | `shortcuts` | `true` | bool | The dashboard's keyboard shortcuts. |
 | `theme` | `"system"` | `"system"`, `"dark"`, `"light"` | The dashboard's colors. `system` follows the Mac's appearance (the browser's `prefers-color-scheme`), and changes with it at once. `dark` and `light` force one. |
+| `time_zone` | `"system"` | `"system"`, or an IANA name such as `"America/New_York"` or `"UTC"` | The zone the dashboard writes clock times in, and whose midnight starts "today" and "tomorrow" (and ends "Until tomorrow 9am" snoozes). `system` is the zone of the machine aimd runs on, from `/etc/localtime` (not `TZ`). A name must load on that machine; a stored one that stops loading counts as `system`. The API's own times stay UTC. |
+| `system_time_zone` | the machine's | read-only | The zone `system` stands for, as in `"Europe/Berlin"`. A change to it is ignored. |
 | `merges` | each plan's `Merges:` line | `you`, `lead` | Who merges each registered plan's PRs. A change is stored as an override of that plan's line. It replaces the board's `merges` before the PR rule reads it, so `GET /api/prs`, Needs you and the notifications follow it. The plan file is never changed. Unregistering the plan drops its override. |
 
-Open pages follow a change within seconds. Every change sends `{"topic": "inbox"}` on `GET /api/stream`. A `merges` change also sends `{"topic": "prs"}`, after a sync pass that moves the PRs it affects.
+Open pages follow a change within seconds. Every change sends `{"topic": "inbox"}` on `GET /api/stream`. A `merges` change also sends `{"topic": "prs"}`, after a sync pass that moves the PRs it affects. A `time_zone` change sends every topic, so every open page redraws its times.
 
 ### `GET /api/settings`: every setting
 
@@ -1101,6 +1158,7 @@ Open pages follow a change within seconds. Every change sends `{"topic": "inbox"
 {
   "tab_count": true, "notifications": true, "chime": true, "highlight": true,
   "back_to_open_minutes": 10, "keep_done_days": 30, "shortcuts": true, "theme": "system",
+  "time_zone": "system", "system_time_zone": "Europe/Berlin",
   "merges": [
     {"plan": "search", "title": "Recipe search: dispatch plan", "merges": "you", "line": "you", "override": false},
     {"plan": "billing", "title": "Billing exports", "merges": "you", "line": "lead", "override": true}
@@ -1119,7 +1177,7 @@ Open pages follow a change within seconds. Every change sends `{"topic": "inbox"
 Auth: write. The body has any of the fields above. `merges` is an object from a plan's slug (any case) to `"you"` or `"lead"`. `""` or `null` drops the override, so the plan's line decides again.
 
 ```json
-{"chime": true, "back_to_open_minutes": 5, "theme": "dark", "merges": {"billing": "lead", "search": null}}
+{"chime": true, "back_to_open_minutes": 5, "theme": "dark", "time_zone": "America/New_York", "merges": {"billing": "lead", "search": null}}
 ```
 
 Response `200`: every setting, as `GET` gives them.
@@ -1131,7 +1189,7 @@ Everything is checked before anything is stored. If one value fails, nothing cha
 
 The page's forms post to `/app/settings/set` and `/app/settings/merges` with its CSRF token, and each answer's toast has an Undo that posts the old value back:
 
-- **`/app/settings/set`** takes `key` and `value`. `value` is `on` or `off` for a switch, the number for a timing, or `system`, `dark` or `light` for `theme`.
+- **`/app/settings/set`** takes `key` and `value`. `value` is `on` or `off` for a switch, the number for a timing, `system`, `dark` or `light` for `theme`, or `system` or a zone's name for `time_zone`.
 - **`/app/settings/merges`** takes `plan` and `merges`.
 
 ```sh
@@ -1143,15 +1201,15 @@ curl -s -X POST -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:77
 
 ### `GET /api/status`: aimd's health
 
-Auth: none. `aim status` reads it.
+Auth: none. `aim status` reads it, and prints the running aimd's `version`, with a note when it isn't the `aim` binary's own (`aim --version`): an update replaces the binaries while the old aimd keeps running until `aim up` restarts it.
 
 - `version`, `started_at`, `now`;
 - `watchers`: how many dashboard pages are connected to the stream;
 - `mod_live`: whether the plugin is reporting;
 - `sources`: each poller (`sessions`, `worktrees`, `github`, `github_search`, `retention`), with its interval, last run, last success, last error and whether it is stale;
-- `github`: the rate-limit budget;
+- `github`: the rate-limit budget, and `unreadable`: the repos GitHub didn't answer for on their last read (not found, no access for the token, a failed token, or a PR number GitHub has no PR for), each with `repo`, `error` and `since`, sorted by repo. Their PRs stay as last read. `aim status` names one ("GitHub can't read owner/name") or counts several;
 - `counts`: sessions, PRs and worktrees, including what needs you (see [Monitored sessions](#in-get-apisessions));
-- `events`: counters for what the plugin has sent: batches, events, events dropped as repeats or of unknown kinds, and batches refused.
+- `events`: counters for what the plugin has sent: batches, events, events dropped as repeats or of unknown kinds, older plugins' `tool_check` asks ignored (`ignored`, below), and batches refused.
 
 ### `GET /api/worktrees[?all=1][&repo=<path>]`: worktrees
 
@@ -1162,6 +1220,7 @@ Auth: none. The worktrees the last scans found: path, main checkout, branch, HEA
 Auth: the token. The plugin POSTs `{"events": [ … ]}`: at most 200 events and 256 KB a batch, about once a second. aimd answers `200 {}` as soon as the batch is decoded, and applies batches in order.
 
 - Events of a kind aimd doesn't know, or missing a required field, are dropped and counted in `GET /api/status`'s `events`.
+- A `needs_you` whose `source` is `tool_check` is dropped too, before anything else looks at it: no state, no Needs you item, no chime, no timeline row. Plugins from before the "needs you" fix send one for every call Claude Code's `tool.check` answers "ask", and in auto mode the classifier then decides nearly all of them with no dialog. Those plugins report a dialog that does open as `permission_request`, which still counts. The dropped ones are counted in `events.ignored`.
 - A malformed body gets `400`, a missing or wrong token `401`, and an oversized batch `413`. The plugin drops a batch refused that way.
 - On a timeout or a `5xx`, the plugin keeps the events and tries again.
 
@@ -1182,6 +1241,7 @@ Auth: the token. The plugin POSTs `{"events": [ … ]}`: at most 200 events and 
 | `DELETE /api/plans/{slug}/packages/{id}/done` | write | Undo Mark done |
 | `POST /api/links/spawn` | write | Link a spawned agent or remote session, making a provisional package for one the plan file lacks |
 | `POST /api/links/pr` | write | Link a PR a linked agent created |
+| `POST /api/prs/refresh` | write | Read a PR a tool call created, merged or closed from GitHub now |
 | `POST /api/links/manual` | write | Link anything by hand |
 | `DELETE /api/links` | write | Unlink by target (tombstone) |
 | `DELETE /api/links/{id}` | write | Unlink a stored link by id |

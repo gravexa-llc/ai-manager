@@ -156,12 +156,70 @@ type fakeGitHub struct {
 
 	// branchDelay is how long each BranchPRs call takes.
 	branchDelay time.Duration
+
+	// PRsByNumber: the PRs GitHub has by "owner/name#n" (lower-case
+	// key), the repos it fails for (lower-case "owner/name"), and the
+	// calls. A number it hasn't got fails with ErrNotFound.
+	byNumber  map[string]github.PR
+	numberErr map[string]error
+	numberReq []ghCall
 }
 
 type ghCall struct {
 	at    time.Time
 	repos []github.RepoBranches
 	owner []string
+	nums  []github.RepoNumbers
+}
+
+func (f *fakeGitHub) PRsByNumber(ctx context.Context, repos []github.RepoNumbers) github.NumberPRsResult {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]github.RepoNumbers, len(repos))
+	for i, r := range repos {
+		cp[i] = github.RepoNumbers{Owner: r.Owner, Name: r.Name, Numbers: slices.Clone(r.Numbers)}
+	}
+	f.numberReq = append(f.numberReq, ghCall{at: time.Now(), nums: cp})
+	res := github.NumberPRsResult{Queries: 1, Cost: 1}
+	for _, r := range repos {
+		key := strings.ToLower(r.Owner + "/" + r.Name)
+		rp := github.RepoNumberPRs{Owner: r.Owner, Name: r.Name}
+		if err := f.numberErr[key]; err != nil {
+			rp.Err = err
+			for _, n := range r.Numbers {
+				rp.Numbers = append(rp.Numbers, github.NumberPR{Number: n, Err: err})
+			}
+			res.Repos = append(res.Repos, rp)
+			continue
+		}
+		rp.Repo = r.Owner + "/" + r.Name
+		for _, n := range r.Numbers {
+			np := github.NumberPR{Number: n}
+			if pr, ok := f.byNumber[prKey(r.Owner+"/"+r.Name, n)]; ok {
+				np.PR = &pr
+			} else {
+				np.Err = github.ErrNotFound
+				rp.Err = cmpOrErr(rp.Err, np.Err)
+			}
+			rp.Numbers = append(rp.Numbers, np)
+		}
+		res.Repos = append(res.Repos, rp)
+	}
+	return res
+}
+
+// cmpOrErr returns the first non-nil error.
+func cmpOrErr(a, b error) error {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+func (f *fakeGitHub) numberCalls() []ghCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.numberReq)
 }
 
 func (f *fakeGitHub) BranchPRs(ctx context.Context, repos []github.RepoBranches) github.BranchPRsResult {

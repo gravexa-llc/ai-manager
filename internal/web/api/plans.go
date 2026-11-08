@@ -54,8 +54,12 @@ type Plan struct {
 	// swimlanes. A package's Lane names one.
 	Lanes     []Lane      `json:"lanes"`
 	Unmatched []Unmatched `json:"unmatched"`
-	Warnings  []Warning   `json:"warnings"`
-	Alerts    []Alert     `json:"alerts"`
+	// HiddenUnmatched are the PRs and branches that would be in Unmatched
+	// but that you said aren't part of this plan (Not part of this plan,
+	// on its page), most recently hidden first.
+	HiddenUnmatched []Unmatched `json:"hidden_unmatched"`
+	Warnings        []Warning   `json:"warnings"`
+	Alerts          []Alert     `json:"alerts"`
 
 	// DerivedAt is when the state engine last ran.
 	DerivedAt time.Time `json:"derived_at"`
@@ -65,6 +69,9 @@ type Plan struct {
 type Package struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	// What is the package table's What cell (or Description, Summary,
+	// Scope), as written: markdown.
+	What string `json:"what,omitempty"`
 	// Repo, Size, Owner and Lane are the plan's cells as written.
 	Repo  string `json:"repo,omitempty"`
 	Size  string `json:"size,omitempty"`
@@ -193,7 +200,10 @@ type LinkPR struct {
 	Title  string `json:"title,omitempty"`
 	URL    string `json:"url,omitempty"`
 	// State is OPEN, MERGED or CLOSED.
-	State            string    `json:"state"`
+	State string `json:"state"`
+	// Unread is true while aimd has never read the PR from GitHub (see
+	// PR.Unread): State's OPEN is a guess.
+	Unread           bool      `json:"unread,omitempty"`
 	Draft            bool      `json:"draft,omitempty"`
 	HeadBranch       string    `json:"head_branch,omitempty"`
 	ChecksState      string    `json:"checks_state,omitempty"`
@@ -235,6 +245,15 @@ type LinkAgent struct {
 	LastAction   string    `json:"last_action,omitempty"`
 	LastEventAt  time.Time `json:"last_event_at,omitzero"`
 	WorktreePath string    `json:"worktree_path,omitempty"`
+	// StartedAt is when it started: a session's start, or a subagent's
+	// first event.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	// Tokens is the agent's token count as Claude Code's agent list shows
+	// it ("↓ 284.1k tokens"): its latest model response's input, cache
+	// read, cache write and output tokens, so about the size of its context
+	// now, not a running total. A session's is its main loop's. Absent
+	// when unknown (before the first response, or from an older plugin).
+	Tokens int64 `json:"tokens,omitempty"`
 }
 
 // Unmatched is a PR or branch in the plan's repos that matches no
@@ -248,6 +267,33 @@ type Unmatched struct {
 	State  string `json:"state,omitempty"`
 	// Note says why it didn't match, when the matcher knows.
 	Note string `json:"note,omitempty"`
+	// Since is when it appeared: a PR's opening (GitHub's createdAt, or
+	// when aimd first stored it), a branch's first sighting in a worktree.
+	// New is true when that is after the plan was registered, or isn't
+	// known.
+	Since time.Time `json:"since,omitzero"`
+	New   bool      `json:"new,omitempty"`
+	// HiddenAt is when you hid it from the plan (HiddenUnmatched only).
+	HiddenAt time.Time `json:"hidden_at,omitzero"`
+}
+
+// HideRequest hides a PR or branch from a plan's Unmatched lane (Hidden:
+// "Not part of this plan"), or restores it (!Hidden). Kind is pr or
+// branch, Ref as in Target. Hiding links and unlinks nothing.
+type HideRequest struct {
+	Plan   string `json:"plan"`
+	Kind   string `json:"kind"`
+	Ref    string `json:"ref"`
+	Hidden bool   `json:"hidden"`
+}
+
+// HideResult answers a HideRequest: the target as stored, and whether it
+// is hidden now. Changed is false when it already was as asked.
+type HideResult struct {
+	Plan string `json:"plan"`
+	Target
+	Hidden  bool `json:"hidden"`
+	Changed bool `json:"changed"`
 }
 
 // Warning is a problem with the plan itself: a parser warning or a

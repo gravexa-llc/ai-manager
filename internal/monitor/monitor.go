@@ -208,6 +208,9 @@ func Has(ws []Why, reason string) bool {
 type Set struct {
 	mode string
 	why  map[string][]Why // by session key
+	// leads are the stored plan leads (rule 1) by lower-case plan slug, in
+	// the order they registered, running or not.
+	leads map[string][]store.MonitoredSession
 	// prs are the PRs a board links, as lower-case "owner/repo#123";
 	// branches the monitored sessions' branches, lower-case
 	// "owner/repo" + "\x00" + branch.
@@ -263,6 +266,18 @@ func (s *Set) Why(row store.Session) []Why {
 		return nil
 	}
 	return s.why[row.Key]
+}
+
+// Leads are the sessions that registered plan as its lead (rule 1), as the
+// store keeps them (store.MonitorPlanLead), in the order they registered:
+// running or not. A row's SessionID is the session's id as the store last
+// saw it; match it to a live row by that id or the one before its last
+// /clear. A nil set has none.
+func (s *Set) Leads(plan string) []store.MonitoredSession {
+	if s == nil {
+		return nil
+	}
+	return s.leads[strings.ToLower(plan)]
 }
 
 // Monitored reports whether a session row is monitored.
@@ -356,7 +371,7 @@ type Input struct {
 
 // Compute decides which of in.Sessions are monitored, and which PRs.
 func Compute(in Input) *Set {
-	s := &Set{mode: ModeOptIn, why: map[string][]Why{}, prs: map[string]bool{}, branches: map[string]bool{},
+	s := &Set{mode: ModeOptIn, why: map[string][]Why{}, leads: map[string][]store.MonitoredSession{}, prs: map[string]bool{}, branches: map[string]bool{},
 		on: map[string]planPkg{}, branchPlan: map[string]string{}, merges: map[string]string{},
 		pkgWorking: map[string]bool{}, branchWorking: map[string]bool{}}
 	if in.Mode == ModeAll {
@@ -369,6 +384,8 @@ func Compute(in Input) *Set {
 		switch m.Reason {
 		case store.MonitorPlan:
 			bySID[m.SessionID] = append(bySID[m.SessionID], Why{Reason: ReasonPlan, Plan: m.PlanSlug, Since: m.Since})
+			k := strings.ToLower(m.PlanSlug)
+			s.leads[k] = append(s.leads[k], m)
 		case store.MonitorWatch:
 			bySID[m.SessionID] = append(bySID[m.SessionID], Why{Reason: ReasonWatch, Since: m.Since})
 		}

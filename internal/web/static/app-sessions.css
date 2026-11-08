@@ -9,11 +9,8 @@
 .srow .tag { flex: 0 0 auto; }
 .srow.subrow { padding-left: 38px; }
 
-/* Not monitored: a <details> whose summary is a group header. */
-.notmon > summary { list-style: none; }
-.notmon > summary::-webkit-details-marker { display: none; }
-.notmon-toggle::after { content: "Show \25BE"; }
-.notmon[open] .notmon-toggle::after { content: "Hide \25B4"; }
+/* Not monitored: a section that folds (the shell's .group), with a hint
+   under its rows. */
 .notmon-hint { margin: 0; padding: 10px 16px; }
 
 /* A Not monitored row: the row link, then Watch or the command. */
@@ -33,6 +30,16 @@
 .sd-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dtext { margin: 0; font-size: 13px; line-height: 1.5; }
 .detail .code { margin: 8px 0 0; }
+
+/* Agent lines (the shell's .agent-now): its own under the title; a
+   session's live subagents, each a link to its detail; the finished
+   ones, folded. */
+.sd-now { margin-top: 10px; font-size: 13px; }
+.sd-agents { font-size: 13px; }
+.sd-agent { display: block; padding: 6px 8px; margin: 0 -8px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+a.sd-agent:hover { background: var(--hover); color: var(--ink); }
+.sd-finished > summary { cursor: pointer; }
+.sd-finished .hint { margin: 4px 0 0; }
 
 @media (max-width: 900px) {
   .nmrow { flex-wrap: wrap; padding-bottom: 8px; }

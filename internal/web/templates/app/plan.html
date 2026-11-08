@@ -5,10 +5,10 @@ colors are classes in app-plan.css, and the graph and the timeline's bars are
 SVG placed with attributes. The graph's boxes are SVG links with data-pane,
 which the shell loads into the panes like any other; without the script
 they load the page. Each view scrolls sideways in its box, which keeps its
-scroll across swaps (the shell keeps it by id). The graph opens scrolled to
-its far right (data-scroll-start="end": the rightmost columns are usually
-the work going on), and app-plan.js then brings the selected box into view
-when a view first shows. */}}
+scroll across swaps (the shell keeps it by id). When a view first shows,
+app-plan.js pans it from its left end just far enough to show the boxes
+marked data-focus (the graph's packages being worked on, markFocus), then
+brings the selected box into view. */}}
 
 {{define "head" -}}
 <link rel="stylesheet" href="/static/app-plan.css?v={{.AssetVersion}}">
@@ -44,7 +44,7 @@ when a view first shows. */}}
 {{/* The dependency graph: one SVG, its boxes links (data-pane) and list
 items (data-item, for j / k). */}}
 {{define "plan-graph" -}}
-<div id="plan-graph" class="pg-scroll" data-keep-scroll data-scroll-start="end">
+<div id="plan-graph" class="pg-scroll" data-keep-scroll>
 <svg class="pg" width="{{.W}}" height="{{.H}}" viewBox="0 0 {{.W}} {{.H}}" role="group" aria-labelledby="pg-title">
 <title id="pg-title">{{.Label}}</title>
 <defs>
@@ -56,7 +56,7 @@ items (data-item, for j / k). */}}
 {{range .Edges}}<path class="{{.Class}}" d="{{.D}}" marker-end="url(#{{.Marker}})"></path>
 {{end -}}
 </g>
-{{range .Nodes}}<a class="pg-node lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Cycle}} cycle{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}" tabindex="0" aria-label="{{.Label}}"{{if .Sel}} aria-current="true"{{end}}><title>{{.Tip}}</title><rect class="pg-box" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="8" ry="8"></rect><text class="pg-id" x="{{.TX}}" y="{{.TY}}">{{.ID}}</text><text class="pg-title" x="{{.TX}}" y="{{.TY2}}">{{.Title}}</text>{{with .Badge}}<g class="pg-badge b-{{.Kind}}"><rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="9" ry="9"></rect><text x="{{.TX}}" y="{{.TY}}" text-anchor="middle">{{.Text}}</text></g>{{end}}</a>
+{{range .Nodes}}<a class="pg-node lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Cycle}} cycle{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}"{{if .Focus}} data-focus{{end}} tabindex="0" aria-label="{{.Label}}"{{if .Sel}} aria-current="true"{{end}}><title>{{.Tip}}</title><rect class="pg-box" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="8" ry="8"></rect><text class="pg-id" x="{{.TX}}" y="{{.TY}}">{{.ID}}</text><text class="pg-title" x="{{.TX}}" y="{{.TY2}}">{{.Title}}</text>{{with .Badge}}<g class="pg-badge b-{{.Kind}}"><rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="9" ry="9"></rect><text x="{{.TX}}" y="{{.TY}}" text-anchor="middle">{{.Text}}</text></g>{{end}}</a>
 {{end -}}
 </svg>
 </div>
@@ -69,7 +69,7 @@ items (data-item, for j / k). */}}
 <div class="kb">
 {{range .Kanban}}<section class="kb-col lc-{{.Key}}" aria-label="{{.Label}}">
 <h3 class="khead"><span><span class="sw"></span> {{.Label}}</span><span>{{len .Cards}}</span></h3>
-{{range .Cards}}<a class="kcard lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}"{{if .Sel}} aria-current="true"{{end}}><span class="nid">{{.ID}}</span> {{.Title}}{{if or .Lane .Badges}}<span class="kmeta">{{with .Lane}}<span class="tag">{{.}}</span>{{end}}{{range .Badges}}<span class="badge b-{{.Kind}}" title="{{.Why}}">{{.Text}}</span>{{end}}</span>{{end}}</a>
+{{range .Cards}}<a class="kcard lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}"{{with .Tip}} title="{{.}}"{{end}}{{if .Sel}} aria-current="true"{{end}}><span class="nid">{{.ID}}</span> {{.Title}}{{if or .Lane .Badges}}<span class="kmeta">{{with .Lane}}<span class="tag">{{.}}</span>{{end}}{{range .Badges}}<span class="badge b-{{.Kind}}" title="{{.Why}}">{{.Text}}</span>{{end}}</span>{{end}}</a>
 {{else}}<p class="kb-none">None</p>
 {{end -}}
 </section>
@@ -87,7 +87,7 @@ items (data-item, for j / k). */}}
 <div class="tl-head" aria-hidden="true"><span>Package</span><svg class="tl-axis" width="100%" height="16">{{range .Ticks}}<text x="{{.X}}" y="12" text-anchor="{{.Anchor}}">{{.Label}}</text>{{end}}</svg></div>
 {{range .Rows}}<a class="tl-row lc-{{.Lifecycle}}{{if .Sel}} sel{{end}}{{if .Dim}} dim{{end}}{{if .Prov}} prov{{end}}" href="{{.Href}}" data-pane="list detail" data-item="{{.ID}}" title="{{.Tip}}"{{if .Sel}} aria-current="true"{{end}}><span class="tl-name"><span class="nid">{{.ID}}</span> {{.Title}}{{if .Prov}} <span class="badge b-prov">not in plan file</span>{{end}}</span><svg class="tl-track" width="100%" height="14" aria-hidden="true">{{range $.Ticks}}<line class="tl-grid" x1="{{.X}}" x2="{{.X}}" y1="0" y2="14"></line>{{end}}{{range .Bars}}<rect class="tl-bar {{.Kind}}" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="3" ry="3"></rect>{{end}}</svg><span class="vh">{{.Tip}}</span></a>
 {{end -}}
-<p class="hint plan-hint">Solid blue: an agent working. Thin purple: waiting in review, up to now at the right edge. Green: a done package, start to finish. Rows with no bar haven't started.{{with .Note}} {{.}}{{end}}</p>
+<p class="hint plan-hint">Solid blue: an agent working. Thin purple: waiting in review, up to now at the right edge. Green: a done package, start to finish. Rows with no bar haven't started.{{with .Note}} {{.}}{{end}}{{with .Zone}} Times in {{.}}.{{end}}</p>
 {{- end}}
 </div>
 </div>
@@ -101,6 +101,27 @@ items (data-item, for j / k). */}}
 {{define "plan-dep" -}}
 {{if .Href}}<a class="dep" href="{{.Href}}" data-pane="list detail"><span class="dep-name"><span class="nid">{{.ID}}</span> {{.Title}}</span><span class="dep-state lc-{{.Lifecycle}}">{{.State}}</span></a>
 {{- else}}<span class="dep"><span class="dep-name"><span class="nid">{{.ID}}</span></span><span class="dep-state">{{.State}}</span></span>{{end}}
+{{- end}}
+
+{{/* A live agent on the package's pane: its line as Claude Code's agent
+list shows it (agent.html's "agent-now", as the Sessions page draws it),
+then the link's other facts. */}}
+{{define "plan-agent" -}}
+<span class="pd-link pd-agent">{{with .Now}}{{template "agent-now" .}}{{end}}
+{{- with .Link.Facts}}<span class="pd-now-facts">{{range $i, $f := .}}{{if $i}} · {{end}}<span class="fact{{with $f.Class}} fact-{{.}}{{end}}"{{with $f.Title}} title="{{.}}"{{end}}>{{$f.Text}}</span>{{end}}</span>{{end}}</span>
+{{- end}}
+
+{{/* A What cell's spans (app_plans_what.go): code, bold, italics and line
+breaks, every text escaped. */}}
+{{define "plan-md"}}{{range .}}{{if .Break}}<br>{{else if .Code}}<code>{{.Text}}</code>{{else if and .Bold .Italic}}<strong><em>{{.Text}}</em></strong>{{else if .Bold}}<strong>{{.Text}}</strong>{{else if .Italic}}<em>{{.Text}}</em>{{else}}{{.Text}}{{end}}{{end}}{{end}}
+
+{{/* The package's What, under its title. A long one is a <details>: closed,
+its text is clamped to a few lines (app-plan.css) with "more"; open, it
+shows whole with "less". It needs no script, and its id keeps it open
+across live refreshes. */}}
+{{define "plan-what" -}}
+{{if .Long}}<details id="pd-what-{{.ID}}" class="pd-what long"><summary><span class="pd-what-text">{{template "plan-md" .Spans}}</span><span class="pd-what-toggle" aria-hidden="true"><span class="more">more</span><span class="less">less</span></span></summary></details>
+{{- else}}<p class="pd-what">{{template "plan-md" .Spans}}</p>{{end}}
 {{- end}}
 
 {{/* A link of a package: its label (a link to GitHub, or code) and facts. */}}
@@ -120,6 +141,7 @@ items (data-item, for j / k). */}}
 <a class="btn sm pd-close" href="{{.CloseHref}}" data-pane="list detail" aria-label="Close {{.ID}}: show the plan">✕</a>
 </div>
 <h2>{{.Title}}</h2>
+{{with .What}}{{template "plan-what" .}}{{end}}
 <p class="subtitle">{{.Sub}}</p>
 {{with .Since}}<p class="hint">{{.}}</p>{{end}}
 {{with .Provisional -}}
@@ -156,7 +178,7 @@ items (data-item, for j / k). */}}
 <p class="label">Work</p>
 <dl class="ctx">
 <dt>PR</dt><dd>{{range .PRs}}{{template "plan-link" .}}{{else}}none yet{{end}}</dd>
-<dt>Agent</dt><dd>{{range .Agents}}{{template "plan-link" .}}{{else}}none{{end}}</dd>
+<dt>Agent</dt><dd>{{range .Agents}}{{if .Now}}{{template "plan-agent" .}}{{else}}{{template "plan-link" .Link}}{{end}}{{else}}none{{end}}</dd>
 <dt>Branch</dt><dd>{{range .Branches}}<code>{{.}}</code> {{else}}{{with .Suggested}}none yet; the conventions suggest <code>{{.}}</code>{{else}}none{{end}}{{end}}</dd>
 {{if .Worktrees}}<dt>Worktree</dt><dd>{{range .Worktrees}}{{template "plan-link" .}}{{end}}</dd>{{end}}
 <dt>Merges</dt><dd>{{.Merges}}</dd>
@@ -166,8 +188,10 @@ items (data-item, for j / k). */}}
 {{if .Go.Key}}<form method="post" action="{{$action}}/go" data-pane="detail">
 <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
 <input type="hidden" name="pkg" value="{{.ID}}">
+<input type="hidden" name="to" value="{{if .Go.Lead}}lead{{else}}agent{{end}}">
 <input type="hidden" name="return" value="{{$.Return}}">
-<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g">Go to agent <kbd>g</kbd></button>
+{{if .Go.Lead}}<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g" title="{{.Go.Why}}">Go to lead <kbd>g</kbd></button>
+{{- else}}<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g">Go to agent <kbd>g</kbd></button>{{end}}
 </form>
 {{- else}}<button type="button" class="btn primary" disabled data-key="g" data-off="{{.Go.Off}}" title="{{.Go.Off}}">Go to agent <kbd>g</kbd></button>{{end}}
 {{if .Done.Undo}}<form method="post" action="{{$action}}/done" data-pane="list detail">
@@ -194,6 +218,7 @@ items (data-item, for j / k). */}}
 <input type="hidden" name="return" value="{{$.Return}}">
 <label class="pd-field">Pick one
 <select name="target" required>
+<option value="" disabled selected>Pick a PR, branch or session…</option>
 {{range .Choices}}<optgroup label="{{.Label}}">
 {{range .Choices}}<option value="{{.Value}}">{{.Label}}</option>
 {{end -}}
@@ -220,7 +245,7 @@ items (data-item, for j / k). */}}
 </div>
 </details>
 </div>
-{{if not .Go.Key}}<p class="hint pd-why">{{.Go.Off}}</p>{{end}}
+{{if not .Go.Key}}<p class="hint pd-why">{{.Go.Off}}</p>{{else if .Go.Lead}}<p class="hint pd-why">{{.Go.Why}}</p>{{end}}
 {{with .Done.Off}}<p class="hint pd-why">{{.}}</p>{{end}}
 
 {{if .Links -}}
@@ -244,14 +269,25 @@ items (data-item, for j / k). */}}
 {{- end}}
 {{- end}}
 
-{{/* The plan, when no package is selected: progress, what's ready and
-what needs you, alerts, the parser warnings and the Unmatched lane. */}}
+{{/* The plan, when no package is selected: progress, Go to lead, what's
+ready and what needs you, alerts, the parser warnings and the Unmatched
+lane. Go to lead posts no pkg: the server picks the plan's lead again. */}}
 {{define "plan-overview" -}}
 {{$action := .View.Action}}{{with .View.Plan -}}
 {{with .Missing}}<p class="hint pd-warn" role="status">{{.}}</p>{{end}}
 <h2>{{.Title}}</h2>
 <p class="subtitle">{{.Sub}}</p>
 {{if .Segs}}<div class="bar" role="img" aria-label="{{.BarLabel}}">{{range .Segs}}<span class="{{.Class}}" title="{{.Title}}"></span>{{end}}</div>{{end}}
+<div class="actions">
+{{if .Go.Key}}<form method="post" action="{{$action}}/go" data-pane="detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="hidden" name="to" value="lead">
+<input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g" title="{{.Go.Why}}">Go to lead <kbd>g</kbd></button>
+</form>
+{{- else}}<button type="button" class="btn primary" disabled data-key="g" data-off="{{.Go.Off}}" title="{{.Go.Off}}">Go to lead <kbd>g</kbd></button>{{end}}
+</div>
+<p class="hint pd-why">{{if .Go.Key}}{{.Go.Why}}{{else}}{{.Go.Off}}{{end}}</p>
 <p class="hint">Select a package to see what it needs and who works on it.</p>
 
 <p class="label">Ready to dispatch</p>
@@ -290,28 +326,20 @@ what needs you, alerts, the parser warnings and the Unmatched lane. */}}
 </ul>{{else}}<p class="hint">None: the parser read the whole plan.</p>{{end}}
 
 <p class="label" id="plan-unmatched">Unmatched</p>
-<p class="hint">PRs and branches in this plan's repos that no package of any plan links. If one belongs to a package, link it.</p>
-{{if .Unmatched}}<ul class="rows plan-unmatched">
-{{range .Unmatched}}<li class="um">
-<span class="tag">{{.KindLabel}}</span>
-{{if .URL}}<a href="{{.URL}}" rel="noreferrer noopener" target="_blank">{{.Label}}</a>{{else}}<code>{{.Label}}</code>{{end}}
-{{with .Title}}<span class="um-title">{{.}}</span>{{end}}
-{{with .State}}<span class="hint">{{.}}</span>{{end}}
-<span class="hint um-where">{{.Repo}}{{with .Branch}} · <code>{{.}}</code>{{end}}{{with .Note}} · {{.}}{{end}}</span>
-<form method="post" action="{{$action}}/link" data-pane="list detail" class="um-form">
-<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-<input type="hidden" name="kind" value="{{.Kind}}">
-<input type="hidden" name="ref" value="{{.Ref}}">
-<input type="hidden" name="return" value="{{$.Return}}">
-<label class="pd-field">Link to <select name="pkg">
-{{range $.View.Plan.Options}}<option value="{{.ID}}">{{.Label}}</option>
-{{end -}}
-</select></label>
-<button type="submit" class="btn sm">Link</button>
-</form>
-</li>
-{{end -}}
-</ul>{{else}}<p class="hint">Nothing unmatched: every PR and branch in these repos is on a board.</p>{{end}}
+{{with .Unmatched -}}
+<p class="hint">PRs opened and branches first seen in a worktree since this plan was registered{{with .Registered}} ({{.}}){{end}}, in its repos, that no package of any plan links. If one belongs to a package, link it; if it isn't part of this plan, say so and it leaves this list.</p>
+{{if .New.Rows}}{{template "plan-um-rows" .New}}{{else}}<p class="hint">Nothing new: every PR and branch since the plan was registered is on a board.</p>{{end}}
+{{if .Older.Rows}}<details id="plan-unmatched-older" class="um-group">
+<summary class="label">Older ({{len .Older.Rows}})</summary>
+<p class="hint">Opened or first seen before the plan was registered: most likely other work.</p>
+{{template "plan-um-rows" .Older}}
+</details>{{end}}
+{{if .Hidden.Rows}}<details id="plan-unmatched-hidden" class="um-group">
+<summary class="label">Hidden ({{len .Hidden.Rows}})</summary>
+<p class="hint">You said these aren't part of this plan. Restore puts one back in the list; other plans list them as before.</p>
+{{template "plan-um-hidden" .Hidden}}
+</details>{{end}}
+{{- end}}
 
 <p class="label">Plan file</p>
 <dl class="ctx">
@@ -327,6 +355,66 @@ what needs you, alerts, the parser warnings and the Unmatched lane. */}}
 {{- end}}
 {{- end}}
 
+{{/* An Unmatched row's target: its kind, its link or ref, title, state,
+where it is, and when it appeared (or was hidden). */}}
+{{define "plan-um-what" -}}
+<span class="tag">{{.KindLabel}}</span>
+{{if .URL}}<a href="{{.URL}}" rel="noreferrer noopener" target="_blank">{{.Label}}</a>{{else}}<code>{{.Label}}</code>{{end}}
+{{with .Title}}<span class="um-title">{{.}}</span>{{end}}
+{{with .State}}<span class="hint">{{.}}</span>{{end}}
+<span class="hint um-where">{{.Repo}}{{with .Branch}} · <code>{{.}}</code>{{end}}{{if .When}} · <span title="{{.WhenTitle}}">{{.When}}</span>{{end}}{{with .Note}} · {{.}}{{end}}</span>
+{{- end}}
+
+{{/* Unmatched rows (an umList), each with Link, whose picker starts on
+"Pick a package…" so nothing is preselected (a form sent without a pick
+is refused), and Not part of this plan. */}}
+{{define "plan-um-rows" -}}
+{{$f := .Form}}<ul class="rows plan-unmatched">
+{{range .Rows}}<li class="um">
+{{template "plan-um-what" .}}
+<form method="post" action="{{$f.Action}}/link" data-pane="list detail" class="um-form">
+<input type="hidden" name="csrf_token" value="{{$f.CSRF}}">
+<input type="hidden" name="kind" value="{{.Kind}}">
+<input type="hidden" name="ref" value="{{.Ref}}">
+<input type="hidden" name="return" value="{{$f.Return}}">
+<label class="pd-field">Link to <select name="pkg" required>
+<option value="" disabled selected>Pick a package…</option>
+{{range $f.Options}}<option value="{{.ID}}">{{.Label}}</option>
+{{end -}}
+</select></label>
+<button type="submit" class="btn sm">Link</button>
+</form>
+<form method="post" action="{{$f.Action}}/hide" data-pane="list detail" class="um-form">
+<input type="hidden" name="csrf_token" value="{{$f.CSRF}}">
+<input type="hidden" name="kind" value="{{.Kind}}">
+<input type="hidden" name="ref" value="{{.Ref}}">
+<input type="hidden" name="hidden" value="1">
+<input type="hidden" name="return" value="{{$f.Return}}">
+<button type="submit" class="btn sm" title="Hide it from this plan's Unmatched list for good. It links and unlinks nothing, and other plans still list it.">Not part of this plan</button>
+</form>
+</li>
+{{end -}}
+</ul>
+{{- end}}
+
+{{/* Hidden Unmatched rows (an umList), each with Restore. */}}
+{{define "plan-um-hidden" -}}
+{{$f := .Form}}<ul class="rows plan-unmatched">
+{{range .Rows}}<li class="um">
+{{template "plan-um-what" .}}
+<form method="post" action="{{$f.Action}}/hide" data-pane="list detail" class="um-form">
+<input type="hidden" name="csrf_token" value="{{$f.CSRF}}">
+<input type="hidden" name="kind" value="{{.Kind}}">
+<input type="hidden" name="ref" value="{{.Ref}}">
+<input type="hidden" name="hidden" value="0">
+<input type="hidden" name="return" value="{{$f.Return}}">
+<button type="submit" class="btn sm" title="Put it back in this plan's Unmatched list">Restore</button>
+</form>
+</li>
+{{end -}}
+</ul>
+{{- end}}
+
 {{/* Unregister's confirmation: what aimd forgets, as the plan service's
 Unregister does (planapi/register.go and the store's cascades), and what
 stays. The shell's data-open opens it; without the script, ?unregister=1
@@ -340,7 +428,7 @@ gone. */}}
 <p>aimd forgets this plan. There's no Undo.</p>
 <ul>
 <li>It leaves the dashboard and the menu.</li>
-<li>Its packages, links and history go: every link (the ones you made by hand too), your unlinks and Mark done, the timeline and its alerts, and who merges if you changed it in Settings.</li>
+<li>Its packages, links and history go: every link (the ones you made by hand too), your unlinks, Mark done and what you hid from Unmatched, the timeline and its alerts, and who merges if you changed it in Settings.</li>
 <li>Its lead session is no longer monitored as a lead, nor its agents as the plan's agents. A session you watch stays watched.</li>
 <li>The plan file stays as it is in the repo, and its branches, worktrees and PRs are untouched.</li>
 </ul>

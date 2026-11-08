@@ -54,12 +54,26 @@
 // disappear between the list and the status: a worktree that
 // vanishes in between is reported Missing, not as an error.
 //
+// # SSH host aliases
+//
+// A remote on an SSH host that isn't GitHub's own, such as
+// git@github-work:o/n.git (a Host block in ~/.ssh/config, the usual way to
+// use two GitHub accounts), is resolved the way ssh would: `ssh -G -- <host>`,
+// which prints the user's ssh config for the host and never connects. Its
+// hostname line goes in Repo.HostNames, and the remote counts as GitHub's
+// when that is github.com or ssh.github.com (Repo.GitHubRemote). Only a
+// host that looks like a host name, on a remote whose path is owner/name,
+// is asked about; each answer is kept for hostTTL, so a scan every few
+// minutes doesn't run ssh again, and a failed or slow run (sshTimeout)
+// leaves the host unresolved, which reads as not GitHub.
+//
 // # Read-only and hardened
 //
 // A scan runs only rev-parse, config (reads), worktree list, for-each-ref,
-// rev-list and status. It never fetches, prunes, removes, locks or checks
-// out anything. Because nothing is fetched, UpstreamOK means only that the
-// local remote-tracking ref exists.
+// rev-list and status, plus `ssh -G` for an alias as above. It never
+// fetches, prunes, removes, locks or checks out anything. Because nothing
+// is fetched, UpstreamOK means only that the local remote-tracking ref
+// exists.
 //
 // For `aim prune` the Scanner also has a few checks (Ignored, ResolveCommit,
 // CountNotIn, IsAncestor, RemoteHead, PrunePreview), which read only, and
@@ -156,6 +170,9 @@ type Options struct {
 	Timeout time.Duration
 	// Git is the git binary. Empty means "git" from PATH.
 	Git string
+	// SSH is the ssh binary that resolves SSH host aliases (`ssh -G`; see
+	// the package comment). Empty means "ssh" from PATH. Tests set a fake.
+	SSH string
 }
 
 // OptionsFromConfig returns Options for cfg's roots, with defaults for the
@@ -173,6 +190,8 @@ type Scanner struct {
 	// readDir lists a directory for path canonicalization (tests count
 	// the calls).
 	readDir func(dir string) []string
+	// hosts resolves SSH host aliases, with a cache (sshhost.go).
+	hosts *hostResolver
 }
 
 func (s *Scanner) newCanon() *canon { return newCanon(s.readDir) }
@@ -194,12 +213,16 @@ func New(opts Options) *Scanner {
 	if opts.Git == "" {
 		opts.Git = "git"
 	}
+	if opts.SSH == "" {
+		opts.SSH = "ssh"
+	}
 	return &Scanner{
 		opts: opts,
 		sem:  make(chan struct{}, opts.Concurrency),
 		run:  execGit(opts.Git),
 
 		readDir: readDirNames,
+		hosts:   newHostResolver(sshHostName(opts.SSH), time.Now),
 	}
 }
 
@@ -229,6 +252,12 @@ type Repo struct {
 	// remote has several), from remote.<name>.url. Empty when the repo has
 	// no remotes or they couldn't be read (see Err).
 	Remotes map[string]string
+	// HostNames maps each SSH host alias the remotes name (SSHAliasHost),
+	// lower-case, to the HostName the user's ssh config gives it, as
+	// `ssh -G` printed it (lower-case). A remote on an alias whose HostName
+	// is GitHub's counts as a GitHub remote. A host ssh couldn't resolve is
+	// left out; nil when no remote is on an alias.
+	HostNames map[string]string
 	// Worktrees are in git's order: the main worktree first.
 	Worktrees []Worktree
 	// Err says what couldn't be read. If the listing failed, Worktrees is
@@ -457,6 +486,7 @@ func (s *Scanner) scanRepo(ctx context.Context, c *canon, gitDir string) Repo {
 		}
 	}
 	repo.Remotes = remotesFrom(remotes)
+	repo.HostNames = s.hostNames(ctx, repo.Remotes)
 	repo.Err = errors.Join(refsErr, timesErr, remotesErr)
 	return repo
 }

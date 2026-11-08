@@ -1,7 +1,8 @@
 {{/* Settings (GET /app/settings; app_settings.go). Cards for
 the alerts, the inbox's timings, who merges each plan's PRs, monitoring,
-the keyboard shortcuts and the theme. Each switch and segmented
-control is a form posting to /app/settings/set or /app/settings/merges,
+the keyboard shortcuts, the theme and time zone, and the versions this Mac
+runs (aimd and the plugin on disk; app_plugin.go). Each switch, segmented
+control and menu is a form posting to /app/settings/set or /app/settings/merges,
 answered with the toast protocol. The shell's flags ride on the menu
 (data-flags), which refreshes after a change here and in every other open
 tab. */}}
@@ -70,7 +71,24 @@ tab. */}}
 <section class="card" aria-labelledby="set-appearance">
 <h2 id="set-appearance">Appearance</h2>
 {{template "settings-choice" .Theme}}
+{{template "settings-zone" .TimeZone}}
 <p class="hint">Pages open in other tabs follow within seconds.</p>
+</section>
+
+<section class="card" aria-labelledby="set-versions">
+<h2 id="set-versions">Versions</h2>
+{{with .Versions -}}
+<div class="trow">
+<div><div class="trow-title">aimd</div><div class="trow-desc"><code>{{.Aimd}}</code>{{with .Started}} · running for {{.}}{{end}}</div></div>
+</div>
+{{range .Plugins -}}
+<div class="trow">
+<div><div class="trow-title">Plugin on disk</div><div class="trow-desc">{{if .Build}}<code>{{.Build}}</code>{{else}}build unknown{{end}} in <code title="{{.FolderFull}}">{{.Folder}}</code> · {{.Sessions}}</div></div>
+</div>
+{{end -}}
+{{with .NoPlugins}}<p class="hint">{{.}}</p>{{end}}
+{{- end}}
+<p class="hint">A session loads the plugin when it starts and keeps that build until it restarts; the Sessions page marks the ones on an older build. <code>aim up</code> restarts aimd on the binary it installs.</p>
 </section>
 {{- end}}
 {{- end}}
@@ -97,6 +115,26 @@ value. */}}
 <input type="hidden" name="key" value="{{.Key}}">
 {{range .Options}}<button type="submit" id="seg-{{$.Key}}-{{.Value}}" name="value" value="{{.Value}}"{{if .On}} class="on" aria-pressed="true"{{else}} aria-pressed="false"{{end}}>{{.Label}}</button>
 {{end -}}
+</form>
+</div>
+{{- end}}
+
+{{/* The time zone row (settingZone): a menu of System, the common zones
+and every zone, posted with Set (no script needed). */}}
+{{define "settings-zone" -}}
+<div class="trow">
+<div><label class="trow-title" for="sel-{{.Key}}">{{.Title}}</label><div class="trow-desc" id="sel-{{.Key}}-desc">{{.Desc}}</div></div>
+<form method="post" action="/app/settings/set" data-pane="content" class="set-zone">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="return" value="{{.Return}}">
+<input type="hidden" name="key" value="{{.Key}}">
+<select id="sel-{{.Key}}" name="value" aria-describedby="sel-{{.Key}}-desc">
+<option value="{{.System.Value}}"{{if .System.On}} selected{{end}}>{{.System.Label}}</option>
+{{range .Groups}}<optgroup label="{{.Label}}">
+{{range .Options}}<option value="{{.Value}}"{{if .On}} selected{{end}}>{{.Label}}</option>
+{{end}}</optgroup>
+{{end -}}
+</select>
+<button type="submit" id="sel-{{.Key}}-set" class="btn sm">Set</button>
 </form>
 </div>
 {{- end}}

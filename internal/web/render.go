@@ -20,11 +20,10 @@ import (
 //go:embed static/*
 var assets embed.FS
 
-// templateFuncs are the few helpers templates use; view models carry
-// display strings already.
-var templateFuncs = template.FuncMap{
-	"stamp": stamp,
-}
+// templateFuncs are the helpers templates may call: none, since view
+// models carry display strings already (a time is written in the Time
+// zone setting's zone, which only the page's data knows).
+var templateFuncs = template.FuncMap{}
 
 // staticFile is one embedded static file, served with an ETag.
 type staticFile struct {

@@ -181,8 +181,9 @@ func parsePR(s string) (repo string, number int, ok bool) {
 // LinkPR records the PR a linked agent just created (POST /api/links/pr),
 // so it lands on the agent's package before the next GitHub poll: the PR
 // is linked to every package the agent is linked to, with the method and
-// confidence of that link. Until a poll reads it, the PR is stored as
-// open with only its URL known.
+// confidence of that link. Until GitHub is read, the PR is stored as open
+// with only its URL known (store.PR.Unread), and it is asked for at once
+// (Options.Refresh), so the read comes within seconds.
 func (s *Service) LinkPR(ctx context.Context, req api.PRLinkRequest) (api.LinkResult, error) {
 	sessionID, agentID := strings.TrimSpace(req.SessionID), strings.TrimSpace(req.AgentID)
 	if sessionID == "" {
@@ -201,12 +202,16 @@ func (s *Service) LinkPR(ctx context.Context, req api.PRLinkRequest) (api.LinkRe
 	}
 	if pr, err := s.st.GetPR(ctx, repo, number); err == nil {
 		repo = pr.Repo // as GitHub spells it
+		if pr.Unread() {
+			s.refreshNow(repo, number)
+		}
 	} else if errors.Is(err, store.ErrNotFound) {
 		placeholder := store.PR{Repo: repo, Number: number, State: store.PROpen,
 			URL: "https://github.com/" + repo + "/pull/" + strconv.Itoa(number)}
 		if err := s.st.UpsertPRs(ctx, placeholder); err != nil {
 			return api.LinkResult{}, err
 		}
+		s.refreshNow(repo, number) // read it now, not at the next poll
 	} else {
 		return api.LinkResult{}, err
 	}

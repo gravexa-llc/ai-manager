@@ -80,8 +80,8 @@ func (s *Store) UpdatePlan(ctx context.Context, p Plan) error {
 }
 
 // DeletePlan removes the plan with the given id, and with it its packages,
-// links and unlink tombstones (the foreign keys cascade). PR rows and plan
-// file dismissals are left alone. It returns ErrNotFound when there is no
+// links, unlink tombstones and hidden Unmatched targets (the foreign keys
+// cascade). PR rows and plan file dismissals are left alone. It returns ErrNotFound when there is no
 // such plan.
 func (s *Store) DeletePlan(ctx context.Context, id int64) error {
 	res, err := s.w.ExecContext(ctx, `DELETE FROM plans WHERE id = ?`, id)
@@ -149,8 +149,11 @@ type Package struct {
 	PkgID  string // e.g. "B1", compared case-insensitively
 	Seq    int    // position in the plan file
 	Title  string
-	Repo   string
-	Size   string
+	// What is the package table's What cell (or Description, Summary,
+	// Scope), as written: markdown (migration 0015).
+	What string
+	Repo string
+	Size string
 	// Needs are the package IDs in the Needs cell, as written; NeedsNote is
 	// the rest of the cell ("Sam + reviewer approve").
 	Needs     []string
@@ -188,7 +191,7 @@ type Package struct {
 }
 
 // packageSelect reads packages with their provisional rows, if any.
-const packageSelect = `SELECT p.plan_id, p.pkg_id, p.seq, p.title, p.repo, p.size, p.needs, p.needs_note,
+const packageSelect = `SELECT p.plan_id, p.pkg_id, p.seq, p.title, p.what, p.repo, p.size, p.needs, p.needs_note,
 	p.needs_you, p.owner, p.lane, p.done_in_plan, p.done_manual, p.note,
 	p.lifecycle, p.lifecycle_prev, p.lifecycle_at,
 	pp.plan_id IS NOT NULL, pp.first_seen, pp.active_at
@@ -197,7 +200,7 @@ const packageSelect = `SELECT p.plan_id, p.pkg_id, p.seq, p.title, p.repo, p.siz
 
 func scanPackage(sc scanner) (Package, error) {
 	var p Package
-	err := sc.Scan(&p.PlanID, &p.PkgID, &p.Seq, &p.Title, &p.Repo, &p.Size, jsonList{&p.Needs}, &p.NeedsNote,
+	err := sc.Scan(&p.PlanID, &p.PkgID, &p.Seq, &p.Title, &p.What, &p.Repo, &p.Size, jsonList{&p.Needs}, &p.NeedsNote,
 		&p.NeedsYou, &p.Owner, &p.Lane, &p.DoneInPlan, &p.DoneManual, &p.Note,
 		&p.Lifecycle, &p.LifecyclePrev, msTime{&p.LifecycleAt},
 		&p.Provisional, msTime{&p.FirstSeen}, msTime{&p.ActiveAt})
@@ -215,10 +218,10 @@ func (s *Store) InsertPackage(ctx context.Context, p Package) error {
 		return err
 	}
 	_, err = s.w.ExecContext(ctx, `
-		INSERT INTO packages (plan_id, pkg_id, seq, title, repo, size, needs, needs_note,
+		INSERT INTO packages (plan_id, pkg_id, seq, title, what, repo, size, needs, needs_note,
 			needs_you, owner, lane, done_in_plan, done_manual, note)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.PlanID, p.PkgID, p.Seq, p.Title, p.Repo, p.Size, needs, p.NeedsNote,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.PlanID, p.PkgID, p.Seq, p.Title, p.What, p.Repo, p.Size, needs, p.NeedsNote,
 		p.NeedsYou, p.Owner, p.Lane, p.DoneInPlan, p.DoneManual, p.Note)
 	if err != nil {
 		return fmt.Errorf("store: insert package %d/%s: %w", p.PlanID, p.PkgID, err)
@@ -234,10 +237,10 @@ func (s *Store) UpdatePackage(ctx context.Context, p Package) error {
 		return err
 	}
 	res, err := s.w.ExecContext(ctx, `
-		UPDATE packages SET seq = ?, title = ?, repo = ?, size = ?, needs = ?, needs_note = ?,
+		UPDATE packages SET seq = ?, title = ?, what = ?, repo = ?, size = ?, needs = ?, needs_note = ?,
 			needs_you = ?, owner = ?, lane = ?, done_in_plan = ?, done_manual = ?, note = ?
 		WHERE plan_id = ? AND pkg_id = ?`,
-		p.Seq, p.Title, p.Repo, p.Size, needs, p.NeedsNote,
+		p.Seq, p.Title, p.What, p.Repo, p.Size, needs, p.NeedsNote,
 		p.NeedsYou, p.Owner, p.Lane, p.DoneInPlan, p.DoneManual, p.Note, p.PlanID, p.PkgID)
 	if err != nil {
 		return fmt.Errorf("store: update package %d/%s: %w", p.PlanID, p.PkgID, err)
@@ -286,13 +289,14 @@ func (s *Store) SyncPackages(ctx context.Context, planID int64, pkgs []Package) 
 				return err
 			}
 			_, err = tx.ExecContext(ctx, `
-				INSERT INTO packages (plan_id, pkg_id, seq, title, repo, size, needs, needs_note,
+				INSERT INTO packages (plan_id, pkg_id, seq, title, what, repo, size, needs, needs_note,
 					needs_you, owner, lane, done_in_plan, done_manual, note)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '')
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '')
 				ON CONFLICT (plan_id, pkg_id) DO UPDATE SET
 					pkg_id = excluded.pkg_id,
 					seq = excluded.seq,
 					title = excluded.title,
+					what = excluded.what,
 					repo = excluded.repo,
 					size = excluded.size,
 					needs = excluded.needs,
@@ -301,7 +305,7 @@ func (s *Store) SyncPackages(ctx context.Context, planID int64, pkgs []Package) 
 					owner = excluded.owner,
 					lane = excluded.lane,
 					done_in_plan = excluded.done_in_plan`,
-				planID, p.PkgID, i, p.Title, p.Repo, p.Size, needs, p.NeedsNote, p.NeedsYou, p.Owner, p.Lane, p.DoneInPlan)
+				planID, p.PkgID, i, p.Title, p.What, p.Repo, p.Size, needs, p.NeedsNote, p.NeedsYou, p.Owner, p.Lane, p.DoneInPlan)
 			if err != nil {
 				return fmt.Errorf("store: sync package %d/%s: %w", planID, p.PkgID, err)
 			}

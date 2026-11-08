@@ -1,25 +1,29 @@
 {{/* Sessions (GET /app/sessions; app_sessions.go): the monitored
 sessions by plan, the others under a collapsed Not monitored, and the
-selected session's detail (?s=<key>). .View is an *appSessionsView. */}}
+selected session's detail (?s=<key>). Each group folds (groups.go).
+.View is an *appSessionsView. */}}
 
 {{define "head" -}}
 <link rel="stylesheet" href="/static/app-sessions.css?v={{.AssetVersion}}">
+<script src="/static/app-groups.js?v={{.AssetVersion}}" defer></script>
 {{- end}}
 
 {{define "list" -}}
 {{with .View -}}
 {{range .Groups -}}
-<div class="ghead">{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}<span>{{len .Rows}}</span></div>
+{{template "group-open" .}}
+<summary class="ghead">{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}<span>{{len .Rows}}</span></summary>
 <ul class="rows">
 {{range .Rows}}<li>{{template "session-item" .}}</li>
 {{end -}}
 </ul>
+</details>
 {{end -}}
 {{if not .Groups}}<p class="empty">{{.Empty}}</p>
 {{end -}}
 {{if .Unmonitored -}}
-<details id="sessions-not-monitored" class="notmon"{{if .NotOpen}} open{{end}}>
-<summary class="ghead"><span>Not monitored ({{len .Unmonitored}})</span><span class="notmon-toggle" aria-hidden="true"></span></summary>
+<details id="sessions-not-monitored" class="group notmon" data-group="{{.NotMon.Key}}"{{if or .NotMon.Open .NotMon.Force}} open{{end}}{{if .NotMon.Force}} data-group-force{{end}}>
+<summary class="ghead"><span>Not monitored</span><span>{{len .Unmonitored}}</span></summary>
 <ul class="rows">
 {{range .Unmonitored -}}
 <li class="nmrow">
@@ -50,15 +54,19 @@ selected session's detail (?s=<key>). .View is an *appSessionsView. */}}
 <a class="srow{{if .Sub}} subrow{{end}}{{if .Sel}} sel{{end}}" href="{{.Href}}" data-pane="detail" data-item="{{.Key}}"{{if .Sel}} aria-current="true"{{end}}{{with .Chime}} data-chime="{{.}}"{{end}}{{with .Search}} data-search="{{.}}"{{end}}>
 <span class="dot {{.Tone}}" aria-hidden="true"></span>
 <span class="ibody"><span class="ititle">{{.Title}}</span><span class="isub">{{.Role}} · {{if .Expired}}{{.Expired}}{{else}}{{.State}}{{end}}</span></span>
+{{with .OldPlugin}}<span class="tag tone-warn" title="{{.}}">Older plugin</span>{{end}}
 <span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span>
 </a>
 {{- end}}
 
 {{define "detail" -}}
 {{with .View}}{{with .Detail -}}
-<div class="sd-tags"><span class="pill {{.Tone}}">{{.State}}</span><span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span></div>
+<div class="sd-tags"><span class="pill {{.Tone}}">{{.State}}</span><span class="tag {{.Term.Class}}" title="{{.Term.Title}}">{{.Term.Label}}</span>{{with .OldPlugin}}<span class="tag tone-warn" title="{{.}}">Older plugin</span>{{end}}</div>
 <h2>{{.Title}}</h2>
 <p class="subtitle">{{.Role}}</p>
+{{- with .Now}}
+<div class="sd-now">{{template "agent-now" .}}</div>
+{{- end}}
 {{- if .Expired}}
 <div class="label">Expired</div>
 <p class="dtext">This background job is {{.Expired}}. Claude Code still lists it, but there's nothing left to resume. Remove it in a terminal:</p>
@@ -68,6 +76,30 @@ selected session's detail (?s=<key>). .View is an *appSessionsView. */}}
 {{- if .Waiting}}
 <div class="label">Waiting on you</div>
 <p class="dtext">{{.Waiting}}{{with .WaitAge}} · for {{.}}{{end}}</p>
+{{- end}}
+{{- if .PluginOnDisk}}
+<div class="label">Older plugin: restart to update</div>
+<p class="dtext">It loaded plugin <code>{{.Plugin}}</code> when it started, and keeps it until it restarts. The plugin on disk is now <code>{{.PluginOnDisk}}</code>.</p>
+<p class="hint">Quit the session and resume it (<code>claude --resume</code>) to load the new one.</p>
+{{- end}}
+{{- if .Agents}}
+<div class="label">Agents</div>
+<ul class="rows sd-agents">
+{{range .Agents}}<li><a class="sd-agent" href="{{.Href}}" data-pane="detail" title="Show this subagent">{{template "agent-now" .Now}}</a></li>
+{{end -}}
+</ul>
+{{- end}}
+{{- if .Finished}}
+<details id="sd-finished" class="sd-finished">
+<summary class="label">Finished ({{.FinishedN}})</summary>
+<ul class="rows sd-agents">
+{{range .Finished}}<li class="sd-agent">{{template "agent-now" .}}</li>
+{{end -}}
+</ul>
+{{- with .FinishedMore}}
+<p class="hint">And {{.}} earlier.</p>
+{{- end}}
+</details>
 {{- end}}
 <div class="label">Why it's monitored</div>
 <p class="dtext">{{.Why}}</p>
@@ -80,8 +112,8 @@ selected session's detail (?s=<key>). .View is an *appSessionsView. */}}
 {{- if .Started}}
 <dt>Started</dt><dd>{{.Started}}</dd>
 {{- end}}
-{{- if .Doing}}
-<dt>Last action</dt><dd>{{.Doing}}</dd>
+{{- if or .Plugin .PluginNote}}
+<dt>Plugin</dt><dd>{{if .Plugin}}<code{{with .PluginFolder}} title="loaded from {{.}}"{{end}}>{{.Plugin}}</code>{{else}}<span class="hint">{{.PluginNote}}</span>{{end}}</dd>
 {{- end}}
 </dl>
 <div class="actions">

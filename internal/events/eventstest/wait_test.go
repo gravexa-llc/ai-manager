@@ -91,8 +91,8 @@ func TestInteractiveDialogs(t *testing.T) {
 // put on the main loop.
 func TestForegroundSubagentPermission(t *testing.T) {
 	ns := needs(load(t, "interactive-foreground-subagent.jsonl"))
-	if len(ns) != 2 {
-		t.Fatalf("%d needs_you events, want 2 (tool_check, permission_request): %+v", len(ns), ns)
+	if len(ns) != 1 || ns[0].Source != events.SourcePermissionRequest {
+		t.Fatalf("%d needs_you events, want 1 (permission_request; tool.check raises none): %+v", len(ns), ns)
 	}
 	for _, e := range ns {
 		if e.AgentID != "ab02809c073aa7d32" || e.Wait == nil || e.Wait.Summary != "mkdir perm-fg" {

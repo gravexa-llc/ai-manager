@@ -37,6 +37,9 @@ type world struct {
 	defaults map[string]string
 	// dead holds the tombstones, by plan, package and target.
 	dead map[deadKey]bool
+	// hidden holds, by plan and targetKey, when you hid a target from the
+	// plan's Unmatched lane.
+	hidden map[int64]map[string]time.Time
 	// claimed holds, by plan, the targets with a spawn or manual link
 	// (Match only).
 	claimed map[int64]map[string]bool
@@ -127,6 +130,7 @@ func newWorld(in *Input) *world {
 		bases:     map[string]map[string]bool{},
 		defaults:  map[string]string{},
 		dead:      map[deadKey]bool{},
+		hidden:    map[int64]map[string]time.Time{},
 	}
 	for path, name := range in.RepoNames {
 		if name != "" {
@@ -152,6 +156,12 @@ func newWorld(in *Input) *world {
 			idx.order = append(idx.order, pkg)
 		}
 		w.plans = append(w.plans, idx)
+	}
+	for _, h := range in.Hidden {
+		if w.hidden[h.PlanID] == nil {
+			w.hidden[h.PlanID] = map[string]time.Time{}
+		}
+		w.hidden[h.PlanID][targetKey(Target{h.Kind, h.Ref})] = h.HiddenAt
 	}
 	for _, t := range in.Tombstones {
 		l := store.Link{Kind: t.Kind, SessionID: t.SessionID, JobID: t.JobID, AgentID: t.AgentID, Ref: t.Ref}

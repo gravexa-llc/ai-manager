@@ -32,6 +32,11 @@
 //     doesn't count, or it isn't ready, no agent works on it and no plan
 //     has a lead for it.
 //
+// A PR aimd has never read from GitHub (store.PR.Unread: stored by the
+// link API with only its URL) waits on nobody and never needs you; its
+// Reason is NotReadYet. Its stored state, OPEN, is only a guess, so it
+// isn't shown as an open PR that waits on an agent or the lead.
+//
 // You are WaitingOn exactly when NeedsYou is set.
 package prwait
 
@@ -47,6 +52,9 @@ const (
 	ReviewRequested = "review_requested"
 	ReadyToMerge    = "ready_to_merge"
 )
+
+// NotReadYet is the Reason of a PR aimd has never read from GitHub.
+const NotReadYet = "not read from GitHub yet"
 
 // WaitingOn values: who has the next move.
 const (
@@ -128,6 +136,10 @@ func Decide(in Input) Verdict {
 		return v
 	case p.State != store.PROpen:
 		v.Reason = "closed without merging"
+		return v
+	case p.Unread():
+		// Only its URL is known: open is a guess, and nobody's move can be told.
+		v.Reason = NotReadYet
 		return v
 	case p.ReviewRequested():
 		// Before the Monitored check: a review request counts on any PR.

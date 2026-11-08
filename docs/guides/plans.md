@@ -68,7 +68,7 @@ These columns are optional, and any other column is ignored:
 
 | Column | Also accepted | Meaning |
 |---|---|---|
-| `What` | `Description`, `Summary`, `Scope` | What the package does. |
+| `What` | `Description`, `Summary`, `Scope` | What the package does. The plan page shows it under the package's title, with its `code`, bold and italics. |
 | `Repo` | `Repository` | Which repo it lives in, when the plan spans several. Use a short name (`recipes-api`). |
 | `Size` | `Estimate`, `Effort` | Shown on its card. |
 | `Owner` | `Who`, `Assignee` | `you` marks your own step (below). |
@@ -105,7 +105,7 @@ The `Needs` cell lists the IDs a package waits on, separated by commas: `API1, U
 
 - **Only IDs make dependencies.** Free text never does. Write "everything above" as the list of IDs.
 - **Notes go after the IDs, after a semicolon:** `UI2; once the beta has run a week`. The note shows on the package's card and detail.
-- **`you:` marks a step you take** for a package that an agent carries out, such as an approval or a check: `UI2; you: approve the rollout`. The package shows a "you: approve the rollout" badge until it is done. It stays an agent's package.
+- **`you:` marks a step you take** for a package that an agent carries out, such as an approval or a check: `UI2; you: approve the rollout`. The package shows a "you: approve the rollout" badge until it is done. It stays an agent's package. Once it's ready, it's a **Your step** item in the dashboard's [Needs you](dashboard.md#needs-you) until work on it begins. That item has no **Mark done**, since the package is the agent's: when your part is done, dismiss the item with **Done**.
 
 These are warnings, shown on the plan's page:
 
@@ -117,7 +117,7 @@ A dependency cycle is a warning too. Each package in it is blocked only by the m
 
 ### Your own steps
 
-`you` in the `Owner` column marks a step you do yourself, with no agent and no PR, such as **P1 Pick the ranking**. It is never in the "ready to dispatch" list. It's done when its row gets a ✅, or when you press **Mark done** on its card in the dashboard.
+`you` in the `Owner` column marks a step you do yourself, with no agent and no PR, such as **P1 Pick the ranking**. It is never in the "ready to dispatch" list. Once everything it needs is done, it's a **Your step** item in the dashboard's [Needs you](dashboard.md#needs-you). It's done when its row gets a ✅, or when you press **Mark done** on its card or on that item.
 
 ### Done
 
@@ -186,7 +186,7 @@ The path is relative to the session's folder. With no path, it registers the las
   Local repos are named by their GitHub `owner/name`, or by their folder when they have no GitHub remote.
 - **It makes the session the plan's lead.** The lead is monitored from then on, and so are the agents it dispatches for the plan.
 - **It starts a backfill.** In the background, one GitHub search per repo brings in the repos' PRs, merged and closed ones included. So packages already done or in review show that way at once.
-- **It watches the file.** Edits show on the board within seconds. A save caught half-written, with no packages at all, is ignored.
+- **It watches the file.** Edits show on the board within seconds. A save caught half-written, with no packages at all, is ignored. When aimd starts, it reads every registered plan again, so edits made while it was down show too, and so does what a newer aimd reads of an unchanged file (such as the What column).
 
 Registering a file that is already registered updates it and keeps its links.
 
@@ -195,7 +195,7 @@ Registering a file that is already registered updates it and keeps its links.
 - a path ending in `.md`, at most 1 MB;
 - inside a folder in `roots` (from `~/.ai-manager/config.toml`), or in a repo whose worktree aimd has seen.
 
-**To unregister a plan,** open its page in the dashboard, select no package, and press **Unregister plan…**. aimd forgets the board, its links, Mark done and history. The file, branches, worktrees and PRs are untouched. Registering the file again starts afresh.
+**To unregister a plan,** open its page in the dashboard, select no package, and press **Unregister plan…**. aimd forgets the board, its links, Mark done, what you hid from Unmatched, and history. The file, branches, worktrees and PRs are untouched. Registering the file again starts afresh.
 
 ## How work is matched to packages
 
@@ -258,7 +258,7 @@ An ID that two of the repo's plans share, or a branch that names two packages, m
 
 ### Links you make
 
-Each package's detail pane on the plan page has **Link a PR or agent…**. Pick something from the plan's Unmatched list or a live session, or type a reference:
+Each package's detail pane on the plan page has **Link a PR or agent…**. Pick something from the plan's Unmatched list or a live session, or type a reference. The picker starts on "Pick a PR, branch or session…", and an Unmatched entry's own **Link** starts on "Pick a package…", so nothing is linked until you choose:
 
 | Kind | Reference |
 |---|---|
@@ -294,6 +294,13 @@ The plan's page lists, under **Unmatched**:
 - branches checked out in a worktree with no PR and no link.
 
 Each has a **Link** control and, where it helps, the matcher's note, such as `ambiguous: …`.
+
+The list is split by when each one appeared, so a plan on a busy repo isn't buried in its old PRs:
+
+- **New** ones, at the top: PRs opened after the plan was registered, by GitHub's `createdAt` (for a PR aimd hasn't read from GitHub yet, when aimd first stored it), and branches whose worktree aimd first saw after it, by the first worktree scan that saw it. One whose time isn't known counts as new.
+- **Older (N)**, folded: the rest. A PR opened before the plan but closed after it is there too.
+
+**Not part of this plan** takes an entry off this plan's list for good. It links and unlinks nothing, so no package's state changes, and other plans on the repo still list it. It goes to **Hidden (N)**, folded, where **Restore** puts it back; the toast has **Undo** too. aimd keeps what you hid until you restore it or unregister the plan. If a hidden PR is linked later, it's on its package as usual, and if it's unlinked again, it goes back to Hidden.
 
 ### Sessions the lead didn't spawn
 
@@ -336,11 +343,13 @@ Each package has one lifecycle, the first of these that applies:
 
 A package with a ✅ that gets a follow-up PR shows as in review, but still counts as done for what needs it.
 
+**A live agent** is a session that hasn't ended, or a subagent while one of its runs goes on. A subagent's run starts when it's spawned, or when the lead sends a finished agent a message (it goes on under the same id), and ends with the run's last turn. Claude Code's own forks of an agent, such as compaction, carry ids no agent list names and work in the agent's folder. They never count as agents, so they can't keep a finished package working or make a collision. See [What it reports to aimd](plugin-and-skills.md#what-it-reports-to-aimd).
+
 Badges add detail on a card:
 
 | Badge | Meaning |
 |---|---|
-| needs you | A linked agent is waiting on you, or it's your own step and it's ready. |
+| needs you | A linked agent is waiting on you, or it's your step (`Owner` you, or a `you:` step) and it's ready. Your step is then an item in Needs you too, by the same rule. |
 | CI failing, conflict, draft | About its open PR. |
 | changes requested, review requested | Its open PR's review state. |
 | waiting on you | Its PR is green, mergeable and not a draft. |

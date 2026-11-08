@@ -207,7 +207,8 @@ func (w *world) buildGraph() *graph {
 			n = g.ensure(Target{store.LinkAgent, store.AgentRef(a.SessionID, a.AgentID)})
 		}
 		if n.agent == nil {
-			n.agent = &Agent{Ref: n.t, SessionID: a.SessionID, AgentID: a.AgentID, Kind: a.Kind, Name: a.AgentType, State: a.State, LastAction: a.LastAction}
+			n.agent = &Agent{Ref: n.t, SessionID: a.SessionID, AgentID: a.AgentID, Kind: a.Kind, Name: a.AgentType, State: a.State, LastAction: a.LastAction,
+				StartedAt: a.StartedAt, Tokens: a.Tokens}
 			n.agent.Live = a.EndedAt.IsZero() && !agentEnded[a.State]
 			if lead := bySessionID[a.SessionID]; lead != nil && lead.agent != nil && !lead.agent.Live {
 				n.agent.Live = false
@@ -224,6 +225,9 @@ func (w *world) buildGraph() *graph {
 		}
 		if n.agent.LastAction == "" {
 			n.agent.LastAction = a.LastAction
+		}
+		if a.AgentID == "" && a.Tokens > 0 {
+			n.agent.Tokens = a.Tokens // the main loop's count, on its session's node
 		}
 		if a.AgentID != "" {
 			byAgentID[a.AgentID] = append(byAgentID[a.AgentID], n)
@@ -288,6 +292,7 @@ func mergeSession(a *Agent, s *store.Session) {
 	a.WorktreePath = s.WorktreePath
 	a.LastAction = s.LastAction
 	a.LastEventAt = s.LastEventAt
+	a.StartedAt = s.StartedAt
 	a.NeedsYou = SessionNeedsYou(s)
 	a.NeedsYouSince = s.NeedsYouSince
 	a.Reason = s.StateReason

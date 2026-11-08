@@ -35,9 +35,17 @@ func tool(sid, agent, label, id string, at time.Time) events.Event {
 	return e
 }
 
+// subStart is a subagent's turn_start: the start of one of its runs.
+func subStart(sid, agent string, at time.Time) events.Event {
+	e := ev(events.TurnStart, sid, at)
+	e.AgentID = agent
+	return e
+}
+
+// needs is a permission dialog's needs_you for a call.
 func needs(sid, agent, id string, at time.Time) events.Event {
 	e := ev(events.NeedsYou, sid, at)
-	e.AgentID, e.Source, e.Reason, e.ToolUseID = agent, events.SourceToolCheck, "Bash: deploy", id
+	e.AgentID, e.Source, e.Reason, e.ToolUseID = agent, events.SourcePermissionRequest, "Bash: deploy", id
 	return e
 }
 
@@ -166,8 +174,9 @@ func TestDedupe(t *testing.T) {
 	l2.At = l1.At.Add(200 * time.Millisecond)
 	l2.Agents = []events.Agent{{ID: "x", Status: events.AgentRunning}, {ID: "y", Status: events.AgentRunning}}
 	h.post(l1, l2)
-	if ag := h.agents("s1"); len(ag) != 4 { // lead, sub1, x, y
-		t.Errorf("agents = %d, want 4", len(ag))
+	// sub1, known only from a tool call, is no agent: it gets no row.
+	if ag := h.agents("s1"); len(ag) != 3 { // lead, x, y
+		t.Errorf("agents = %d, want 3", len(ag))
 	}
 }
 
@@ -461,7 +470,7 @@ func TestLateAskIsIgnored(t *testing.T) {
 
 func TestPersonPromptClearsNeedsYou(t *testing.T) {
 	h := newHarness(t, nil)
-	h.post(start("s1", t0), ev(events.TurnStart, "s1", t0.Add(time.Second)))
+	h.post(start("s1", t0), ev(events.TurnStart, "s1", t0.Add(time.Second)), subStart("s1", "sub1", t0.Add(time.Second)))
 	h.post(needs("s1", "sub1", "a", t0.Add(2*time.Second)))
 	notif := ev(events.Prompt, "s1", t0.Add(3*time.Second))
 	notif.OriginKind = "task-notification"

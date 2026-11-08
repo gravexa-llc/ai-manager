@@ -11,19 +11,28 @@ package web
 //     Each row has a state dot, its name, its role and state, and its
 //     terminal tag (internal/term). Headless `claude -p` runs are left
 //     out, as the menu's count leaves them out.
-//   - "Not monitored (N)", collapsed in a <details>: the other sessions,
-//     each with Watch (POST /app/sessions/watch), whose toast's Undo
-//     unwatches. In "all" mode every session is monitored and the group
-//     isn't there.
+//   - "Not monitored", collapsed: the other sessions, each with Watch
+//     (POST /app/sessions/watch), whose toast's Undo unwatches. In "all"
+//     mode every session is monitored and the group isn't there.
+//   - Every group folds (groups.go): the plans' groups start open, Not
+//     monitored collapsed, and the one holding the selected session, or
+//     every one under a search, opens.
 //   - Expired background jobs: Claude Code deleted their conversation
 //     (internal/sessions Jobs, Options.Jobs) but still lists the job. They
 //     show "expired: …" and the `claude rm <id>` command instead of Watch
 //     and Go; aimd never deletes them, and they never count as needing
 //     you, even when monitored.
+//   - Older plugin: a session that runs an older plugin build than the
+//     folder it loaded it from holds now gets a tag in its row and its
+//     detail, and the summary counts them (app_plugin.go).
 //   - The detail pane (?s=<session key>, or <session key>/<agent id> for a
-//     subagent): state, terminal tag, why it's monitored (monitor.Summary),
-//     plan, package, folder and branch; Go (Go's rules, the reason shown
-//     when it can't), Stop monitoring for a watched session (POST
+//     subagent): state, terminal tag, its agent line as a package's pane
+//     draws it (agent_line.go: a subagent's own, a session's main loop's)
+//     and, for a monitored session, a line per live subagent linking to
+//     its detail and the finished ones folded (sessionAgents); why it's
+//     monitored (monitor.Summary), plan, package, folder, branch, when it
+//     started and plugin build; Go (Go's rules, the
+//     reason shown when it can't), Stop monitoring for a watched session (POST
 //     /app/sessions/unwatch, with Undo), and Watch for one that isn't
 //     monitored.
 //
@@ -159,10 +168,11 @@ type appSessionsView struct {
 	// Empty says why Groups is empty.
 	Empty string
 	// OptIn is true in "opt-in" mode, where Unmonitored lists the other
-	// sessions; NotOpen opens their group (the selected row is in it).
+	// sessions; NotMon is their section, collapsed unless it holds the
+	// selected row or a search.
 	OptIn       bool
 	Unmonitored []sessItem
-	NotOpen     bool
+	NotMon      listGroup
 	// Detail is the selected session, or nil with DetailNote saying why.
 	Detail     *sessDetail
 	DetailNote string
@@ -170,6 +180,7 @@ type appSessionsView struct {
 
 // sessItemGroup is one plan's sessions (or "No plan · watched").
 type sessItemGroup struct {
+	listGroup
 	Label string
 	// URL is the plan's page in the app.
 	URL  string
@@ -195,6 +206,10 @@ type sessItem struct {
 	// Expired says why an expired background job is, and RmCmd is the
 	// command that removes it.
 	Expired, RmCmd string
+	// OldPlugin, when set, is the Older plugin tag's hover text: the
+	// session runs an older plugin build than its folder holds now
+	// (app_plugin.go).
+	OldPlugin string
 	// Watch is a not-monitored row's Watch button.
 	Watch watchButton
 	// Search is more text the header's filter matches: the branch.
@@ -207,18 +222,49 @@ type sessDetail struct {
 	// Why says why it's monitored, or that it isn't.
 	Why string
 	// Waiting is what a session that needs you waits on, and WaitAge for
-	// how long. Doing is its last action, as the mod reported it.
-	Waiting, WaitAge   string
-	Doing              string
-	Plan, PlanURL      string
-	Pkg                string
-	Folder, FolderFull string
-	Branch             string
-	Started            string
+	// how long.
+	Waiting, WaitAge string
+	// Now is its agent line, as a package's pane draws it (agentLine): a
+	// subagent's own, or a session's main loop's, with its last action as
+	// the mod reported it. Nil for an expired job.
+	Now *agentNow
+	// Agents are a monitored session's live subagents, each line linking
+	// to its detail, and Finished the latest of the FinishedN that have
+	// ended (maxFinished), latest first, FinishedMore the ones left out
+	// (sessionAgents).
+	Agents                  []sessAgent
+	Finished                []*agentNow
+	FinishedN, FinishedMore int
+	Plan, PlanURL           string
+	Pkg                     string
+	Folder, FolderFull      string
+	Branch                  string
+	// Started is when it started: its clock time, as the line says how
+	// long it has run; with how long ago (startedText) when there's no
+	// line.
+	Started string
+	// Plugin is the plugin build it loaded when it started, PluginFolder
+	// where from, and PluginNote what to say when it reported none.
+	// PluginOnDisk is the build in that folder now, set when it differs.
+	Plugin, PluginFolder, PluginNote string
+	PluginOnDisk                     string
 	// Go is its Go button: Key to post, or Off with the reason.
 	Go goButton
 	// Unwatch offers Stop monitoring (a session you watch).
 	Unwatch bool
+}
+
+// sessAgent is a live subagent on its lead's detail: its line, a link to
+// its own detail.
+type sessAgent struct {
+	Href string
+	Now  *agentNow
+}
+
+// startedText is when a session or agent started, at its clock time in
+// the Time zone setting's zone and how long ago: "09:00 (3h ago)".
+func startedText(now, t time.Time) string {
+	return clock(now, t) + " (" + ago(now, t) + " ago)"
 }
 
 // noPlanAll heads every session with no plan in "all" mode, where nobody
@@ -237,11 +283,14 @@ func fillAppSessions(s *Server, r *http.Request, sn *snapshot, d *appData) error
 	if expired > 0 {
 		d.Summary += " · " + strconv.Itoa(expired) + " expired"
 	}
+	if n := s.olderPlugins(r.Context(), sn); n > 0 {
+		d.Summary += " · " + strconv.Itoa(n) + " on an older plugin"
+	}
 	if d.Fragment == "summary" || d.Fragment == "menu" {
 		return nil
 	}
 	q := r.URL.Query()
-	b := sessBuilder{s: s, sn: sn, query: strings.TrimSpace(d.Query), sel: q.Get("s")}
+	b := sessBuilder{ctx: r.Context(), s: s, sn: sn, query: strings.TrimSpace(d.Query), sel: q.Get("s")}
 	b.agents = s.liveAgents(r.Context(), sn)
 	v := &appSessionsView{OptIn: !sn.mon.All()}
 	if d.Fragment != "detail" {
@@ -256,6 +305,7 @@ func fillAppSessions(s *Server, r *http.Request, sn *snapshot, d *appData) error
 
 // sessBuilder builds the page's rows and detail.
 type sessBuilder struct {
+	ctx    context.Context
 	s      *Server
 	sn     *snapshot
 	query  string
@@ -285,7 +335,7 @@ func (b sessBuilder) list(v *appSessionsView) {
 		}
 		if !sn.mon.Monitored(row) {
 			if it.Sel {
-				v.NotOpen = true
+				v.NotMon.Force = true
 			}
 			v.Unmonitored = append(v.Unmonitored, it)
 			continue
@@ -318,11 +368,12 @@ func (b sessBuilder) list(v *appSessionsView) {
 	}
 	slices.SortStableFunc(order, func(a, c string) int { return cmp.Or(cmp.Compare(rank(a), rank(c)), cmp.Compare(a, c)) })
 	for _, k := range order {
-		g := sessItemGroup{Label: noPlanLabel}
+		g := sessItemGroup{listGroup: listGroup{Key: watchedKey, Open: true, Force: b.query != ""}, Label: noPlanLabel}
 		if sn.mon.All() {
 			g.Label = noPlanAll
 		}
 		if k != "" {
+			g.Key = planKey(k)
 			g.Label = k
 			if p := sn.board(k); p != nil {
 				g.Label, g.URL = cmp.Or(p.Title, p.Slug), appPlanURL(p.Slug)
@@ -351,12 +402,14 @@ func (b sessBuilder) list(v *appSessionsView) {
 		for _, bl := range blocks {
 			for _, e := range bl {
 				g.Rows = append(g.Rows, e.item)
+				g.Force = g.Force || e.item.Sel
 			}
 		}
 		v.Groups = append(v.Groups, g)
 	}
 	// A search shows the matching sessions that aren't monitored too.
-	v.NotOpen = v.NotOpen || b.query != ""
+	v.NotMon.Key = "not-monitored"
+	v.NotMon.Force = v.NotMon.Force || b.query != ""
 	switch {
 	case len(v.Groups) > 0:
 	case b.query != "" && len(v.Unmonitored) > 0:
@@ -412,6 +465,9 @@ func (b sessBuilder) item(row store.Session) sessItem {
 		it.State, it.Tone = "Expired", "lc-dropped"
 		it.Expired, it.RmCmd = e.Text(), claudeRm(row.JobID)
 		return it
+	}
+	if onDisk, old := b.s.pluginOf(b.ctx, row); old {
+		it.OldPlugin = oldPluginTitle(row.PluginBuild, onDisk)
 	}
 	if !sn.mon.Monitored(row) {
 		it.Watch = watchButtonOf(sn.mon, row)
@@ -517,7 +573,7 @@ func (s *Server) liveAgents(ctx context.Context, sn *snapshot) map[string][]stor
 	}
 	var out map[string][]store.Agent
 	for _, a := range agents {
-		if a.AgentID == "" || a.Kind == store.AgentLead || !a.EndedAt.IsZero() || events.AgentEnded(a.State) {
+		if !liveSubagent(a) {
 			continue
 		}
 		if out == nil {
@@ -527,6 +583,29 @@ func (s *Server) liveAgents(ctx context.Context, sn *snapshot) map[string][]stor
 	}
 	return out
 }
+
+// subagent reports whether an agent row is a subagent's (or a teammate's),
+// not a session's main loop.
+func subagent(a store.Agent) bool { return a.AgentID != "" && a.Kind != store.AgentLead }
+
+// liveSubagent reports whether an agent row is a subagent's that hasn't
+// ended.
+func liveSubagent(a store.Agent) bool {
+	return subagent(a) && a.EndedAt.IsZero() && !events.AgentEnded(a.State)
+}
+
+// subagentWho is who a subagent is in its line: its type, as the package
+// pane's agent link names it (agentLabel), or its id.
+func subagentWho(a store.Agent) string {
+	if a.AgentType != "" {
+		return a.AgentType
+	}
+	return "agent " + shortID(a.AgentID)
+}
+
+// mainLoopWho is who a session's main loop is in its line: the session's
+// own loop, as against its subagents.
+const mainLoopWho = "main"
 
 // agentsOf are a live session's live subagents.
 func (b sessBuilder) agentsOf(lead store.Session) []store.Agent {
@@ -657,12 +736,26 @@ func (b sessBuilder) sessionDetail(row store.Session) *sessDetail {
 		Folder:     b.s.displayPath(cmp.Or(row.Cwd, row.WorktreePath, row.Repo)),
 		FolderFull: cmp.Or(row.Cwd, row.WorktreePath, row.Repo),
 		Branch:     row.Branch,
-		Doing:      row.LastAction,
 		Go:         b.s.goButtonOf(row, app),
+		Plugin:     row.PluginBuild,
+		PluginNote: pluginNotReported(row),
 	}
 	d.Sel = true
-	if !row.StartedAt.IsZero() {
-		d.Started = ago(sn.now, row.StartedAt) + " ago"
+	if row.PluginRoot != "" {
+		d.PluginFolder = b.s.displayPath(row.PluginRoot)
+	}
+	if onDisk, old := b.s.pluginOf(b.ctx, row); old && d.Expired == "" {
+		d.PluginOnDisk = onDisk
+	}
+	if d.Expired == "" {
+		b.sessionAgents(row, d)
+	}
+	switch {
+	case row.StartedAt.IsZero():
+	case d.Now != nil:
+		d.Started = clock(sn.now, row.StartedAt)
+	default:
+		d.Started = startedText(sn.now, row.StartedAt)
 	}
 	if row.State == needsYou && d.Expired == "" {
 		d.Waiting = upperFirst(needReason(row.StateReason))
@@ -720,9 +813,10 @@ func (b sessBuilder) agentDetail(lead store.Session, a store.Agent) *sessDetail 
 	d := &sessDetail{
 		sessItem: it,
 		Go:       b.s.goButtonOfSubagent(lead, a, appOf(sn.terms, lead)),
+		Now:      agentLine(sn.now, subagentWho(a), a.LastAction, a.StartedAt, a.Tokens),
 	}
 	if !a.StartedAt.IsZero() {
-		d.Started = ago(sn.now, a.StartedAt) + " ago"
+		d.Started = clock(sn.now, a.StartedAt)
 	}
 	plan, pkg, title := sn.agentPackage(a.SessionID, a.AgentID)
 	if pkg != "" {
@@ -753,8 +847,54 @@ func (b sessBuilder) agentDetail(lead store.Session, a store.Agent) *sessDetail 
 			}
 		}
 	}
-	d.Doing = a.LastAction
 	return d
+}
+
+// maxFinished is how many finished subagents a lead's detail lists.
+const maxFinished = 20
+
+// sessionAgents fills a live session's agent lines: its main loop's (with
+// the main loop's token count, from its agent row), and for a monitored
+// session, whose subagents the list shows under it, one per live subagent
+// (as the list has them) and the latest finished ones. The rows come from
+// the store, for the selected session only; an error is logged and the
+// lines go without tokens or the finished ones.
+func (b sessBuilder) sessionAgents(row store.Session, d *sessDetail) {
+	sn := b.sn
+	var mainLoop store.Agent
+	var ended []store.Agent
+	for _, id := range ids(row) {
+		rows, err := b.s.opts.Store.ListAgents(b.ctx, id)
+		if err != nil {
+			b.s.log.Error("sessions page: list a session's agents", "err", err)
+			break
+		}
+		for _, a := range rows {
+			switch {
+			case a.AgentID == "" && id == row.SessionID:
+				mainLoop = a
+			case subagent(a) && !liveSubagent(a):
+				ended = append(ended, a)
+			}
+		}
+	}
+	d.Now = agentLine(sn.now, mainLoopWho, row.LastAction, row.StartedAt, mainLoop.Tokens)
+	if !sn.mon.Monitored(row) {
+		return
+	}
+	for _, a := range b.agentsOf(row) {
+		d.Agents = append(d.Agents, sessAgent{Href: b.href(row.Key + "/" + a.AgentID),
+			Now: agentLine(sn.now, subagentWho(a), a.LastAction, a.StartedAt, a.Tokens)})
+	}
+	// Latest first: by when it ended, else when it started.
+	slices.SortStableFunc(ended, func(x, y store.Agent) int {
+		return cmp.Or(y.EndedAt, y.StartedAt).Compare(cmp.Or(x.EndedAt, x.StartedAt))
+	})
+	d.FinishedN = len(ended)
+	for _, a := range ended[:min(len(ended), maxFinished)] {
+		d.Finished = append(d.Finished, endedLine(sn.now, subagentWho(a), a.State, a.StartedAt, a.EndedAt, a.Tokens))
+	}
+	d.FinishedMore = d.FinishedN - len(d.Finished)
 }
 
 // goButtonOfSubagent is a subagent's Go button: Go takes its key

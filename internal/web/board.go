@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gravexa-llc/ai-manager/internal/prwait"
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
@@ -143,6 +144,9 @@ type badgeView struct {
 
 type factView struct {
 	Text, Class, Title string
+	// lastAction marks an agent's "last: …" fact, which a package's pane
+	// shows in the agent's line instead (pkgAgentOf).
+	lastAction bool
 }
 
 type linkView struct {
@@ -193,7 +197,7 @@ func (s *Server) planViewOf(sn *snapshot, b api.Plan) *planView {
 	v := &planView{
 		Slug: b.Slug, Title: cmp.Or(b.Title, b.Slug),
 		Path: s.displayPath(b.Path), PathFull: b.Path, Repos: b.Repos,
-		Registered: ago(sn.now, b.CreatedAt), RegisteredAt: stamp(b.CreatedAt),
+		Registered: ago(sn.now, b.CreatedAt), RegisteredAt: stamp(sn.now, b.CreatedAt),
 		Derived: ago(sn.now, b.DerivedAt), Total: b.Total,
 	}
 	v.Segs, v.Counts, v.BarLabel = progress(b)
@@ -281,23 +285,31 @@ func (s *Server) cardOf(sn *snapshot, p api.Package) cardView {
 	// A lifecycle with no previous one is only as old as the first state
 	// pass that saw the package: not worth an age.
 	if !p.Since.IsZero() && p.PrevLifecycle != "" {
-		c.Since, c.SinceAt = ago(sn.now, p.Since), stamp(p.Since)
+		c.Since, c.SinceAt = ago(sn.now, p.Since), stamp(sn.now, p.Since)
 		c.Was = strings.ToLower(lifecycleLabel(p.PrevLifecycle))
 	}
 	if len(p.Cycle) > 0 {
 		c.Cycle = strings.Join(p.Cycle, " → ")
 	}
-	hasPR := false
 	links := slices.Clone(p.Links)
 	slices.SortStableFunc(links, func(a, b api.Link) int { return cmp.Compare(linkKindOrder[a.Kind], linkKindOrder[b.Kind]) })
 	for _, l := range links {
-		if l.Kind == store.LinkPR {
-			hasPR = true
-		}
 		c.Links = append(c.Links, s.linkViewOf(sn, l))
 	}
-	c.CanMarkDone = !hasPR && !p.DoneManual && !p.DoneInPlan && p.Lifecycle != "done"
+	c.CanMarkDone = canMarkDone(p)
 	return c
+}
+
+// canMarkDone reports whether Mark done is offered for p: a package with
+// no PR that isn't done. The plan page's pane and a Your step item in
+// Needs you both ask it.
+func canMarkDone(p api.Package) bool {
+	return !hasPRLink(p) && !p.DoneManual && !p.DoneInPlan && p.Lifecycle != "done"
+}
+
+// hasPRLink reports whether a PR is linked to p.
+func hasPRLink(p api.Package) bool {
+	return slices.ContainsFunc(p.Links, func(l api.Link) bool { return l.Kind == store.LinkPR })
 }
 
 var linkKindLabels = map[string]string{
@@ -401,9 +413,10 @@ func (s *Server) linkViewOf(sn *snapshot, l api.Link) linkView {
 		}
 		if a.LastAction != "" {
 			fact("last: "+a.LastAction, "", "")
+			v.Facts[len(v.Facts)-1].lastAction = true
 		}
 		if a.Live && !a.LastEventAt.IsZero() {
-			fact("quiet for "+ago(sn.now, a.LastEventAt), "", "last event "+stamp(a.LastEventAt))
+			fact("quiet for "+ago(sn.now, a.LastEventAt), "", "last event "+stamp(sn.now, a.LastEventAt))
 		}
 		if a.WorktreePath != "" {
 			fact("in "+filepath.Base(a.WorktreePath), "", a.WorktreePath)
@@ -422,7 +435,7 @@ func (s *Server) linkViewOf(sn *snapshot, l api.Link) linkView {
 				fact("locked", "", "")
 			}
 			if !w.LastCommitAt.IsZero() {
-				fact("last commit "+ago(sn.now, w.LastCommitAt)+" ago", "", stamp(w.LastCommitAt))
+				fact("last commit "+ago(sn.now, w.LastCommitAt)+" ago", "", stamp(sn.now, w.LastCommitAt))
 			}
 		}
 	case store.LinkBranch:
@@ -439,10 +452,19 @@ func (s *Server) linkViewOf(sn *snapshot, l api.Link) linkView {
 		}
 		pr := l.PR
 		if pr == nil {
-			fact("not read from GitHub yet", "quiet", "")
+			fact(prwait.NotReadYet, "quiet", "")
 			break
 		}
 		v.URL = pr.URL
+		if pr.Unread {
+			// Stored by URL only: its OPEN is a guess, so no state, CI or
+			// review is shown, and why GitHub didn't answer if it didn't.
+			fact(prwait.NotReadYet, "quiet", "aimd knows only its URL so far: it was linked before a GitHub poll read it")
+			if why := repoReadError(sn.status, pr.Repo); why != "" {
+				fact("last read failed", "bad", why)
+			}
+			break
+		}
 		fact(pr.Title, "title", "")
 		state, class := linkPRState(pr)
 		fact(state, class, "")

@@ -2,22 +2,37 @@ package web
 
 // The Pull requests page (GET /app/prs).
 //
-//   - The list: the open PRs in two groups. "On a plan or a monitored
-//     session" holds the PRs that count under internal/monitor's rules
-//     (sn.mon.PR: a registered plan's board links it, or it is a same-repo
-//     PR on a monitored session's branch); in "all" mode, where every PR
-//     counts, the ones on a plan. "Not on a plan" holds the rest. In a
-//     group, the PRs that need you come first, longest wait first as Needs
-//     you orders them, then the others, most recently updated first.
+//   - The list: the open PRs in sections that fold (groups.go), grouped by
+//     ?group= (Group by, remembered as the page's default):
+//     – repo (the default): one section per repo, as GitHub names it; the
+//     repos with a PR on a plan or a monitored session's first, then by
+//     name;
+//     – plan: one section per registered plan, in the order they were
+//     registered, headed by its title; then "No plan · watched", the PRs
+//     on a monitored session's branch on no plan; then "Not on a plan".
+//     A PR is on a plan when its verdict's plan (a board's link, or the
+//     plan of the monitored session on its branch) or its Plan: line names
+//     a registered plan. A PR is involved when it is on a plan or, in
+//     "opt-in" mode, counts under internal/monitor's rules (sn.mon.PR: a
+//     same-repo PR on a monitored session's branch). A section with no
+//     involved PR starts collapsed ("Not on a plan", a repo of strays),
+//     and the one holding the selected PR, or every one under a search,
+//     opens. In a section, the PRs that need you come first, longest wait
+//     first as Needs you orders them, then the others, most recently
+//     updated first.
 //   - Each row: repo and number, plan and package, title, a who-chip and
-//     an age. The chip comes from the PR's verdict (sn.mon.PRWait,
+//     an age; the section's own repo or plan is left out of the row. The
+//     chip comes from the PR's verdict (sn.mon.PRWait,
 //     internal/prwait): Waiting on you (ready to merge, and you merge it),
 //     Review requested (on any PR, a plan or not), Waiting on lead, Agent
 //     working, Stale draft (an open draft not updated for 30 days), Ready
 //     (ready to merge, but nobody waits on it: not counted), or Snoozed
 //     (its Needs you item is snoozed in the inbox; prInbox). A PR with
 //     none of these shows what keeps it from being ready ("CI failing")
-//     as a plain tag.
+//     as a plain tag. A PR aimd has never read from GitHub (store.PR.Unread:
+//     linked by URL before a poll read it) shows Not read yet instead, its
+//     age counted from when it was linked, and its detail says so in
+//     State, with why GitHub didn't answer when its last read failed.
 //   - The detail pane (?pr=<owner/repo#n>): state, CI, package, who
 //     merges, updated, the verdict's reason (why it is or isn't in Needs
 //     you) with a link to its inbox item, and Open on GitHub, a plain
@@ -106,7 +121,9 @@ func snoozedUntil(now time.Time, it store.InboxItem) string {
 
 // appPRsView is the page's data.
 type appPRsView struct {
-	Groups []prItemGroup
+	// GroupBy is the list's Group by control.
+	GroupBy groupControl
+	Groups  []prItemGroup
 	// Empty says why there are no groups.
 	Empty string
 	// Detail is the selected PR, or nil with DetailNote saying why.
@@ -114,8 +131,12 @@ type appPRsView struct {
 	DetailNote string
 }
 
-// prItemGroup is one of the two groups.
+// prGroupChoices are the page's Group by choices, the default first.
+var prGroupChoices = []groupChoice{{Value: groupRepo, Label: "Repo"}, {Value: groupPlan, Label: "Plan"}}
+
+// prItemGroup is one section of the list.
 type prItemGroup struct {
+	listGroup
 	Label string
 	Rows  []prItem
 }
@@ -137,8 +158,11 @@ type prItem struct {
 	Number    int
 	// PlanPkg is "sharing · V1", or "not on a plan".
 	PlanPkg string
-	Title   string
-	Who     whoChip
+	// Sub is the row's line over its title: repo, number, plan and
+	// package, less what its section already says.
+	Sub   string
+	Title string
+	Who   whoChip
 	// Age is how long it has waited on you, or since its last update.
 	Age, AgeTitle string
 	Sel           bool
@@ -183,7 +207,9 @@ func fillAppPRs(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	b := prBuilder{s: s, sn: sn, query: strings.TrimSpace(d.Query), inbox: s.prInbox(ctx)}
 	b.sel, b.selOK = parsePRRef(r.URL.Query().Get("pr"))
 	v := &appPRsView{}
+	b.group, b.kept, v.GroupBy = groupBy(r, d, "prs", prGroupChoices)
 	if d.Fragment != "detail" {
+		b.plans = s.registeredPlans(ctx, sn)
 		b.list(v)
 	}
 	if d.Fragment != "list" {
@@ -206,6 +232,11 @@ type prBuilder struct {
 	// overrides are Settings' who-merges overrides (mergesOverrides), for
 	// the detail's Merges.
 	overrides map[string]string
+	// group is the list's Group by, and kept the ?group= the rows' links
+	// carry on ("" when the URL has none).
+	group, kept string
+	// plans are the registered plans, for Plan grouping.
+	plans []api.Plan
 }
 
 // inboxItem is a PR's waiting inbox item, if it has one.
@@ -232,23 +263,57 @@ func samePR(k store.PRKey, p store.PR) bool {
 	return k.Number == p.Number && strings.EqualFold(k.Repo, p.Repo)
 }
 
-// onPlan reports whether a PR goes in the first group (see the file
-// comment).
-func (b prBuilder) onPlan(p store.PR, v prwait.Verdict) bool {
-	if !b.sn.mon.All() {
-		return v.Monitored
+// planOf is the registered plan a PR is on (see the file comment): its
+// index in b.plans, or -1.
+func (b prBuilder) planOf(p store.PR, v prwait.Verdict) int {
+	if i := planIndex(b.plans, v.Plan); i >= 0 {
+		return i
 	}
-	return v.Plan != "" || p.PlanSlug != ""
+	return planIndex(b.plans, p.PlanSlug)
 }
 
-// list fills the two groups.
+// prSection is the section a PR goes in under the page's Group by.
+type prSection struct {
+	key, label string
+	// rank orders Plan grouping's sections: the plan's place, then the
+	// watched and the rest.
+	rank int
+}
+
+// sectionOf is a PR's section (see the file comment).
+func (b prBuilder) sectionOf(p store.PR, v prwait.Verdict) prSection {
+	if b.group != groupPlan {
+		return prSection{key: repoKey(p.Repo), label: p.Repo}
+	}
+	if i := b.planOf(p, v); i >= 0 {
+		return prSection{key: planKey(b.plans[i].Slug), label: cmp.Or(b.plans[i].Title, b.plans[i].Slug), rank: i}
+	}
+	if !b.sn.mon.All() && v.Monitored {
+		return prSection{key: watchedKey, label: noPlanLabel, rank: len(b.plans)}
+	}
+	return prSection{key: notOnPlanKey, label: notOnPlanLabel, rank: len(b.plans) + 1}
+}
+
+// involved reports whether a PR is on a plan or a monitored session's
+// (see the file comment): its section starts open.
+func (b prBuilder) involved(p store.PR, v prwait.Verdict) bool {
+	return b.planOf(p, v) >= 0 || (!b.sn.mon.All() && v.Monitored)
+}
+
+// list fills the sections.
 func (b prBuilder) list(v *appPRsView) {
 	type entry struct {
 		item  prItem
 		needs bool
 		since time.Time
 	}
-	var on, off []entry
+	type section struct {
+		prSection
+		involved, sel bool
+		entries       []entry
+	}
+	bySection := map[string]*section{}
+	var order []*section
 	any := false
 	for _, p := range b.sn.prs {
 		if p.State != store.PROpen {
@@ -260,13 +325,24 @@ func (b prBuilder) list(v *appPRsView) {
 		if !b.matches(p, it) {
 			continue
 		}
-		e := entry{item: it, needs: vd.NeedsYou != "", since: waitSince(p, vd)}
-		if b.onPlan(p, vd) {
-			on = append(on, e)
-		} else {
-			off = append(off, e)
+		ps := b.sectionOf(p, vd)
+		sec := bySection[ps.key]
+		if sec == nil {
+			sec = &section{prSection: ps}
+			bySection[ps.key] = sec
+			order = append(order, sec)
 		}
+		it.Sub = b.sub(it, ps)
+		sec.involved = sec.involved || b.involved(p, vd)
+		sec.sel = sec.sel || it.Sel
+		sec.entries = append(sec.entries, entry{item: it, needs: vd.NeedsYou != "", since: waitSince(p, vd)})
 	}
+	slices.SortStableFunc(order, func(a, c *section) int {
+		if b.group == groupPlan {
+			return cmp.Compare(a.rank, c.rank)
+		}
+		return byInvolvedThenName(a.involved, a.label, c.involved, c.label)
+	})
 	sortEntries := func(es []entry) []prItem {
 		slices.SortStableFunc(es, func(a, c entry) int {
 			switch {
@@ -292,11 +368,12 @@ func (b prBuilder) list(v *appPRsView) {
 		}
 		return out
 	}
-	if len(on) > 0 {
-		v.Groups = append(v.Groups, prItemGroup{Label: "On a plan or a monitored session", Rows: sortEntries(on)})
-	}
-	if len(off) > 0 {
-		v.Groups = append(v.Groups, prItemGroup{Label: "Not on a plan", Rows: sortEntries(off)})
+	for _, sec := range order {
+		v.Groups = append(v.Groups, prItemGroup{
+			listGroup: listGroup{Key: sec.key, Open: sec.involved, Force: sec.sel || b.query != ""},
+			Label:     sec.label,
+			Rows:      sortEntries(sec.entries),
+		})
 	}
 	switch {
 	case len(v.Groups) > 0:
@@ -305,6 +382,28 @@ func (b prBuilder) list(v *appPRsView) {
 	default:
 		v.Empty = "No open pull requests."
 	}
+}
+
+// sub is a row's line over its title, less what its section says: under
+// Repo grouping the repo, under Plan grouping the plan ("#7 · sharing ·
+// V1", "o/app #7 · V1"). In Plan grouping's other sections the plan part
+// is said by the header, unless it names a plan that isn't registered.
+func (b prBuilder) sub(it prItem, ps prSection) string {
+	num := "#" + strconv.Itoa(it.Number)
+	if b.group != groupPlan {
+		return num + " · " + it.PlanPkg
+	}
+	head := it.Repo + " " + num
+	switch {
+	case ps.key == watchedKey, it.PlanPkg == "not on a plan":
+		return head
+	case ps.key == notOnPlanKey:
+		return head + " · " + it.PlanPkg
+	}
+	if _, pkg, ok := strings.Cut(it.PlanPkg, " · "); ok {
+		return head + " · " + pkg
+	}
+	return head
 }
 
 // waitSince is when a PR started waiting on you: when aimd first saw your
@@ -333,6 +432,9 @@ func (b prBuilder) item(p store.PR, v prwait.Verdict) prItem {
 	if b.query != "" {
 		q.Set("q", b.query)
 	}
+	if b.kept != "" {
+		q.Set("group", b.kept)
+	}
 	it := prItem{
 		Ref:     ref,
 		Href:    appPRsPath + "?" + q.Encode(),
@@ -360,17 +462,46 @@ func (b prBuilder) item(p store.PR, v prwait.Verdict) prItem {
 	}
 	since := waitSince(p, v)
 	it.Age = ago(b.sn.now, since)
-	if v.NeedsYou == prwait.ReviewRequested && !p.ReviewRequestedAt.IsZero() {
-		it.AgeTitle = "review requested since " + stamp(since)
-	} else {
-		it.AgeTitle = "updated " + stamp(since)
+	switch {
+	case p.Unread():
+		it.Age, it.AgeTitle = ago(b.sn.now, p.FirstSeenAt), "linked "+stamp(b.sn.now, p.FirstSeenAt)
+	case v.NeedsYou == prwait.ReviewRequested && !p.ReviewRequestedAt.IsZero():
+		it.AgeTitle = "review requested since " + stamp(b.sn.now, since)
+	default:
+		it.AgeTitle = "updated " + stamp(b.sn.now, since)
 	}
 	return it
 }
 
-// who is a PR's who-chip (see the file comment).
+// who is a PR's who-chip (see the file comment). A PR aimd has never read
+// from GitHub gets "Not read yet", with why its repo couldn't be read when
+// GitHub didn't answer.
 func (b prBuilder) who(p store.PR, v prwait.Verdict) whoChip {
-	return whoChipOf(b.sn.now, p, v, b.snoozed(p))
+	c := whoChipOf(b.sn.now, p, v, b.snoozed(p))
+	if p.Unread() {
+		c.Title = notReadText(b.sn.status, p)
+	}
+	return c
+}
+
+// repoReadError is why GitHub's last read of a repo failed (the status's
+// unreadable repos), or "" when it didn't.
+func repoReadError(st api.Status, repo string) string {
+	for _, e := range st.GitHub.Unreadable {
+		if strings.EqualFold(e.Repo, repo) {
+			return e.Error
+		}
+	}
+	return ""
+}
+
+// notReadText says a PR hasn't been read from GitHub yet, with why when
+// GitHub's last read of its repo failed.
+func notReadText(st api.Status, p store.PR) string {
+	if why := repoReadError(st, p.Repo); why != "" {
+		return prwait.NotReadYet + ": the last read failed (" + why + ")"
+	}
+	return prwait.NotReadYet
 }
 
 // snoozed says until when a PR's inbox item is snoozed ("until 11:15"),
@@ -386,6 +517,9 @@ func (b prBuilder) snoozed(p store.PR) string {
 // item is snoozed, until when ("" when it isn't).
 func whoChipOf(now time.Time, p store.PR, v prwait.Verdict, snoozed string) whoChip {
 	switch {
+	case p.Unread():
+		// Its OPEN is a guess: it never needs you or waits on anyone.
+		return whoChip{Label: "Not read yet", Tone: "tone-quiet", Title: v.Reason}
 	case v.NeedsYou != "" && snoozed != "":
 		return whoChip{Label: "Snoozed", Tone: "tone-quiet", Title: "snoozed " + snoozed}
 	case v.NeedsYou == prwait.ReviewRequested:
@@ -429,11 +563,14 @@ func (b prBuilder) detail(raw string) (*prDetail, string) {
 		CI:        checksText(p.ChecksState),
 		Pkg:       "—",
 		Merges:    "—",
-		UpdatedAt: stamp(p.UpdatedAt),
+		UpdatedAt: stamp(b.sn.now, p.UpdatedAt),
 	}
 	d.Sel = true
 	if !p.UpdatedAt.IsZero() {
 		d.Updated = ago(b.sn.now, p.UpdatedAt) + " ago"
+	}
+	if p.Unread() {
+		d.State, d.CI = upperFirst(notReadText(b.sn.status, p)), "—"
 	}
 	if d.PlanPkg != "not on a plan" {
 		d.Pkg = d.PlanPkg

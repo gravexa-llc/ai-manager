@@ -1,12 +1,12 @@
 // A plan's page (templates/app/plan.html). The shell's script
-// (app-shell.js) loads the graph's SVG links into the panes (data-pane),
-// opens the graph scrolled to its far right (data-scroll-start="end") and
+// (app-shell.js) loads the graph's SVG links into the panes (data-pane) and
 // keeps each view box's sideways scroll across swaps. This adds three
 // things:
 //
 //   - when a view's box first shows (the page opens, or a tab switches the
-//     view), the selected package is brought into view in it, moving the
-//     box as little as it can;
+//     view), it pans right from its left end just far enough to show its
+//     data-focus boxes (the packages being worked on), then brings the
+//     selected package into view. Then the scroll is the user's;
 //   - Unregister's confirmation, which the shell's data-open opens,
 //     closes when it is sent, so a refusal's toast isn't behind it. A page
 //     opened at ?unregister=1 (the button without the script) shows it as
@@ -27,13 +27,41 @@
     doc.querySelectorAll("[data-keep-scroll][id]").forEach(function (el) {
       if (seen[el.id]) return;
       seen[el.id] = true;
-      var sel = el.querySelector(".sel");
-      if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+      show(el);
     });
+  }
+
+  function show(el) {
+    el.scrollLeft = focusLeft(el);
+    var sel = el.querySelector(".sel");
+    if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  // focusLeft: 0 when the focus shows already or there is none; if it is
+  // wider than the box, its left end shows.
+  function focusLeft(box) {
+    var items = box.querySelectorAll("[data-focus]");
+    if (!items.length) return 0;
+    var origin = box.getBoundingClientRect().left + box.clientLeft - box.scrollLeft;
+    var left = Infinity;
+    var right = -Infinity;
+    items.forEach(function (n) {
+      var r = n.getBoundingClientRect();
+      left = Math.min(left, r.left - origin);
+      right = Math.max(right, r.right - origin);
+    });
+    var margin = 16;
+    return Math.max(0, Math.min(right + margin - box.clientWidth, left - margin));
   }
 
   doc.addEventListener("aim:swap", reveal);
   reveal();
+  // Again once the styles load, unless the user scrolled.
+  window.addEventListener("load", function () {
+    doc.querySelectorAll("[data-keep-scroll][id]").forEach(function (el) {
+      if (el.scrollLeft === 0) show(el);
+    });
+  });
 
   function unregister() {
     return doc.getElementById("plan-unregister");

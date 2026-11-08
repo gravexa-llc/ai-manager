@@ -59,6 +59,10 @@ const (
 	MaxPlanLines     = 12   // lines of the plan kept
 )
 
+// MaxTokens caps a token count (Agent.Tokens, Event.Tokens). It is far
+// past any context window: only a broken sender reaches it.
+const MaxTokens = 1_000_000_000
+
 // Kind is an event's kind.
 type Kind string
 
@@ -74,19 +78,26 @@ const (
 	Idle           Kind = "idle"
 	Error          Kind = "error"
 	WorktreeCreate Kind = "worktree_create"
+	AgentStart     Kind = "agent_start"
 	AgentList      Kind = "agent_list"
 	SessionEnd     Kind = "session_end"
 )
 
 // Kinds lists every kind, roughly in the order a session sends them.
-var Kinds = []Kind{SessionStart, Prompt, TurnStart, TurnComplete, Tool, NeedsYou, Idle, Error, WorktreeCreate, AgentList, SessionEnd}
+var Kinds = []Kind{SessionStart, Prompt, TurnStart, TurnComplete, Tool, NeedsYou, Idle, Error, WorktreeCreate, AgentStart, AgentList, SessionEnd}
 
 // Known reports whether k is one of Kinds.
 func (k Kind) Known() bool { return slices.Contains(Kinds, k) }
 
-// Values of Event.Source for a needs_you event: what raised it.
+// Values of Event.Source for a needs_you event: what raised it. Each is
+// a person being asked. tool.check's "ask" isn't one: the mode's decider
+// takes it first (auto mode's classifier answers most with no dialog), so
+// the mod only notes the call for the PermissionRequest that follows if a
+// dialog opens. Mods older than that still send SourceToolCheck, on every
+// such call; aimd drops those events (internal/live), since the same mods
+// also report a dialog that really opens, as SourcePermissionRequest.
 const (
-	SourceToolCheck         = "tool_check"         // tool.check answered "ask"
+	SourceToolCheck         = "tool_check"         // tool.check answered "ask" (older mods; aimd drops it)
 	SourcePermissionRequest = "permission_request" // classic.PermissionRequest
 	SourceAskUserQuestion   = "ask_user_question"  // tool.call on AskUserQuestion
 	SourceExitPlanMode      = "exit_plan_mode"     // tool.call on ExitPlanMode
@@ -128,7 +139,7 @@ type Event struct {
 	AgentID   string    `json:"agent_id,omitempty"`
 	// Cwd is the loop's working directory when the event happened
 	// ($.session.cwd() in the hook), on session_start, turn_start and
-	// tool. It is how aimd follows a session into and out of a worktree
+	// tool, and the classic input's cwd on agent_start. It is how aimd follows a session into and out of a worktree
 	// and joins a subagent to its worktree. Leave it out where it isn't
 	// reliable (turn_complete).
 	Cwd string `json:"cwd,omitempty"`
@@ -147,6 +158,19 @@ type Event struct {
 	// an Agent View dispatch; the mod reads CLAUDE_CODE_SESSION_KIND=bg).
 	// Those say isInteractive too, so Interactive alone can't tell.
 	Background *bool `json:"background,omitempty"`
+	// PluginBuild, on session_start: the plugin build the session loaded
+	// its mod from, read once as the session started (a session keeps that
+	// mod until it restarts). It is `git describe --tags --always` of the
+	// last commit that changed the plugin's folder, with "-dirty" when its
+	// tracked files differ from that commit, e.g. "v1.0.0-12-gabc1234"
+	// (internal/worktrees' DescribeDir works it out the same way). Left
+	// out when the mod couldn't tell (the folder isn't in a git checkout),
+	// and by mods older than the field.
+	PluginBuild string `json:"plugin_build,omitempty"`
+	// PluginRoot, on session_start: the plugin's folder ($.plugin.root, the
+	// one holding .claude-plugin/plugin.json), where aimd works out the
+	// build on disk now, to flag a session that runs an older one.
+	PluginRoot string `json:"plugin_root,omitempty"`
 
 	// Source: on session_start, classic.SessionStart's source (startup,
 	// resume, clear, compact); on needs_you, what raised it (Source*).
@@ -168,6 +192,14 @@ type Event struct {
 	// tests", "Edit internal/x.go").
 	Tool  string `json:"tool,omitempty"`
 	Label string `json:"label,omitempty"`
+	// Tokens, on tool and turn_complete in the main loop: the main loop's
+	// token count, counted as Agent.Tokens counts a subagent's (its latest
+	// model response's input, cache read, cache write and output tokens,
+	// from turn.step's usage). Every step asks for tools or ends the turn,
+	// so these events follow each one. Left out before the main loop's
+	// first response, in a subagent's loop (agent_list carries a
+	// subagent's), and by older mods.
+	Tokens int64 `json:"tokens,omitempty"`
 	// ToolUseID, on tool and needs_you: the tool call's tool_use_id. A
 	// tool event clears a needs_you in the same loop only when their ids
 	// match (or either has none), so a parallel call that finishes while
@@ -183,6 +215,14 @@ type Event struct {
 	// worktree_create: classic.WorktreeCreate's name ("agent-<agentId>"
 	// for a worktree-isolated agent).
 	Name string `json:"name,omitempty"`
+
+	// AgentType, on agent_start: classic.SubagentStart's agent_type, the
+	// type the agent was spawned as ("general-purpose", "Explore"). Claude
+	// Code fires SubagentStart at the start of every run of a subagent, a
+	// SendMessage resume's included, under the agent's one id, and never
+	// for its own forks (compaction, memory), whose ids no agent list
+	// names. The event's AgentID is that id and its Cwd the agent's.
+	AgentType string `json:"agent_type,omitempty"`
 
 	// agent_list: the $.agent.list() snapshot.
 	Agents []Agent `json:"agents,omitempty"`
@@ -203,6 +243,12 @@ type Agent struct {
 	// ParentID is the agent that spawned it ($.agent.list()'s parentId,
 	// agent.spawn's parentAgentId); empty for the main loop.
 	ParentID string `json:"parent_id,omitempty"`
+	// Tokens is the agent's token count as Claude Code's agent list shows
+	// it ("↓ 284.1k tokens"): its latest model response's input, cache
+	// read, cache write and output tokens added up, from turn.step's
+	// usage. It is not a running total: each response replaces it. Left
+	// out (0) before the agent's first response, and by older mods.
+	Tokens int64 `json:"tokens,omitempty"`
 }
 
 // Wait is what a needs_you waits on: a permission's tool and
@@ -348,14 +394,18 @@ func (e *Event) Normalize() error {
 	e.Host = Truncate(e.Host, MaxToolLen)
 	e.ItermSessionID = Truncate(e.ItermSessionID, MaxToolLen)
 	e.PrevSessionID = Truncate(strings.TrimSpace(e.PrevSessionID), MaxToolLen)
+	e.PluginBuild = Truncate(OneLine(e.PluginBuild), MaxToolLen)
+	e.PluginRoot = Truncate(strings.TrimSpace(e.PluginRoot), MaxPathLen)
 	e.Source = Truncate(e.Source, MaxKindLen)
 	e.OriginKind = Truncate(e.OriginKind, MaxKindLen)
 	e.Reason = Truncate(OneLine(e.Reason), MaxSummaryLen)
 	e.LastSaid = Truncate(FirstLine(e.LastSaid), MaxSummaryLen)
 	e.Tool = Truncate(e.Tool, MaxToolLen)
 	e.Label = Truncate(OneLine(e.Label), MaxSummaryLen)
+	e.Tokens = min(max(e.Tokens, 0), MaxTokens)
 	e.ToolUseID = Truncate(strings.TrimSpace(e.ToolUseID), MaxToolLen)
 	e.Name = Truncate(e.Name, MaxToolLen)
+	e.AgentType = Truncate(strings.TrimSpace(e.AgentType), MaxKindLen)
 	e.NewSessionID = Truncate(strings.TrimSpace(e.NewSessionID), MaxToolLen)
 	if e.Wait != nil {
 		// A copy: the caller's event keeps its own slices.
@@ -378,6 +428,7 @@ func (e *Event) Normalize() error {
 		a.Status = Truncate(a.Status, MaxKindLen)
 		a.Type = Truncate(a.Type, MaxKindLen)
 		a.ParentID = Truncate(strings.TrimSpace(a.ParentID), MaxToolLen)
+		a.Tokens = min(max(a.Tokens, 0), MaxTokens)
 		agents = append(agents, a)
 	}
 	e.Agents = agents

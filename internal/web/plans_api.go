@@ -27,9 +27,15 @@ type PlanService interface {
 	Dismiss(ctx context.Context, path string) (api.Dismissal, error)
 	LinkSpawn(ctx context.Context, req api.SpawnLinkRequest) (api.LinkResult, error)
 	LinkPR(ctx context.Context, req api.PRLinkRequest) (api.LinkResult, error)
+	// RefreshPRs asks for a PR a tool call created, merged or closed to
+	// be read from GitHub now.
+	RefreshPRs(ctx context.Context, req api.PRRefreshRequest) (api.PRRefreshResult, error)
 	LinkManual(ctx context.Context, req api.LinkRequest) (api.LinkResult, error)
 	Unlink(ctx context.Context, req api.LinkRequest) (api.LinkResult, error)
 	UnlinkID(ctx context.Context, id int64) (api.LinkResult, error)
+	// HideUnmatched hides a PR or branch from a plan's Unmatched lane, or
+	// restores it: the plan page's Not part of this plan.
+	HideUnmatched(ctx context.Context, req api.HideRequest) (api.HideResult, error)
 	SetDone(ctx context.Context, slug, id string, done bool) (api.DoneResult, error)
 	Context(ctx context.Context, cwd string) (api.Context, error)
 	// Timeline is a plan's history, which the app's plan page draws its
@@ -54,6 +60,7 @@ func (s *Server) planRoutes(p PlanService) {
 	s.mux.HandleFunc("DELETE /api/plans/{slug}/packages/{id}/done", h.done(false))
 	s.mux.HandleFunc("POST /api/links/spawn", h.spawn)
 	s.mux.HandleFunc("POST /api/links/pr", h.pr)
+	s.mux.HandleFunc("POST /api/prs/refresh", h.refresh)
 	s.mux.HandleFunc("POST /api/links/manual", h.manual)
 	s.mux.HandleFunc("DELETE /api/links", h.unlink)
 	s.mux.HandleFunc("DELETE /api/links/{id}", h.unlinkID)
@@ -211,6 +218,16 @@ func (h planHandlers) pr(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := h.p.LinkPR(r.Context(), req)
 	h.answer(w, r, http.StatusCreated, out, err)
+}
+
+// refresh answers 202: the read happens soon, in the daemon.
+func (h planHandlers) refresh(w http.ResponseWriter, r *http.Request) {
+	var req api.PRRefreshRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	out, err := h.p.RefreshPRs(r.Context(), req)
+	h.answer(w, r, http.StatusAccepted, out, err)
 }
 
 func (h planHandlers) manual(w http.ResponseWriter, r *http.Request) {

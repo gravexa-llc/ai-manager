@@ -140,7 +140,7 @@ func TestInboxPlanRow(t *testing.T) {
 		must(t, err)
 		out := map[string]store.InboxItem{}
 		for _, it := range list {
-			if it.Source == inbox.SourcePlan {
+			if it.Kind == inbox.KindPlanRow { // not the plan's your steps (aimSteps)
 				out[it.Pkg] = it
 			}
 		}
@@ -174,6 +174,16 @@ func TestInboxPlanRow(t *testing.T) {
 		`<pre class="code" id="planrow-`+strconv.FormatInt(z9.ID, 10)+`">`+z9Row+`</pre>`,
 		`data-copy="planrow-`+strconv.FormatInt(z9.ID, 10)+`"`, `href="/app/plans/aim?pkg=Z9"`)
 	wantNotIn(t, "Z9's item", section(t, page, "detail"), `action="/app/inbox/go"`)
+	// Grouped by session, it comes from no session: Plan files (with the
+	// plan's your steps), after the sessions, open as it holds the
+	// selected item.
+	bySession := get(t, e.h, "/app/inbox?group=session&item="+strconv.FormatInt(z9.ID, 10)+"&fragment=list")
+	if keys := sectionKeys(bySession); len(keys) == 0 || keys[len(keys)-1] != "session:-plans" {
+		t.Errorf("grouped by session: sections %v", keys)
+	}
+	wantSection(t, bySession, "session:-plans", true, true)
+	_, planFiles := sectionOf(t, bySession, "session:-plans")
+	wantIn(t, "Plan files", planFiles, `<span>Plan files</span><span>`+strconv.Itoa(1+aimSteps)+`</span>`, "Z9 isn&#39;t in ROADMAP.md")
 	// It counts on the plan's summary.
 	sum, err := e.svc.Summary(ctx, "aim", time.Time{})
 	must(t, err)

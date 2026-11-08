@@ -25,9 +25,13 @@
 //	tool.call (in)              remembered for its label; needs_you for AskUserQuestion
 //	                            (source ask_user_question) and ExitPlanMode (exit_plan_mode),
 //	                            with their wait (the questions, the plan)
-//	tool.check (decision ask)   needs_you: source tool_check, reason = the tool's label,
-//	                            wait = WaitFor(tool, input); only when approver is
-//	                            "person" or absent
+//	tool.check (decision ask)   nothing: the call's tool_use_id is remembered for the
+//	                            PermissionRequest that follows if a dialog opens, only
+//	                            when approver is "person" or absent. The mode's
+//	                            decider takes the ask first (auto mode's classifier
+//	                            answers most with no dialog), so it isn't a needs_you.
+//	                            The older mod (Mod.ToolCheckAsks) sent one: source
+//	                            tool_check, reason = the call's label, its wait
 //	classic.PermissionRequest   needs_you: source permission_request, agent_id = agent_id,
 //	                            wait = WaitFor(tool_name, tool_input)
 //	tool.call (out)             tool: tool, label, tool_use_id, cwd = $.session.cwd()
@@ -37,9 +41,15 @@
 //	classic.StopFailure         error: reason = error
 //	turn.complete               turn_complete: reason, last_said = first line of answer
 //	classic.WorktreeCreate      worktree_create: name
+//	classic.SubagentStart       agent_start: agent_id, agent_type, cwd (each run of a
+//	                            subagent, a SendMessage resume's included)
 //	agent.spawn                 remembered: background and parentAgentId, by the agentId
 //	                            its result returns (resumes included)
-//	$.agent.list()              agent_list: id, status, type, background, parent_id
+//	turn.step (out)             remembered, for a subagent's loop only: its token count,
+//	                            the result's usage added up (input, cache read, cache
+//	                            write and output tokens), each step replacing the last
+//	$.agent.list()              agent_list: id, status, type, background, parent_id,
+//	                            tokens (once a step of the agent was seen)
 //	session.end                 session_end: reason (and new_session_id after /clear)
 //
 // Every event gets the session id ($.session.id()) and the hook's time. The
@@ -73,14 +83,30 @@ type record struct {
 	Data       json.RawMessage `json:"data"`
 }
 
+// Mod picks which mod's events the translation writes: the current mod's
+// (the zero Mod), or an older one that sessions started before a fix
+// still run until they restart.
+type Mod struct {
+	// ToolCheckAsks is the mod from before the needs-you fix: it also sent
+	// a needs_you (source tool_check, the call's label and wait) for every
+	// tool.check that answered "ask", when approver was "person" or
+	// absent, and counted it as an open ask (so no Notification followed).
+	// aimd drops those.
+	ToolCheckAsks bool
+}
+
 // LoadS2 reads a probe log file and translates it.
-func LoadS2(path string) ([]events.Event, error) {
+func LoadS2(path string) ([]events.Event, error) { return LoadS2Mod(path, Mod{}) }
+
+// LoadS2Mod reads a probe log file and translates it as m would have sent
+// it.
+func LoadS2Mod(path string, m Mod) ([]events.Event, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	evs, err := ReadS2(f)
+	evs, err := ReadS2Mod(f, m)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
@@ -89,7 +115,10 @@ func LoadS2(path string) ([]events.Event, error) {
 
 // ReadS2 reads a probe log and returns the events the mod would have
 // sent, in order.
-func ReadS2(r io.Reader) ([]events.Event, error) {
+func ReadS2(r io.Reader) ([]events.Event, error) { return ReadS2Mod(r, Mod{}) }
+
+// ReadS2Mod is ReadS2 for the mod m.
+func ReadS2Mod(r io.Reader, m Mod) ([]events.Event, error) {
 	var recs []record
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -108,6 +137,7 @@ func ReadS2(r io.Reader) ([]events.Event, error) {
 		return nil, err
 	}
 	t := newTranslator(recs)
+	t.mod = m
 	for i := range recs {
 		if err := t.record(i); err != nil {
 			return nil, fmt.Errorf("seq %d (%s %s): %w", recs[i].Seq, recs[i].Event, recs[i].Phase, err)
@@ -132,6 +162,7 @@ type spawn struct {
 type translator struct {
 	recs []record
 	out  []events.Event
+	mod  Mod
 
 	source   map[string]string    // session id → classic.SessionStart source
 	cwd      map[string]string    // loop (agent id, "" = main) → latest cwd
@@ -141,6 +172,7 @@ type translator struct {
 	asked    map[string]string    // loop → tool_use_id of the last ask
 	pending  []spawn              // agent.spawn inputs waiting for their result
 	spawns   map[string]spawn     // agent id → spawn
+	tokens   map[string]int64     // agent id → its latest turn.step's token count
 	// open is the asks not yet answered: tool_use_id → its loop. A
 	// Notification is only sent while it is empty (it names no loop).
 	open map[string]string
@@ -162,6 +194,7 @@ func newTranslator(recs []record) *translator {
 		approver: map[string]string{},
 		asked:    map[string]string{},
 		spawns:   map[string]spawn{},
+		tokens:   map[string]int64{},
 		open:     map[string]string{},
 	}
 }
@@ -296,13 +329,15 @@ func (t *translator) record(i int) error {
 		}
 		id := t.checking[agent]
 		t.asked[agent] = id
-		t.open[id] = agent
-		e := events.Event{Kind: events.NeedsYou, AgentID: agent, Source: events.SourceToolCheck, Reason: str(d, "tool"), ToolUseID: id}
-		if c := t.calls[id]; c != nil {
-			e.Reason = Label(c.tool, c.input, t.cwd[agent])
-			e.Wait = WaitFor(c.tool, c.input)
+		if t.mod.ToolCheckAsks {
+			t.open[id] = agent
+			e := events.Event{Kind: events.NeedsYou, AgentID: agent, Source: events.SourceToolCheck, Reason: str(d, "tool"), ToolUseID: id}
+			if c := t.calls[id]; c != nil {
+				e.Reason = Label(c.tool, c.input, t.cwd[agent])
+				e.Wait = WaitFor(c.tool, c.input)
+			}
+			t.emit(rec, e)
 		}
-		t.emit(rec, e)
 
 	case rec.Event == "classic.PermissionRequest" && in:
 		agent := str(d, "agent_id")
@@ -355,6 +390,11 @@ func (t *translator) record(i int) error {
 	case rec.Event == "classic.WorktreeCreate" && in:
 		t.emit(rec, events.Event{Kind: events.WorktreeCreate, AgentID: str(d, "agent_id"), Name: str(d, "name")})
 
+	case rec.Event == "classic.SubagentStart" && in:
+		if id := str(d, "agent_id"); id != "" {
+			t.emit(rec, events.Event{Kind: events.AgentStart, AgentID: id, AgentType: str(d, "agent_type"), Cwd: str(d, "cwd")})
+		}
+
 	case rec.Event == "agent.spawn" && in:
 		bg, _ := d["background"].(bool)
 		t.pending = append(t.pending, spawn{background: bg, parent: str(d, "parentAgentId")})
@@ -369,12 +409,20 @@ func (t *translator) record(i int) error {
 			t.spawns[id] = s
 		}
 
+	case rec.Event == "turn.step" && out:
+		// The main loop's count isn't kept: only a subagent's rides on
+		// agent_list.
+		if n := StepTokens(d["usage"]); rec.AgentID != "" && n > 0 {
+			t.tokens[rec.AgentID] = n
+		}
+
 	case rec.Event == "agent.list":
 		e := events.Event{Kind: events.AgentList, Agents: []events.Agent{}}
 		list, _ := d["agents"].([]any)
 		for _, item := range list {
 			m, _ := item.(map[string]any)
-			a := events.Agent{ID: str(m, "id"), Status: str(m, "status"), Type: str(m, "type"), ParentID: str(m, "parentId")}
+			a := events.Agent{ID: str(m, "id"), Status: str(m, "status"), Type: str(m, "type"), ParentID: str(m, "parentId"),
+				Tokens: t.tokens[str(m, "id")]}
 			if s, ok := t.spawns[a.ID]; ok {
 				bg := s.background
 				a.Background = &bg
@@ -390,6 +438,21 @@ func (t *translator) record(i int) error {
 		t.emit(rec, events.Event{Kind: events.SessionEnd, Reason: str(d, "reason")})
 	}
 	return nil
+}
+
+// StepTokens is the token count the mod takes from a turn.step result's
+// usage: its input, cache read, cache write and output tokens added up,
+// the size of the response as Claude Code's agent list counts it. A
+// count that is missing, not a number or not positive adds nothing.
+func StepTokens(usage any) int64 {
+	u, _ := usage.(map[string]any)
+	var n int64
+	for _, k := range []string{"input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"} {
+		if v, ok := u[k].(float64); ok && v > 0 {
+			n += int64(v)
+		}
+	}
+	return n
 }
 
 // sessionRepo returns the main checkout and worktree roots the probe

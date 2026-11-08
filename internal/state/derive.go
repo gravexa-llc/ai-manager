@@ -171,7 +171,7 @@ func derivePlan(w *world, g *graph, p *planIdx, get func(string) *pkgCtx, linked
 	for _, pkg := range p.order {
 		c := get(pkg.PkgID)
 		st := PackageState{
-			ID: pkg.PkgID, Title: pkg.Title, Repo: pkg.Repo, Size: pkg.Size, Owner: pkg.Owner, Lane: pkg.Lane,
+			ID: pkg.PkgID, Title: pkg.Title, What: pkg.What, Repo: pkg.Repo, Size: pkg.Size, Owner: pkg.Owner, Lane: pkg.Lane,
 			Needs: pkg.Needs, NeedsNote: pkg.NeedsNote, NeedsYou: pkg.NeedsYou, Yours: yours(pkg),
 			Provisional: pkg.Provisional, Links: c.links,
 		}
@@ -198,7 +198,7 @@ func derivePlan(w *world, g *graph, p *planIdx, get func(string) *pkgCtx, linked
 
 	lanes := laneConflicts(&ps, parsed, get)
 	ps.Alerts = alerts(w, g, p, &ps, lanes, linked, opts, now)
-	ps.Unmatched = unmatched(w, p, linked, m)
+	ps.Unmatched, ps.Hidden = unmatched(w, p, linked, m)
 	return ps
 }
 
@@ -529,9 +529,19 @@ func agentBranch(w *world, n *node) (keys []string, branch, where string) {
 // unmatched lists the plan's Unmatched lane: same-repo PRs in its repos
 // that no package of any plan links (open ones, and closed ones that
 // closed after the plan was registered), then branches without a PR that
-// have a worktree and no link.
-func unmatched(w *world, p *planIdx, linked map[string]bool, m Matches) []Unmatched {
-	var out []Unmatched
+// have a worktree and no link. Each says when it appeared and whether that
+// was after the plan was registered. The ones you hid from the plan go in
+// hidden instead, most recently hidden first.
+func unmatched(w *world, p *planIdx, linked map[string]bool, m Matches) (out, hidden []Unmatched) {
+	add := func(u Unmatched) {
+		u.New = u.Since.IsZero() || u.Since.After(p.CreatedAt)
+		if at, ok := w.hidden[p.ID][targetKey(u.Target)]; ok {
+			u.HiddenAt = at
+			hidden = append(hidden, u)
+			return
+		}
+		out = append(out, u)
+	}
 	for _, pr := range w.prs {
 		if !p.repos[repoKey(pr.Repo, "")] {
 			continue
@@ -549,8 +559,8 @@ func unmatched(w *world, p *planIdx, linked map[string]bool, m Matches) []Unmatc
 				continue // history from before the plan
 			}
 		}
-		out = append(out, Unmatched{Target: t, Repo: pr.Repo, Branch: pr.HeadBranch, Number: pr.Number,
-			Title: pr.Title, State: pr.State, Note: m.Notes[t]})
+		add(Unmatched{Target: t, Repo: pr.Repo, Branch: pr.HeadBranch, Number: pr.Number,
+			Title: pr.Title, State: pr.State, Note: m.Notes[t], Since: pr.OpenedAt()})
 	}
 	for _, b := range w.branchList {
 		if len(b.prs) > 0 || !inPlan(p, b) {
@@ -573,9 +583,10 @@ func unmatched(w *world, p *planIdx, linked map[string]bool, m Matches) []Unmatc
 		if repo == "" {
 			repo = b.repoPath
 		}
-		out = append(out, Unmatched{Target: t, Repo: repo, Branch: b.name, Note: m.Notes[t]})
+		add(Unmatched{Target: t, Repo: repo, Branch: b.name, Note: m.Notes[t], Since: b.firstSeen})
 	}
-	return out
+	sort.SliceStable(hidden, func(i, j int) bool { return hidden[i].HiddenAt.After(hidden[j].HiddenAt) })
+	return out, hidden
 }
 
 func inPlan(p *planIdx, b *branchInfo) bool {

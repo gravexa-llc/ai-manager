@@ -16,11 +16,14 @@ package web
 // Nodes, cards and rows carry badges (planBadgesOf): needs you, waiting on
 // you, review requested, waiting on lead, snoozed and working.
 //
-// The detail pane shows the package ?pkg= names: its lifecycle and ID, what
-// it needs and unblocks, its PR, agent and branch, and Go to agent, Mark
-// done and Link. With nothing selected it shows the plan: progress, ready
-// to dispatch, what needs you, alerts, the parser warnings, the Unmatched
-// lane, its file and Unregister. ?q= (the search box) dims the packages it
+// The detail pane shows the package ?pkg= names: its lifecycle and ID, its
+// What cell (app_plans_what.go), what it needs and unblocks, its PR, agent (a live one with its line as Claude
+// Code's agent list has it: pkgAgentOf) and branch, and Go to agent (Go to
+// lead when no linked agent can be reached), Mark done and Link. With
+// nothing selected it shows the plan: progress, Go to lead, ready to
+// dispatch, what needs you, alerts, the parser warnings, the Unmatched
+// lane (app_plans_unmatched.go: new, older and hidden), its file and
+// Unregister. ?q= (the search box) dims the packages it
 // doesn't match.
 //
 // Everything comes from the package's shared parts: the board (the plan
@@ -40,11 +43,18 @@ package web
 //     or its undo (the plan service's SetDone);
 //   - POST /app/plans/{slug}/link    pkg, and target ("<kind> <ref>", a
 //     pick from the Unmatched lane or the sessions) or kind and ref: link
-//     by hand (the plan service's manual link), with an Undo that unlinks;
+//     by hand (the plan service's manual link), with an Undo that unlinks.
+//     Both pickers start on a disabled "Pick …" option, and a form sent
+//     without a pick is refused;
 //   - POST /app/plans/{slug}/unlink  pkg, kind, ref: unlink for good, with
 //     an Undo that links again;
-//   - POST /app/plans/{slug}/go      pkg: Go to the package's live agent.
-//     The server decides again which session that is, under Go's rules;
+//   - POST /app/plans/{slug}/go      pkg, to=agent|lead: Go to the
+//     package's live agent or to the plan's lead (planGoOf); with no pkg,
+//     to the plan's lead (planLeadGo). The server decides again which
+//     session that is, under Go's rules, and refuses when Go is off now or
+//     would go to the other of the two than the button said;
+//   - POST /app/plans/{slug}/hide    kind, ref, hidden=1|0: Not part of
+//     this plan, or Restore (app_plans_unmatched.go);
 //   - POST /app/plans/{slug}/unregister: unregister the plan, with the
 //     plan service's Unregister, as DELETE /api/plans/{slug} does. It
 //     answers with the Overview, since the page is gone, and a toast that
@@ -65,6 +75,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/gravexa-llc/ai-manager/internal/monitor"
@@ -85,7 +96,7 @@ var appPlan = &appPage{
 	fill:        fillAppPlan,
 	routes:      appPlanRoutes,
 	keys: []appKey{
-		{"g", "Go to the package's agent"},
+		{"g", "Go to the package's agent, or else the plan's lead"},
 		{"d", "Mark done"},
 		{"u", "Undo Mark done, or the last change"},
 	},
@@ -187,8 +198,9 @@ type planPage struct {
 	// Legend counts the packages in each lifecycle.
 	Legend []planLegend
 	// Warnings, Unmatched and Provisional say how many parser warnings,
-	// Unmatched items and provisional packages the plan has ("" for
-	// none); PlanHref shows them: the plan with nothing selected.
+	// new Unmatched items (the older ones aside) and provisional packages
+	// the plan has ("" for none); PlanHref shows them: the plan with
+	// nothing selected.
 	Warnings, Unmatched, Provisional string
 	PlanHref                         string
 	// Search is ?q=.
@@ -268,7 +280,7 @@ func fillAppPlan(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	v := &planPage{
 		Slug: b.Slug, Title: cmp.Or(b.Title, b.Slug), View: pq.view, Search: pq.q,
 		PlanHref: pq.href(pq.view, ""), Empty: len(b.Packages) == 0, Action: appPlanURL(b.Slug),
-		Warnings: plural(len(b.Warnings), "parser warning", "parser warnings"), Unmatched: plural(len(b.Unmatched), "unmatched", "unmatched"),
+		Warnings: plural(len(b.Warnings), "parser warning", "parser warnings"), Unmatched: plural(unmatchedNew(b), "unmatched", "unmatched"),
 		Provisional: plural(b.Provisional, "not in plan file", "not in plan file"),
 	}
 	for _, pv := range planViews {
@@ -296,7 +308,7 @@ func fillAppPlan(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 			v.Pkg = s.pkgDetailOf(sn, b, *sel, pq, badges[strings.ToUpper(sel.ID)])
 			v.Pkg.Merges = merges
 		} else {
-			v.Plan = s.planOverviewOf(sn, b, pq, badges)
+			v.Plan = s.planOverviewOf(sn, b, pq, badges, d)
 			v.Plan.Merges = merges
 			v.Plan.Unregister = truthy(q.Get("unregister"))
 			v.Plan.UnregisterHref = pq.href(pq.view, "") + "&unregister=1"
@@ -352,9 +364,9 @@ func plural(n int, one, many string) string {
 // ---- Badges ----
 
 // planBadgesOf works out a package's badges, the most urgent first: needs
-// you (a linked agent waits on you, or your own step is ready), waiting on
-// you (a PR ready to merge that you merge), review requested, snoozed
-// (instead of those three), waiting on lead, working. prs are the
+// you (a linked agent waits on you, or your step is ready: yourStep),
+// waiting on you (a PR ready to merge that you merge), review requested,
+// snoozed (instead of those three), waiting on lead, working. prs are the
 // snapshot's PRs by lower-case ref (freshFacts).
 func planBadgesOf(sn *snapshot, prs map[string]store.PR, p api.Package, snoozed bool) []planBadge {
 	var needs, waiting, review, lead, working []string
@@ -379,11 +391,9 @@ func planBadgesOf(sn *snapshot, prs map[string]store.PR, p api.Package, snoozed 
 			working = append(working, why)
 		}
 	}
-	if p.Lifecycle == "ready" && (p.Yours || p.NeedsYou != "") {
-		why := "your step is ready"
-		if p.NeedsYou != "" {
-			why += ": " + p.NeedsYou
-		}
+	// Your step's rule is the inbox's too (yourstep.go): a Your step item
+	// waits while this badge shows.
+	if why, ok := yourStep(p); ok {
 		needs = append(needs, why)
 	}
 	for _, w := range prWaits(sn, prs, p) {
@@ -506,6 +516,8 @@ type planNode struct {
 	Sel, Dim, Cycle         bool
 	// Prov is a provisional package: drawn with a dotted edge.
 	Prov bool
+	// Focus is a box the graph opens scrolled to show (data-focus).
+	Focus bool
 	// Badge is its most urgent badge, drawn on its top edge.
 	Badge *nodeBadge
 }
@@ -535,6 +547,9 @@ func planGraphOf(b api.Plan, pq planQuery, badges map[string][]planBadge) *planG
 			X: n.X, Y: n.Y, W: n.W, H: n.H, TX: n.TX, TY: n.TY, TY2: n.TY2, Cycle: n.Cycle,
 			Sel: sel != "" && strings.EqualFold(n.ID, sel), Dim: !pq.matches(p), Prov: p.Provisional}
 		pn.Label = n.ID + " " + p.Title + ": " + strings.ToLower(lifecycleLabel(n.Lifecycle))
+		if w := whatTip(p.What); w != "" {
+			pn.Tip += "\n" + w
+		}
 		for _, bd := range badges[strings.ToUpper(n.ID)] {
 			pn.Label += ", " + bd.Text
 			pn.Tip += "\n" + bd.Text + ": " + bd.Why
@@ -568,7 +583,27 @@ func planGraphOf(b api.Plan, pq planQuery, badges map[string][]planBadge) *planG
 		v.Edges = append(v.Edges, pe)
 	}
 	v.Edges = append(v.Edges, on...)
+	markFocus(v.Nodes)
 	return v
+}
+
+// markFocus marks the boxes the graph opens scrolled to show (data-focus):
+// the packages being worked on or in review or, with none, the ones ready to
+// start. app-plan.js pans the graph from its left end just far enough to
+// show them. With none of those either, it stays at its left end.
+func markFocus(nodes []planNode) {
+	for _, tier := range [][]string{{"working", "in_review"}, {"ready"}} {
+		n := 0
+		for i := range nodes {
+			if slices.Contains(tier, nodes[i].Lifecycle) {
+				nodes[i].Focus = true
+				n++
+			}
+		}
+		if n > 0 {
+			return
+		}
+	}
 }
 
 // ---- Kanban ----
@@ -580,6 +615,8 @@ type kanbanCol struct {
 
 type kanbanCard struct {
 	ID, Title, Lifecycle, Href string
+	// Tip is its title attribute: the package's What, as plain text.
+	Tip string
 	// Lane is the package's lane, "Yours" for your own steps, or "".
 	Lane     string
 	Sel, Dim bool
@@ -597,7 +634,7 @@ func kanbanOf(b api.Plan, pq planQuery, badges map[string][]planBadge) []kanbanC
 		}
 	}
 	for _, p := range b.Packages {
-		card := kanbanCard{ID: p.ID, Title: p.Title, Lifecycle: p.Lifecycle, Href: pq.pick(p.ID), Lane: laneOf(p),
+		card := kanbanCard{ID: p.ID, Title: p.Title, Lifecycle: p.Lifecycle, Href: pq.pick(p.ID), Lane: laneOf(p), Tip: whatTip(p.What),
 			Sel: strings.EqualFold(p.ID, pq.pkg), Dim: !pq.matches(p), Prov: p.Provisional, Badges: badges[strings.ToUpper(p.ID)]}
 		for i := range cols {
 			if cols[i].Key == p.Lifecycle {
@@ -628,6 +665,9 @@ type planTimelineView struct {
 	Rows  []timelineRow
 	// Note says what the bars leave out; Error why there are none.
 	Note, Error string
+	// Zone names the time zone of the axis and the tips (the Time zone
+	// setting's).
+	Zone string
 }
 
 // timelineTick is a time on the axis, at X (a percentage).
@@ -673,7 +713,7 @@ const planHistoryLimit = api.MaxTimelineLimit
 const timelineWindow = 60 * 24 * time.Hour
 
 func (s *Server) planTimelineOf(ctx context.Context, sn *snapshot, b api.Plan, pq planQuery, badges map[string][]planBadge) *planTimelineView {
-	v := &planTimelineView{}
+	v := &planTimelineView{Zone: sn.zone.Name}
 	tl, err := s.opts.Plans.Timeline(ctx, b.Slug, api.TimelineQuery{Limit: planHistoryLimit})
 	if err != nil {
 		s.log.Error("app plan timeline", "plan", b.Slug, "err", err)
@@ -902,6 +942,8 @@ func nextTick(t time.Time, step time.Duration) time.Time {
 // pkgDetail is the selected package's pane.
 type pkgDetail struct {
 	ID, Title, Lifecycle, LifecycleLabel string
+	// What is the plan's What cell for it, nil when empty.
+	What *pkgWhat
 	// Sub is the plan, repo, size, lane and owner.
 	Sub string
 	// Since says how long it has been in its lifecycle.
@@ -912,24 +954,48 @@ type pkgDetail struct {
 	Signals          []badgeView
 	Needs, Unblocks  []pkgDep
 	NeedsNote, Cycle string
-	// PRs, Agents and Worktrees are its links of those kinds; Branches its
+	// PRs and Worktrees are its links of those kinds, and Agents its agent
+	// links, each live one with its line (pkgAgent); Branches its
 	// branches, from its branch links, its PRs or its worktrees; Suggested
 	// the branch the conventions suggest, when it has none.
-	PRs, Agents, Worktrees []linkView
-	Branches               []string
-	Suggested              string
+	PRs, Worktrees []linkView
+	Agents         []pkgAgent
+	Branches       []string
+	Suggested      string
 	// Merges says who merges this plan's PRs: its Merges line, or
 	// Settings' override (fillAppPlan sets it).
 	Merges string
 	// Links are all its links, for Unlink.
 	Links     []linkView
-	Go        goButton
+	Go        planGo
 	Done      planDone
 	Choices   []linkGroup
 	CloseHref string
 	// Provisional is set for a package the plan file doesn't have yet
 	// (a provisional package): the pane says so and shows the row to paste.
 	Provisional *pkgProvisional
+}
+
+// pkgAgent is an agent link on the package's pane. A live agent has Now:
+// its line as Claude Code's agent list shows it ("general-purpose  Bash:
+// Run the tests  19m 30s · ↓ 284.1k tokens"), with the link's other facts
+// under it (Link.Facts, less the last action the line shows). An ended
+// one, or one aimd hasn't seen, is just its link.
+type pkgAgent struct {
+	Link linkView
+	Now  *agentNow
+}
+
+// pkgAgentOf is an agent link on the pane: a live agent with its line
+// (agentLine, shared with the Sessions page).
+func pkgAgentOf(now time.Time, lv linkView, a *api.LinkAgent) pkgAgent {
+	if a == nil || !a.Live {
+		return pkgAgent{Link: lv}
+	}
+	n := agentLine(now, lv.Label, a.LastAction, a.StartedAt, a.Tokens)
+	// The line shows the last action: the facts under it don't repeat it.
+	lv.Facts = slices.DeleteFunc(slices.Clone(lv.Facts), func(f factView) bool { return f.lastAction })
+	return pkgAgent{Link: lv, Now: n}
 }
 
 // pkgProvisional is what the pane says of a provisional package: the plan
@@ -979,6 +1045,24 @@ type planDone struct {
 	Off       string
 }
 
+// planDoneOf is package p's Mark done, as the pane offers it; a Your step
+// item in Needs you offers the same.
+func planDoneOf(p api.Package) planDone {
+	switch {
+	case p.DoneManual:
+		return planDone{Undo: true}
+	case canMarkDone(p):
+		return planDone{Can: true}
+	case p.DoneInPlan:
+		return planDone{Off: "It is marked ✅ in the plan file, so it is done."}
+	case p.Lifecycle == "done":
+		return planDone{Off: "It is done already."}
+	case hasPRLink(p):
+		return planDone{Off: "Mark done is for steps without a PR: this one is done when its PR merges."}
+	}
+	return planDone{Off: "It can't be marked done."}
+}
+
 // linkGroup is a group of the Link picker's choices.
 type linkGroup struct {
 	Label   string
@@ -999,7 +1083,7 @@ func (s *Server) pkgDetailOf(sn *snapshot, b api.Plan, p api.Package, pq planQue
 	byID := packagesByID(b)
 	c := s.cardOf(sn, p) // the board's facts (board.go)
 	d := &pkgDetail{ID: p.ID, Title: p.Title, Lifecycle: p.Lifecycle, LifecycleLabel: lifecycleLabel(p.Lifecycle),
-		Badges: badges, NeedsNote: p.NeedsNote, Cycle: c.Cycle, CloseHref: pq.href(pq.view, ""), Links: c.Links}
+		What: pkgWhatOf(p.ID, p.What), Badges: badges, NeedsNote: p.NeedsNote, Cycle: c.Cycle, CloseHref: pq.href(pq.view, ""), Links: c.Links}
 	sub := []string{cmp.Or(b.Title, b.Slug)}
 	for _, part := range []string{p.Repo, sizeLabel(p.Size), laneLabel(p), ownerLabel(p.Owner)} {
 		if part != "" {
@@ -1052,12 +1136,18 @@ func (s *Server) pkgDetailOf(sn *snapshot, b api.Plan, p api.Package, pq planQue
 			}
 		}
 	}
+	agents := map[string]*api.LinkAgent{}
+	for _, l := range p.Links {
+		if l.Kind == store.LinkAgent {
+			agents[l.Ref] = l.Agent
+		}
+	}
 	for _, lv := range c.Links {
 		switch lv.Kind {
 		case store.LinkPR:
 			d.PRs = append(d.PRs, lv)
 		case store.LinkAgent:
-			d.Agents = append(d.Agents, lv)
+			d.Agents = append(d.Agents, pkgAgentOf(sn.now, lv, agents[lv.Ref]))
 		case store.LinkWorktree:
 			d.Worktrees = append(d.Worktrees, lv)
 		}
@@ -1069,22 +1159,8 @@ func (s *Server) pkgDetailOf(sn *snapshot, b api.Plan, p api.Package, pq planQue
 	if p.Provisional {
 		d.Provisional = provisionalOf(sn.now, b, p)
 	}
-	d.Go = s.planGoOf(sn, p)
-	hasPR := len(d.PRs) > 0
-	switch {
-	case c.DoneManual:
-		d.Done = planDone{Undo: true}
-	case c.CanMarkDone:
-		d.Done = planDone{Can: true}
-	case c.DoneInPlan:
-		d.Done = planDone{Off: "It is marked ✅ in the plan file, so it is done."}
-	case p.Lifecycle == "done":
-		d.Done = planDone{Off: "It is done already."}
-	case hasPR:
-		d.Done = planDone{Off: "Mark done is for steps without a PR: this one is done when its PR merges."}
-	default:
-		d.Done = planDone{Off: "It can't be marked done."}
-	}
+	d.Go = s.planGoOf(sn, b, p)
+	d.Done = planDoneOf(p)
 	d.Choices = linkChoicesOf(sn, b)
 	return d
 }
@@ -1137,49 +1213,128 @@ func (pq planQuery) dep(byID map[string]api.Package, id string) pkgDep {
 	return pkgDep{ID: p.ID, Title: p.Title, Lifecycle: p.Lifecycle, State: lifecycleLabel(p.Lifecycle), Href: pq.pick(p.ID)}
 }
 
-// planGoOf is the pane's Go to agent: on for the first of the package's
-// live agents Go can reach (goButtonOfAgent, Go's rules), else off with
-// the first reason found.
-func (s *Server) planGoOf(sn *snapshot, p api.Package) goButton {
+// planGo is a plan page's Go button: Go to agent, to a live agent linked
+// to the package; Go to lead, to the plan's lead session; or off, with the
+// reason (goButton.Off) naming what was tried.
+type planGo struct {
+	goButton
+	// Lead is set when it goes to the plan's lead. Why then says where,
+	// and on a package's pane why not to its agent, for the button's title
+	// and the pane's hint.
+	Lead bool
+	Why  string
+	// agent is why the package's agent can't be reached ("" when it goes
+	// there), and lead the lead's name: for appPlanGo's refusal when the
+	// page's button no longer matches.
+	agent, lead string
+}
+
+// Why Go is off on a plan's page.
+const (
+	goOffNoService    = "Go isn't available: this aimd runs without it."
+	goOffNoAgent      = "No live agent on this package."
+	goOffLeadsUnknown = "aimd couldn't read which session leads this plan."
+)
+
+// planGoOf is a package pane's Go. It is Go to agent, to the first of the
+// package's live agents Go can reach (goButtonOfAgent, Go's rules), as
+// before; else Go to lead, to the plan's lead (planLeadGo); else off, with
+// the agent's reason and then the lead's.
+func (s *Server) planGoOf(sn *snapshot, b api.Plan, p api.Package) planGo {
 	if s.opts.Go == nil {
-		return goButton{Off: "Go isn't available: this aimd runs without it."}
+		return planGo{goButton: goButton{Off: goOffNoService}}
 	}
-	off := ""
+	agent := ""
 	for _, l := range p.Links {
 		if l.Kind != store.LinkAgent || l.Agent == nil || !l.Agent.Live {
 			continue
 		}
-		b := s.goButtonOfAgent(sn, l.Agent)
-		if b.Key != "" {
-			return b
+		btn := s.goButtonOfAgent(sn, l.Agent)
+		if btn.Key != "" {
+			return planGo{goButton: btn}
 		}
-		if off == "" {
-			off = b.Off
+		if agent == "" {
+			agent = btn.Off
 		}
 	}
-	return goButton{Off: cmp.Or(off, "No live agent on this package.")}
+	agent = cmp.Or(agent, goOffNoAgent)
+	g := s.planLeadGo(sn, b)
+	g.agent = agent
+	if g.Key == "" {
+		g.Off = agent + " " + g.Off
+		return g
+	}
+	g.Why = agent + " Goes to the plan's lead instead: " + g.lead + "."
+	return g
 }
 
-// linkChoicesOf are the Link picker's choices: the plan's Unmatched lane,
-// and the live sessions no package of the plan links (monitored ones, as
+// planLeadGo is Go to lead: to the plan's lead, or off with why.
+//
+// A plan's leads are the sessions that registered it (monitor's
+// ReasonPlan rows, stored by store.MonitorPlanLead), as the snapshot's
+// monitor set has them. Several sessions can lead one plan, and a lead's
+// session id moves on /clear, so liveSessionByID matches each by the
+// session's id or the one it had before. Go goes to the lead registered
+// most recently of those that run and that Go can reach (goOff:
+// interactive, not headless, in iTerm2 or Terminal), the later store row
+// winning a tie: the newest lead is the one you most likely work in. When
+// none can be reached, the reason is the newest running lead's, else that
+// none runs, else that none is registered.
+func (s *Server) planLeadGo(sn *snapshot, b api.Plan) planGo {
+	off := func(why string) planGo { return planGo{goButton: goButton{Off: why}} }
+	switch {
+	case s.opts.Go == nil:
+		return off(goOffNoService)
+	case sn.mon == nil: // no monitor, or it couldn't read its inputs (logged)
+		return off(goOffLeadsUnknown)
+	}
+	leads := slices.Clone(sn.mon.Leads(b.Slug))
+	if len(leads) == 0 {
+		return off("No lead registered for this plan: run /plan-register " + b.Path + " in its main session.")
+	}
+	slices.SortStableFunc(leads, func(x, y store.MonitoredSession) int {
+		return cmp.Or(y.Since.Compare(x.Since), cmp.Compare(y.ID, x.ID))
+	})
+	why := ""
+	for _, m := range leads {
+		row, ok := liveSessionByID(sn.sessions, m.SessionID)
+		if !ok {
+			continue
+		}
+		name := sessionTitle(row)
+		if o := goOff(row, appOf(sn.terms, row)); o != "" {
+			if why == "" {
+				why = "The plan's lead, " + name + ", can't be reached: " + lowerFirst(o)
+			}
+			continue
+		}
+		return planGo{goButton: goButton{Key: row.Key}, Lead: true, Why: "Goes to the plan's lead, " + name + ".", lead: name}
+	}
+	switch {
+	case why != "":
+		return off(why)
+	case len(leads) > 1:
+		return off("None of the plan's " + strconv.Itoa(len(leads)) + " leads is running.")
+	}
+	return off("The plan's lead isn't running.")
+}
+
+// lowerFirst puts s's first letter in lower case, to go on with a
+// sentence.
+func lowerFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError {
+		return s
+	}
+	return string(unicode.ToLower(r)) + s[n:]
+}
+
+// linkChoicesOf are the Link picker's choices: the plan's Unmatched lane
+// (unmatchedChoices: new, then older; not the hidden ones), and the live
+// sessions no package of the plan links (monitored ones, as
 // internal/monitor says; headless runs aside).
 func linkChoicesOf(sn *snapshot, b api.Plan) []linkGroup {
-	var out []linkGroup
-	var um []linkChoice
-	for _, u := range b.Unmatched {
-		v := unmatchedOf(u)
-		label := v.KindLabel + " " + v.Label
-		if v.Title != "" {
-			label += " · " + v.Title
-		}
-		if v.Repo != "" {
-			label += " (" + v.Repo + ")"
-		}
-		um = append(um, linkChoice{Value: u.Kind + " " + u.Ref, Label: label})
-	}
-	if len(um) > 0 {
-		out = append(out, linkGroup{Label: "Unmatched", Choices: um})
-	}
+	out := unmatchedChoices(b)
 	linked := map[string]bool{}
 	for _, p := range b.Packages {
 		for _, l := range p.Links {
@@ -1228,17 +1383,18 @@ type planOverview struct {
 	Segs       []segView
 	BarLabel   string
 	Merges     string
-	Ready      []pkgDep
-	NeedsYou   []planNeed
+	// Go is Go to lead (planLeadGo).
+	Go       planGo
+	Ready    []pkgDep
+	NeedsYou []planNeed
 	// Provisional lists the packages the plan file doesn't have yet,
 	// File is the file's name.
 	Provisional []pkgDep
 	File        string
 	Alerts      []alertView
 	Warnings    []warningView
-	Unmatched   []unmatchedView
-	// Options are the packages, for the Unmatched lane's link forms.
-	Options        []pkgOption
+	// Unmatched is the Unmatched lane: new, older and hidden.
+	Unmatched      planUnmatched
 	Repos          []string
 	Path, PathFull string
 	// Missing says the ?pkg= asked for isn't in the plan.
@@ -1255,12 +1411,12 @@ type planNeed struct {
 	Badges []planBadge
 }
 
-func (s *Server) planOverviewOf(sn *snapshot, b api.Plan, pq planQuery, badges map[string][]planBadge) *planOverview {
+func (s *Server) planOverviewOf(sn *snapshot, b api.Plan, pq planQuery, badges map[string][]planBadge, d *appData) *planOverview {
 	// The board's own facts (board.go); the page's badges say what waits
 	// on you, by internal/prwait's rule.
 	pv := s.planViewOf(sn, b)
-	o := &planOverview{Title: pv.Title, Segs: pv.Segs, BarLabel: pv.BarLabel,
-		Alerts: pv.Alerts, Warnings: pv.Warnings, Unmatched: pv.Unmatched, Options: pv.Options,
+	o := &planOverview{Title: pv.Title, Segs: pv.Segs, BarLabel: pv.BarLabel, Go: s.planLeadGo(sn, b),
+		Alerts: pv.Alerts, Warnings: pv.Warnings, Unmatched: planUnmatchedOf(sn, b, d, pv.Options),
 		Repos: pv.Repos, Path: pv.Path, PathFull: pv.PathFull}
 	sub := []string{strconv.Itoa(b.Total) + " packages", strconv.Itoa(b.Counts["done"]) + " done"}
 	if pv.Registered != "" {
@@ -1302,6 +1458,7 @@ func appPlanRoutes(s *Server) {
 	s.mux.HandleFunc("POST /app/plans/{slug}/done", s.appPlanDone)
 	s.mux.HandleFunc("POST /app/plans/{slug}/link", s.appPlanLink)
 	s.mux.HandleFunc("POST /app/plans/{slug}/unlink", s.appPlanUnlink)
+	s.mux.HandleFunc("POST /app/plans/{slug}/hide", s.appPlanHide)
 	s.mux.HandleFunc("POST /app/plans/{slug}/go", s.appPlanGo)
 	s.mux.HandleFunc("POST /app/plans/{slug}/unregister", s.appPlanUnregister)
 }
@@ -1334,9 +1491,17 @@ func (s *Server) appPlanRefuse(w http.ResponseWriter, r *http.Request, slug, pre
 // planReturn is where a form on plan slug's page goes back to: its return
 // field, with pkg selected when it is set. An Undo's return must fit a
 // toast's field, so a long one is cut down to the plan and the package.
+// Mark done on a Your step item (app_inbox.go) posts here from the Needs
+// you page: it goes back there, as it came.
 func planReturn(r *http.Request, slug, pkg string) string {
 	page := appPlanURL(slug)
 	u, err := url.Parse(appReturn(r))
+	if err == nil && u.EscapedPath() == inboxPath {
+		if loc := u.String(); len(loc) <= maxToastField {
+			return loc
+		}
+		return inboxPath
+	}
 	if err != nil || u.EscapedPath() != page {
 		u = &url.URL{Path: page}
 	}
@@ -1407,6 +1572,15 @@ func (s *Server) appPlanLink(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	req := api.LinkRequest{Plan: slug, Pkg: formValue(r, "pkg")}
 	req.Kind, req.Ref = linkTarget(r)
+	// The pickers start on "Pick …", which sends nothing.
+	switch {
+	case req.Pkg == "":
+		s.appRefuse(w, r, http.StatusBadRequest, appReturn(r), "Not linked: pick the package to link it to.")
+		return
+	case req.Kind == "" || req.Ref == "":
+		s.appRefuse(w, r, http.StatusBadRequest, appReturn(r), "Not linked: pick a PR, branch or session to link, or type its ref.")
+		return
+	}
 	res, err := s.opts.Plans.LinkManual(r.Context(), req)
 	if err != nil {
 		s.appPlanRefuse(w, r, slug, "Not linked: ", err)
@@ -1448,9 +1622,12 @@ func (s *Server) appPlanUnlink(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// appPlanGo is POST /app/plans/{slug}/go (pkg): Go to the package's live
-// agent. Which session, and whether Go may, is decided here again from the
-// board and the store (planGoOf), not taken from the page.
+// appPlanGo is POST /app/plans/{slug}/go (pkg, to): a package pane's Go
+// (planGoOf), or with no pkg the plan pane's Go to lead (planLeadGo).
+// Which session, and whether Go may, is decided here again from the board
+// and the store, not taken from the page. to is what the page's button
+// said, agent or lead: if Go would now go to the other, it refuses and
+// says so, rather than switch to a session the button didn't name.
 func (s *Server) appPlanGo(w http.ResponseWriter, r *http.Request) {
 	if !s.appPlansOn(w, r) {
 		return
@@ -1478,14 +1655,28 @@ func (s *Server) appPlanGo(w http.ResponseWriter, r *http.Request) {
 		s.appPlanRefuse(w, r, slug, "Go: ", err)
 		return
 	}
-	i := slices.IndexFunc(b.Packages, func(p api.Package) bool { return strings.EqualFold(p.ID, id) })
-	if i < 0 {
-		s.appRefuse(w, r, http.StatusNotFound, loc, "Go: plan "+b.Slug+" has no package "+strconv.Quote(id)+".")
-		return
+	var btn planGo
+	if id == "" {
+		btn = s.planLeadGo(sn, b)
+	} else {
+		i := slices.IndexFunc(b.Packages, func(p api.Package) bool { return strings.EqualFold(p.ID, id) })
+		if i < 0 {
+			s.appRefuse(w, r, http.StatusNotFound, loc, "Go: plan "+b.Slug+" has no package "+strconv.Quote(id)+".")
+			return
+		}
+		btn = s.planGoOf(sn, b, b.Packages[i])
 	}
-	btn := s.planGoOf(sn, b.Packages[i])
-	if btn.Key == "" {
-		s.appRefuse(w, r, http.StatusConflict, loc, "Go: "+btn.Off)
+	refuse := ""
+	switch to := formValue(r, "to"); {
+	case btn.Key == "":
+		refuse = btn.Off
+	case to == "agent" && btn.Lead && id != "": // the plan's pane has no Go to agent
+		refuse = btn.agent + " The button now goes to the plan's lead, " + btn.lead + "."
+	case to == "lead" && !btn.Lead:
+		refuse = "A live agent on this package can be reached now; the button now goes to it."
+	}
+	if refuse != "" {
+		s.appRefuse(w, r, http.StatusConflict, loc, "Go: "+refuse)
 		return
 	}
 	res, err := s.goTo(r, btn.Key)

@@ -21,7 +21,7 @@ func StorePackages(p plans.Plan) []store.Package {
 	out := make([]store.Package, len(p.Packages))
 	for i, pkg := range p.Packages {
 		out[i] = store.Package{
-			PkgID: pkg.ID, Seq: i, Title: pkg.Title, Repo: pkg.Repo, Size: pkg.Size,
+			PkgID: pkg.ID, Seq: i, Title: pkg.Title, What: pkg.What, Repo: pkg.Repo, Size: pkg.Size,
 			Needs: pkg.Needs, NeedsNote: pkg.Note, NeedsYou: pkg.NeedsYou,
 			Owner: pkg.Owner, Lane: pkg.Lane, DoneInPlan: pkg.Done,
 		}
@@ -29,8 +29,8 @@ func StorePackages(p plans.Plan) []store.Package {
 	return out
 }
 
-// Load reads an Input from the store: every plan with its packages, links
-// and tombstones, every PR, every repo's default branch, every worktree
+// Load reads an Input from the store: every plan with its packages, links,
+// tombstones and hidden Unmatched targets, every PR, every repo's default branch, every worktree
 // (removed ones too), every session (ended ones too) and every agent. Now
 // and RepoNames are left for the caller.
 func Load(ctx context.Context, st *store.Store) (Input, error) {
@@ -55,6 +55,11 @@ func Load(ctx context.Context, st *store.Store) (Input, error) {
 			return in, fmt.Errorf("state: load tombstones of %s: %w", p.Slug, err)
 		}
 		in.Tombstones = append(in.Tombstones, ts...)
+		hidden, err := st.ListHiddenUnmatched(ctx, p.ID)
+		if err != nil {
+			return in, fmt.Errorf("state: load hidden unmatched of %s: %w", p.Slug, err)
+		}
+		in.Hidden = append(in.Hidden, hidden...)
 	}
 	if in.PRs, err = st.ListPRs(ctx, store.PRFilter{}); err != nil {
 		return in, fmt.Errorf("state: load PRs: %w", err)

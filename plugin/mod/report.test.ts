@@ -2,7 +2,7 @@
 // (testdata/events/interactive-*.jsonl, background-*.jsonl), the
 // batching, aimd down or slow, and every reporting hook failing open.
 
-import type { AgentInfo, On } from 'claude-code'
+import type { AgentInfo, On, TurnStepResult, TurnUsage } from 'claude-code'
 import { expect, mock, test, type Engine } from 'claude-code/testing'
 
 import { CONTEXT, REPO, SESSION_ID, SPAWN, SPAWNED, bashResult } from './fixtures'
@@ -35,16 +35,20 @@ const QUESTION = {
 const PLAN = { plan: '# Plan\n\n1. Create plan.txt\n2. Put ok in it\n', planFilePath: '~/.claude/plans/make-a-one-line-plan.md' }
 
 /** What a test's world answers beneath the plugin, with switches the test flips. */
-type Below = { verdict: 'allow' | 'ask'; agents: AgentInfo[] }
+type Below = { verdict: 'allow' | 'ask'; agents: AgentInfo[]; usage: TurnUsage | null }
 
 function reporting(on: On, routes: Routes = {}, env: Record<string, string> = {}) {
   const w = world(on, { 'GET /api/context': { status: 200, body: CONTEXT }, 'POST /events': { status: 200, body: {} }, ...routes }, REPO, SESSION_ID, env)
-  const below: Below = { verdict: 'allow', agents: [] }
+  const below: Below = { verdict: 'allow', agents: [], usage: null }
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('prompt.submit', (_, e) => ({ text: e.text, origin: e.origin }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.step', async function* (_, e) {
+    yield { kind: 'text', index: 0, text: '[assistant text]' }
+    return { turnId: e.turnId, index: e.index, answer: '[assistant text]', toolUses: [], stopReason: 'end_turn', usage: below.usage }
+  })
   on('tool.check', () => ({ decision: below.verdict }))
   on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
   // No settings hook runs beneath: the classic events answer nothing.
@@ -52,6 +56,7 @@ function reporting(on: On, routes: Routes = {}, env: Record<string, string> = {}
   on('classic.Notification', () => ({}))
   on('classic.StopFailure', () => ({}))
   on('classic.WorktreeCreate', () => ({}))
+  on('classic.SubagentStart', () => ({}))
   on('agent.list', () => ({ value: below.agents }))
   on('agent.spawn', () => SPAWNED)
   on('tool.call', { tool: 'Bash' }, () => bashResult(''))
@@ -82,6 +87,30 @@ async function within<T>(w: World, ms: number, work: Promise<T>): Promise<T> {
   expect(done, `still waiting after ${ms} ms`).toBe(true)
   return tracked
 }
+
+/** One model request in a loop (no agentId: the main loop), read to its end as the engine reads it. */
+async function step($: Engine, agentId?: string): Promise<{ chunks: unknown[]; result: TurnStepResult }> {
+  return drain($.turn.step({ turnId: 't1', index: 0, model: 'claude-haiku-5-5', messageCount: 3, ...(agentId !== undefined ? { agentId } : {}) }))
+}
+
+/** A stream's chunks and the value it returns, read to its end. */
+async function drain<C, R>(stream: AsyncGenerator<C, R>): Promise<{ chunks: C[]; result: R }> {
+  const chunks: C[] = []
+  for (;;) {
+    const r = await stream.next()
+    if (r.done === true) return { chunks, result: r.value }
+    chunks.push(r.value)
+  }
+}
+
+/** A response's usage, as turn.step's result carries it. */
+const usage = (input: number, read: number, write: number, output: number): TurnUsage => ({
+  input_tokens: input,
+  cache_read_input_tokens: read,
+  cache_creation_input_tokens: write,
+  output_tokens: output,
+  model: 'claude-haiku-5-5',
+})
 
 /** Starts the session as the engine does: classic.SessionStart, then session.start. */
 async function begin($: Engine, w: World, id = SESSION_ID): Promise<void> {
@@ -126,28 +155,38 @@ test('a background session says so (it says interactive too, R1); ITERM_SESSION_
   expect(ofKind(w, 'session_start')[0]).toMatchObject({ interactive: true, background: true, iterm_session_id: 'w0t1p0:ABC' })
 })
 
-test('a permission prompt goes at once, with the command it waits on; the call then closes it', { options: OPTIONS }, async ($, on) => {
+test('a permission dialog goes at once, with the command it waits on; the call then closes it', { options: OPTIONS }, async ($, on) => {
   const w = reporting(on)
   await begin($, w)
   w.below.verdict = 'ask'
   const ran = await within(w, 0, $.tool.call({ tool: 'Bash', command: 'mkdir perm-main', description: 'Create directory perm-main' }))
   expect(ran.text).toBe('')
-  // Sent before any batch timer: needs_you doesn't wait.
+  // Sent before any batch timer: needs_you doesn't wait. Only the dialog
+  // (classic.PermissionRequest) reports it: tool.check's ask is the mode's
+  // decider's first, and in auto mode its classifier answers it unseen.
   const asks = ofKind(w, 'needs_you')
-  expect(asks.length >= 1).toBe(true)
-  for (const a of asks) {
-    expect(a).toMatchObject({
-      session_id: SESSION_ID,
-      reason: 'Bash: Create directory perm-main',
-      wait: { kind: 'permission', tool: 'Bash', summary: 'mkdir perm-main' },
-    })
-    expect(a.agent_id).toBeUndefined()
-    expect(typeof a.tool_use_id).toBe('string')
-  }
-  expect(asks.map(a => a.source)).toContain('permission_request')
+  expect(asks.map(a => a.source)).toEqual(['permission_request'])
+  expect(asks[0]).toMatchObject({
+    session_id: SESSION_ID,
+    reason: 'Bash: Create directory perm-main',
+    wait: { kind: 'permission', tool: 'Bash', summary: 'mkdir perm-main' },
+  })
+  expect(asks[0]?.agent_id).toBeUndefined()
+  const id = asks[0]?.tool_use_id
+  expect(typeof id).toBe('string')
   await w.clock.advance(1000)
   const [done] = ofKind(w, 'tool')
-  expect(done).toMatchObject({ tool: 'Bash', label: 'Bash: Create directory perm-main', cwd: REPO, tool_use_id: asks[0]?.tool_use_id })
+  expect(done).toMatchObject({ tool: 'Bash', label: 'Bash: Create directory perm-main', cwd: REPO, tool_use_id: id })
+})
+
+test('a call nobody is asked about sends no needs_you', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  await within(w, 0, $.tool.call({ tool: 'Bash', command: 'make check', description: 'Run the checks' }))
+  await within(w, 0, $.tool.call({ tool: 'Edit', file_path: `${REPO}/internal/x.go`, old_string: 'a', new_string: 'b' }))
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'needs_you')).toEqual([])
+  expect(ofKind(w, 'tool').map(e => e.tool)).toEqual(['Bash', 'Edit'])
 })
 
 test('an ask nobody but a host answers is not reported from tool.check', { options: OPTIONS }, async ($, on) => {
@@ -276,6 +315,77 @@ test('agent.spawn: the flags, a snapshot, and one every 30 s while agents run', 
   expect(lists[2]).toMatchObject({ agents: [expect.objectContaining({ status: 'completed' })] })
 })
 
+test("turn.step: a subagent's latest response size rides on agent_list, as the CLI's agent list counts it; the main loop's doesn't", { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  w.below.agents = [{ id: SPAWNED.agentId, description: 'look', type: 'general-purpose', status: 'running' }]
+  // Before any response: no count.
+  await within(w, 1000, $.agent.spawn({ ...SPAWN, prompt: 'Look around.', description: 'look' }))
+  // Two responses: the second's size replaces the first's (not a running total).
+  w.below.usage = usage(2, 0, 3800, 700)
+  const first = await within(w, 0, step($, SPAWNED.agentId))
+  expect(first.chunks).toEqual([{ kind: 'text', index: 0, text: '[assistant text]' }])
+  expect(first.result.usage).toEqual(w.below.usage)
+  w.below.usage = usage(2, 3800, 21_000, 1500)
+  await within(w, 0, step($, SPAWNED.agentId))
+  // A step with no usage (it failed), and the main loop's, change nothing.
+  w.below.usage = null
+  await within(w, 0, step($, SPAWNED.agentId))
+  w.below.usage = usage(9, 90_000, 0, 900)
+  await within(w, 0, step($))
+  await w.clock.advance(30_000)
+  await w.clock.advance(1000)
+  const lists = ofKind(w, 'agent_list')
+  expect(lists.length).toBe(2)
+  expect(lists[0]).toMatchObject({ agents: [{ id: SPAWNED.agentId, status: 'running', type: 'general-purpose', background: true }] })
+  expect((lists[0]?.agents as Record<string, unknown>[])[0]?.tokens).toBeUndefined()
+  expect(lists[1]).toMatchObject({ agents: [{ id: SPAWNED.agentId, tokens: 26_302 }] })
+})
+
+test("turn.step in the main loop: its latest response size rides on the main loop's tool and turn_complete events, never a subagent's; /clear forgets it", { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w, BEFORE_CLEAR)
+  // Before its first response: no count.
+  await $.turn.start({ text: '[prompt]', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'make check', description: 'Run the checks' })
+  // Two responses: the latest stands, each on the events after it.
+  w.below.usage = usage(9, 90_000, 0, 900)
+  await within(w, 0, step($))
+  await $.tool.call({ tool: 'Bash', command: 'make check', description: 'Run the checks' })
+  w.below.usage = usage(3, 90_900, 1200, 400)
+  await within(w, 0, step($))
+  // A subagent's step and its tool call and turn's end don't touch it, nor carry it.
+  w.below.usage = usage(2, 0, 3800, 700)
+  await within(w, 0, step($, SUB))
+  await $.tool.call({ tool: 'Bash', command: 'ls', description: 'List files', agentId: SUB })
+  await $.turn.complete({ agentId: SUB, answer: 'done', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
+  // A step with no usage (it failed) changes nothing.
+  w.below.usage = null
+  await within(w, 0, step($))
+  await $.turn.complete({ answer: 'Done.', durationMs: 9, isAborted: false, turnId: 't1', reason: 'answer' })
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'tool').map(e => [e.agent_id, e.tokens])).toEqual([
+    [undefined, undefined],
+    [undefined, 90_909],
+    [SUB, undefined],
+  ])
+  expect(ofKind(w, 'turn_complete').map(e => [e.agent_id, e.tokens])).toEqual([
+    [SUB, undefined],
+    [undefined, 92_503],
+  ])
+  // No agent_list carries the main loop's count.
+  expect(JSON.stringify(ofKind(w, 'agent_list'))).not.toContain('92503')
+
+  // /clear: a new conversation, whose first events have no count yet.
+  await $.session.end({ reason: 'clear', sessionId: BEFORE_CLEAR, resume: { id: BEFORE_CLEAR } })
+  await $.classic.SessionStart({ session_id: AFTER_CLEAR, source: 'clear' })
+  await $.tool.call({ tool: 'Bash', command: 'ls', description: 'List files' })
+  await w.clock.advance(1000)
+  const after = ofKind(w, 'tool').filter(e => e.session_id === AFTER_CLEAR)
+  expect(after.length).toBe(1)
+  expect(after[0]?.tokens).toBeUndefined()
+})
+
 test('an API error goes at once; a worktree agent names its worktree', { options: OPTIONS }, async ($, on) => {
   const w = reporting(on)
   await begin($, w)
@@ -284,6 +394,23 @@ test('an API error goes at once; a worktree agent names its worktree', { options
   await w.clock.settle()
   expect(ofKind(w, 'error')).toEqual([expect.objectContaining({ reason: 'rate_limit' })])
   expect(ofKind(w, 'worktree_create')).toEqual([expect.objectContaining({ name: 'agent-a5bd483a78c5f4783' })])
+})
+
+test('classic.SubagentStart: agent_start for each run of an agent, the first and a resume, with its type and cwd', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  const agent = 'a1111111111111111'
+  const worktree = `${REPO}/.claude/worktrees/agent-${agent}`
+  await $.classic.SubagentStart({ agent_id: agent, agent_type: 'general-purpose', cwd: worktree })
+  // SendMessage resumes it under the same id, in the session's cwd.
+  await $.classic.SubagentStart({ agent_id: agent, agent_type: 'general-purpose', cwd: REPO })
+  // One without an id names no agent: nothing is sent.
+  await $.classic.SubagentStart({ agent_type: 'general-purpose', cwd: REPO })
+  await w.clock.advance(1000)
+  expect(ofKind(w, 'agent_start').map(({ agent_id, agent_type, cwd }) => ({ agent_id, agent_type, cwd }))).toEqual([
+    { agent_id: agent, agent_type: 'general-purpose', cwd: worktree },
+    { agent_id: agent, agent_type: 'general-purpose', cwd: REPO },
+  ])
 })
 
 // --- the transport ------------------------------------------------------------
@@ -325,9 +452,9 @@ for (const failure of ['refuse', 'hang'] as const) {
     for (let i = 0; i < 4; i++) await w.clock.advance(5000)
     const evs = aimd.state.delivered.flat()
     expect(evs.length).toBe(200)
-    // The newest are kept: the asks, the tool's label and the end are last.
-    expect(evs.map(e => e.kind).slice(-4)).toEqual(['needs_you', 'needs_you', 'tool', 'session_end'])
-    expect(evs.filter(e => e.kind === 'prompt').length).toBe(196)
+    // The newest are kept: the ask (the dialog's only), the tool's label and the end are last.
+    expect(evs.map(e => e.kind).slice(-4)).toEqual(['prompt', 'needs_you', 'tool', 'session_end'])
+    expect(evs.filter(e => e.kind === 'prompt').length).toBe(197)
     expect(evs.some(e => e.kind === 'session_start')).toBe(false)
   })
 }
@@ -387,12 +514,17 @@ test('every reporting hook fails open: with every $ call broken and odd inputs, 
   on('classic.Notification', () => ({}))
   on('classic.StopFailure', () => ({}))
   on('classic.WorktreeCreate', () => ({}))
+  on('classic.SubagentStart', () => ({}))
   on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
   on('session.start', () => ({ cwd: '/below' }))
   on('session.end', () => ({ sessionId: 'below' }))
   on('prompt.submit', () => ({ text: 'below' }))
   on('turn.start', () => ({ turnId: 'below' }))
   on('turn.complete', () => ({ text: 'below' }))
+  on('turn.step', async function* (_, e) {
+    yield { kind: 'text', index: 0, text: 'below' }
+    return odd<TurnStepResult>({ turnId: e.turnId, index: e.index, answer: 'below', toolUses: [], stopReason: null, usage: { input_tokens: 'many', output_tokens: -1 } })
+  })
   on('tool.check', () => ({ decision: 'ask' }))
   on('agent.spawn', () => SPAWNED)
   on('tool.call', () => ({ result: 'below', text: 'below' }))
@@ -413,6 +545,12 @@ test('every reporting hook fails open: with every $ call broken and odd inputs, 
   expect(await settled($.session.start(START))).toEqual({ cwd: '/below' })
   expect((await settled($.prompt.submit({ text: 'x', wait: false, origin: odd({ kind: 7 }) }))).text).toBe('below')
   expect(await settled($.turn.start({ text: 'x', turnId: 't' }))).toEqual({ turnId: 'below' })
+  // turn.step with odd usage, in the main loop, an odd loop and a subagent's.
+  for (const agentId of [undefined, odd<string>(7), 'a1']) {
+    const out = await settled(drain($.turn.step({ turnId: 't', index: 0, model: 'm', messageCount: 1, ...(agentId !== undefined ? { agentId } : {}) })))
+    expect(out.chunks).toEqual([{ kind: 'text', index: 0, text: 'below' }])
+    expect(out.result.answer).toBe('below')
+  }
   for (const call of [
     { tool: 'AskUserQuestion', questions: 'nope' },
     { tool: 'AskUserQuestion', questions: [null, 3, { options: 'x' }] },
@@ -427,6 +565,8 @@ test('every reporting hook fails open: with every $ call broken and odd inputs, 
   expect(await settled($.classic.Notification({ notification_type: odd<string>(9), message: '' }))).toEqual({})
   expect(await settled($.classic.StopFailure({ error: odd('rate_limit') }))).toEqual({})
   expect(await settled($.classic.WorktreeCreate({ name: odd<string>(null) }))).toEqual({})
+  expect(await settled($.classic.SubagentStart({ agent_id: 'a1111111111111111', agent_type: 'general-purpose', cwd: '/x' }))).toEqual({})
+  expect(await settled($.classic.SubagentStart({ agent_id: odd<string>({ not: 'an id' }), agent_type: odd<string>(3) }))).toEqual({})
   // agent.spawn also asks aimd for the context, which fails at once here.
   expect((await settled($.agent.spawn({ ...SPAWN, prompt: 'Package: aim · C4' }))).agentId).toBe(SPAWNED.agentId)
   expect(await settled($.turn.complete({ answer: odd<string>(5), durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' }))).toEqual({ text: 'below' })

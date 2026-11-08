@@ -159,7 +159,8 @@ The short version. [`CLAUDE.md`](CLAUDE.md) has the rest, and it's what Claude C
   - use temp dirs, temp git repos and a temp `AIM_HOME`;
   - never use the real `~/.ai-manager`, `~/.claude`, launchd, or your real repos and worktrees;
   - packages whose tests run git use `testenv.Main` in their `TestMain`.
-- **Fixtures in `testdata/` are scrubbed:**
+- **Tests, fixtures and docs use made-up data,** like `acme/app` and `example-org/web`, never the names, ids, paths or output of your own sessions and repos.
+- **Recorded fixtures in `testdata/` are scrubbed:**
   - the home path replaced with `~`;
   - no tokens;
   - prompts, Claude's answers and tool output replaced with short placeholders.

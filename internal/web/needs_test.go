@@ -18,14 +18,15 @@ import (
 
 // One need-you count everywhere: a plan's summary, its band, the board's
 // band and the menu's per-plan badge all count the plan's Open items in
-// the Needs you inbox, sessions and PRs alike (internal/prwait's PR rule,
-// and review requests on any PR).
+// the Needs you inbox, sessions, PRs and your steps alike (internal/prwait's
+// PR rule, review requests on any PR, and yourStep).
 //
 // The world: both plans, monitored opt-in, with
 //   - sharing: its seven ready PRs (this plan merges "you");
 //   - aim: its lead (registered with its session id) at a permission
-//     prompt, C6's agent asking a question, and a review requested on D1's
-//     red PR #21. The lead's own wait is on the plan and no package: it
+//     prompt, C6's agent asking a question, a review requested on D1's
+//     red PR #21, and R1 and B4 ready with a "you:" step (aimSteps). The
+//     lead's own wait is on the plan and no package: it
 //     isn't D1's, the package of the subagent it runs;
 //   - no plan: a review requested on pivot#219, which no package links,
 //     and a watched session at a prompt.
@@ -96,23 +97,26 @@ func TestSummaryCountsFollowTheInbox(t *testing.T) {
 			t.Errorf("%s: %d items on no plan, want %d", when, open[""], want[""])
 		}
 	}
-	check("at first", map[string]int{"sharing": 7, "aim": 3, "": 2})
+	check("at first", map[string]int{"sharing": 7, "aim": 3 + aimSteps, "": 2})
 
 	// aim's reasons: each item's, on its package, oldest first. Red CI
-	// alone (D1's #21 before its review request) never counted.
+	// alone (D1's #21 before its review request) never counted. R1 and
+	// B4 have been ready since the plan's first state pass, at t0.
 	sum := summary("aim")
 	var reasons []string
 	for _, it := range sum.NeedsYouItems {
 		reasons = append(reasons, it.Pkg+": "+it.Reason)
 	}
-	if want := []string{": permission prompt: Bash: git push", "C6: question: AskUserQuestion", "D1: review requested on #21"}; !slices.Equal(reasons, want) {
+	if want := []string{": permission prompt: Bash: git push", "C6: question: AskUserQuestion", "D1: review requested on #21",
+		"R1: your step is ready: run the check", "B4: your step is ready: OK to install the launchd agent"}; !slices.Equal(reasons, want) {
 		t.Errorf("aim's items %q, want %q", reasons, want)
 	}
 	var pkgs []string
 	for _, p := range sum.NeedsYouPackages {
 		pkgs = append(pkgs, p.ID+" "+strings.Join(p.Reasons, "; "))
 	}
-	if want := []string{"C6 question: AskUserQuestion", "D1 review requested on #21"}; !slices.Equal(pkgs, want) {
+	if want := []string{"R1 your step is ready: run the check", "B4 your step is ready: OK to install the launchd agent",
+		"C6 question: AskUserQuestion", "D1 review requested on #21"}; !slices.Equal(pkgs, want) {
 		t.Errorf("aim's needs-you packages %q, want %q", pkgs, want)
 	}
 
@@ -122,7 +126,7 @@ func TestSummaryCountsFollowTheInbox(t *testing.T) {
 		SessionID: "lead-sp"}, http.StatusOK)
 	must(t, e.st.UpsertSessions(ctx, store.Session{Key: "pid:90", SessionID: "lead-sp", Kind: "interactive", Name: "sharing lead",
 		Cwd: "/w/sp", State: needsYou, StateReason: "plan approval: ExitPlanMode", NeedsYouSince: t0.Add(-4 * time.Minute), LastSeenAt: t0}))
-	check("with sharing's lead waiting", map[string]int{"sharing": 8, "aim": 3, "": 2})
+	check("with sharing's lead waiting", map[string]int{"sharing": 8, "aim": 3 + aimSteps, "": 2})
 	sp := summary("sharing")
 	if i := slices.IndexFunc(sp.NeedsYouItems, func(it api.SummaryItem) bool { return it.Title == "sharing lead" }); i < 0 ||
 		sp.NeedsYouItems[i].Pkg != "" || sp.NeedsYouItems[i].Kind != "plan" || sp.NeedsYouItems[i].URL != InboxItemURL(sp.NeedsYouItems[i].ID) {
@@ -136,12 +140,12 @@ func TestSummaryCountsFollowTheInbox(t *testing.T) {
 	lead := sum.NeedsYouItems[0].ID
 	e.api("POST", "/api/inbox/"+strconv.FormatInt(lead, 10), api.InboxActRequest{Action: "snooze", Snooze: "1h"}, http.StatusOK)
 	e.api("POST", "/api/inbox/"+strconv.FormatInt(summary("sharing").NeedsYouItems[0].ID, 10), api.InboxActRequest{Action: "done"}, http.StatusOK)
-	check("after a snooze and a done", map[string]int{"sharing": 7, "aim": 2, "": 2})
+	check("after a snooze and a done", map[string]int{"sharing": 7, "aim": 2 + aimSteps, "": 2})
 
 	// A wait that ends leaves it at once: the c6 agent goes back to work.
 	must(t, e.st.UpsertSessions(ctx, store.Session{Key: "pid:42", SessionID: "sess-c6", Kind: "interactive", Name: "c6 agent", Cwd: "/w/c6",
 		State: "working", StartedAt: t0.Add(-time.Hour), LastSeenAt: t0}))
-	check("after the question was answered", map[string]int{"sharing": 7, "aim": 1, "": 2})
+	check("after the question was answered", map[string]int{"sharing": 7, "aim": 1 + aimSteps, "": 2})
 }
 
 // to_merge counts a lead-merged plan's PRs that are ready to merge and

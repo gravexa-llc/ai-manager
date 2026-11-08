@@ -1,13 +1,38 @@
 package planapi
 
 import (
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gravexa-llc/ai-manager/internal/state"
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
+
+// A linked agent's JSON carries when it started and, for a subagent, its
+// token count; a session's has no tokens field.
+func TestLinkAgentJSON(t *testing.T) {
+	started := time.Date(2026, 11, 6, 9, 40, 30, 0, time.UTC)
+	sub := linkJSON(state.Link{Target: state.Target{Kind: store.LinkAgent, Ref: "lead-session/a1b2c3"}, Agent: &state.Agent{
+		SessionID: "lead-session", AgentID: "a1b2c3", Kind: "subagent", Name: "general-purpose", State: "running", Live: true,
+		LastAction: "Bash: Run the tests", StartedAt: started, Tokens: 284_123}})
+	b, err := json.Marshal(sub.Agent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"last_action":"Bash: Run the tests"`, `"started_at":"2026-11-06T09:40:30Z"`, `"tokens":284123`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("agent JSON %s lacks %s", b, want)
+		}
+	}
+	lead := linkJSON(state.Link{Target: state.Target{Kind: store.LinkAgent, Ref: "lead-session"}, Agent: &state.Agent{SessionID: "lead-session", Live: true}})
+	if b, _ := json.Marshal(lead.Agent); strings.Contains(string(b), "tokens") || strings.Contains(string(b), "started_at") {
+		t.Errorf("session JSON %s has tokens or started_at", b)
+	}
+}
 
 func TestConvention(t *testing.T) {
 	for _, c := range []struct{ slug, id, title, branch, line string }{

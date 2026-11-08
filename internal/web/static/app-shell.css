@@ -423,6 +423,20 @@ kbd {
   text-transform: uppercase; text-align: left;
 }
 button.ghead, summary.ghead { cursor: pointer; }
+/* A section that folds: <details class="group"> around a <summary
+   class="ghead"> and its rows (groups.go, app-groups.js). The chevron turns
+   when it opens; a header whose rows the filter hid goes with them. */
+.group > summary { justify-content: flex-start; list-style: none; }
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary::before { content: "\25B8"; flex: 0 0 auto; margin-right: -4px; transition: transform .12s; }
+.group[open] > summary::before { transform: rotate(90deg); }
+.group > summary > :last-child { margin-left: auto; }
+.group > summary:hover { color: var(--ink-2); }
+.group:has(> summary.filtered) { display: none; }
+/* Group by: a label and a small segmented control in a list's toolbar. */
+.gby { display: inline-flex; align-items: center; gap: 8px; }
+.gby-label { font-size: 12px; color: var(--muted); }
+.gby .seg a { min-height: 26px; padding: 0 10px; font-size: 12px; }
 .rows { margin: 0; padding: 0; list-style: none; }
 .irow, .srow {
   display: flex; gap: 12px; width: 100%; border: 0; border-bottom: 1px solid var(--line-soft);
@@ -467,6 +481,16 @@ dl.ctx dt { color: var(--muted); }
 dl.ctx dd { margin: 0; word-break: break-word; }
 .history { margin: 0; padding: 0; list-style: none; }
 .history li { padding: 3px 0; font-size: 13px; color: var(--ink-2); }
+
+/* An agent's line (the "agent-now" template), as Claude Code's agent list
+   has it: who, what it did last (or how it ended), then how long it has
+   run and its tokens at the end. A package's pane and the Sessions page's
+   detail draw it. */
+.agent-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.agent-now-who { flex: 0 0 auto; }
+.agent-now-doing { flex: 1 1 12em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.agent-now-quiet { color: var(--muted); font-size: 12px; }
+.agent-now-stat { flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .feed { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
 .feed .when { flex: 0 0 52px; padding-top: 1px; font-size: 12px; color: var(--muted); }
 .stats { display: flex; flex-wrap: wrap; gap: 10px; }

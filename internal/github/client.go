@@ -1,7 +1,8 @@
 // Package github reads pull requests from GitHub's GraphQL API for aimd and
-// aim: the PRs of tracked branches (BranchPRs), the user's open PRs across
-// the configured owners (OpenPRs), and the open PRs there that ask for the
-// user's review (ReviewRequests).
+// aim: the PRs of tracked branches (BranchPRs), PRs by number
+// (PRsByNumber), the user's open PRs across the configured owners
+// (OpenPRs), and the open PRs there that ask for the user's review
+// (ReviewRequests).
 //
 // It is read-only: it only ever sends queries, built from fixed templates,
 // and refuses anything else. It has no scheduler; the caller decides when
@@ -123,7 +124,7 @@ type Options struct {
 	Timeout time.Duration
 	// Tokens supplies tokens; TokensFromConfig(cfg) if nil.
 	Tokens TokenSource
-	// MaxBranchesPerQuery is where BranchPRs splits a batch;
+	// MaxBranchesPerQuery is where BranchPRs (and PRsByNumber) split a batch;
 	// DefaultMaxBranchesPerQuery if zero.
 	MaxBranchesPerQuery int
 	// Now is the clock; time.Now if nil.
@@ -205,8 +206,8 @@ type Health struct {
 // Stale reports whether the last call failed.
 func (h Health) Stale() bool { return h.Err != nil }
 
-// Health reports whether the last BranchPRs, OpenPRs or ReviewRequests
-// call reached GitHub.
+// Health reports whether the last BranchPRs, PRsByNumber, OpenPRs or
+// ReviewRequests call reached GitHub.
 func (c *Client) Health() Health {
 	c.mu.Lock()
 	defer c.mu.Unlock()

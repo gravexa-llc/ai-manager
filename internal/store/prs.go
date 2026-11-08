@@ -60,6 +60,17 @@ type PR struct {
 // the last review-request search of its owner found.
 func (p PR) ReviewRequested() bool { return !p.ReviewRequestedAt.IsZero() }
 
+// Unread reports whether aimd has never read the PR from GitHub: it is
+// the placeholder the link API stores (POST /api/links/pr) when an agent
+// reports a PR by URL before any poll read it, with only its repo, number
+// and URL known and its state assumed OPEN. Every PR GitHub sends has a
+// head branch and an updatedAt, so an open row without either is a
+// placeholder. The poller reads placeholders by number (internal/daemon),
+// and the dashboard shows one as not read yet rather than as an open PR.
+func (p PR) Unread() bool {
+	return p.State == PROpen && p.HeadBranch == "" && p.UpdatedAt.IsZero()
+}
+
 // PRKey names a pull request: GitHub's nameWithOwner and its number.
 type PRKey struct {
 	Repo   string

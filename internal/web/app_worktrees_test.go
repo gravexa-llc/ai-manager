@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,10 +16,12 @@ import (
 	"time"
 
 	"github.com/gravexa-llc/ai-manager/internal/config"
+	"github.com/gravexa-llc/ai-manager/internal/monitor"
 	"github.com/gravexa-llc/ai-manager/internal/prune"
 	"github.com/gravexa-llc/ai-manager/internal/prune/prunetest"
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/web/api"
 	"github.com/gravexa-llc/ai-manager/internal/worktrees"
 )
 
@@ -134,16 +137,16 @@ func (e *cleanupEnv) branchExists(t *testing.T, branch string) bool {
 	return strings.TrimSpace(prunetest.Git(t, e.w.Repo, "branch", "--list", branch)) != ""
 }
 
-// TestWorktreesPageWorld renders the page over the A3 world: each verdict
-// in its group, checkboxes on the safe and scratch rows only, no main
-// checkout.
+// TestWorktreesPageWorld renders the page over the A3 world, grouped by
+// cleanup status: each verdict in its group, checkboxes on the safe and
+// scratch rows only, no main checkout.
 func TestWorktreesPageWorld(t *testing.T) {
 	e := newCleanupEnv(t)
-	page := get(t, e.h, "/app/worktrees")
+	page := get(t, e.h, "/app/worktrees?group=status")
 	list := section(t, page, "list")
 	rows := list[:strings.Index(list, "<dialog")] // the confirmation lists rows again
 	groups := map[string][]string{}
-	for _, part := range strings.Split(rows, `<div class="ghead"`)[1:] {
+	for _, part := range strings.Split(rows, `<summary class="ghead"`)[1:] {
 		title := part[strings.Index(part, "<span>")+6 : strings.Index(part, "</span>")]
 		for name, p := range e.w.WT {
 			if strings.Contains(part, `title="`+p+`"`) {
@@ -584,7 +587,7 @@ func TestWorktreesPageSelections(t *testing.T) {
 		`data-open="wt-confirm" data-wt-open disabled>Remove selected (<span data-wt-n>0</span>)</button>`,
 		`<noscript><button type="submit" class="btn primary sm" name="confirm" value="1">Remove selected…</button></noscript>`,
 		`<input type="checkbox" class="wt-check" id="pick-`+old+`" name="pick" value="`+old+`" data-wt-pick>`,
-		"Safe to remove", "Locked: never removed", "locked by an agent", "Prunable records: folder gone",
+		"Safe to remove", `<span class="pill tone-quiet">Locked</span>`, "locked by an agent", "Prunable records: folder gone",
 		`<form class="wt-prune" method="post" action="/app/worktrees/prune" data-pane="list detail">`,
 		`<input type="hidden" name="rec" value="`+wtID(appRepo+"-gone")+`">`,
 		"Main checkouts (2) are never candidates.",
@@ -756,5 +759,190 @@ func TestCleanupStoredSessions(t *testing.T) {
 	must(t, err)
 	if out[0].Action != store.RemovalSkipped || !strings.Contains(out[0].Detail, "live sessions unknown") || !prunetest.Exists(e.w.WT["ff"]) {
 		t.Errorf("ff with the stored sessions stale: %+v", out[0])
+	}
+}
+
+// The worktrees of wtGroupsEnv: in acme/app, one the Search v2 plan's S1
+// links, one on the branch of a PR its S2 links, one on the branch of a PR
+// whose Plan: line names it, one a watched session works in, and a stray;
+// a stray in example-org/web; a scratch one in a repo with no GitHub
+// remote (~/Projects/notes).
+var (
+	wtAcme, wtWeb, wtNotes = home + "/Projects/acme-app", home + "/Projects/web", home + "/Projects/notes"
+	wtS1, wtS2, wtS3       = wtAcme + "-s1", wtAcme + "-s2", wtAcme + "-s3"
+	wtWatched, wtStray     = wtAcme + "-typo", wtAcme + "-old"
+	wtWebStray, wtTry      = wtWeb + "-old", wtNotes + "-try"
+)
+
+// wtGroupsEnv is the Worktrees page over those worktrees, monitoring
+// "opt-in", with a Cleanup whose checker is never reached.
+func wtGroupsEnv(t *testing.T) http.Handler {
+	t.Helper()
+	st := newTestStore(t)
+	ctx := context.Background()
+	wt := func(path, main, branch string) store.Worktree {
+		return store.Worktree{Path: path, MainRepo: main, Branch: branch, Detached: branch == "", HeadSHA: strings.Repeat("a", 40), LastSeen: t0}
+	}
+	must(t, st.UpsertWorktrees(ctx, wt(wtAcme, wtAcme, "main"), wt(wtWeb, wtWeb, "main"), wt(wtNotes, wtNotes, "main"),
+		wt(wtS1, wtAcme, "search/s1"), wt(wtS2, wtAcme, "search/s2"), wt(wtS3, wtAcme, "search/s3"),
+		wt(wtWatched, wtAcme, "fix-typo"), wt(wtStray, wtAcme, "old"), wt(wtWebStray, wtWeb, "old-web"), wt(wtTry, wtNotes, "")))
+	must(t, st.UpsertPRs(ctx,
+		store.PR{Repo: "acme/app", Number: 5, Title: "Search ranking", State: store.PROpen, HeadBranch: "search/s2", UpdatedAt: t0},
+		store.PR{Repo: "acme/app", Number: 6, Title: "Search filters", State: store.PROpen, HeadBranch: "search/s3", PlanSlug: "search-v2", PlanPkg: "S3", UpdatedAt: t0}))
+	must(t, st.UpsertSessions(ctx, store.Session{Key: "pid:20", PID: 20, SessionID: "watch-1", Kind: "interactive", Name: "typo fix",
+		Cwd: wtWatched, WorktreePath: wtWatched, Repo: wtAcme, Branch: "fix-typo", State: "idle", LastSeenAt: t0}))
+	_, _, err := st.WatchSession(ctx, "watch-1", t0)
+	must(t, err)
+	plans := fakePlans{
+		plans: []api.Plan{{Slug: "search-v2", Title: "Search v2", Packages: []api.Package{
+			{ID: "S1", Links: []api.Link{{Target: api.Target{Kind: store.LinkWorktree, Ref: wtS1}}}},
+			{ID: "S2", Links: []api.Link{{Target: api.Target{Kind: store.LinkPR, Ref: "acme/app#5"},
+				PR: &api.LinkPR{Repo: "acme/app", Number: 5, State: store.PROpen, HeadBranch: "search/s2"}}}},
+		}}},
+		sums: map[string]api.PlanSummary{"search-v2": {}},
+	}
+	repos := fakeRepos{wtAcme: "acme/app", wtWeb: "example-org/web"}
+	safe := Verdict{Category: "safe", Removable: true, Reasons: []string{"PR merged"}}
+	srv := newDash(t, st, func(o *Options) {
+		o.Plans, o.Repos = plans, repos
+		o.Monitor = &monitor.Source{Mode: monitor.ModeOptIn, Store: st, RepoNames: repos.RepoNames,
+			Plans: func(ctx context.Context) ([]api.Plan, error) { return plans.plans, nil }}
+		o.SafeToRemove = fakeVerdicts{v: map[string]Verdict{
+			wtS1: {Category: "not-safe", Reasons: []string{"2 unpushed commits"}}, wtS2: {Category: "not-safe", Reasons: []string{"PR #5 is open"}},
+			wtS3: safe, wtWatched: safe, wtStray: safe, wtWebStray: safe,
+			wtTry: {Category: "scratch", Removable: true, Reasons: []string{"detached, nothing at risk"}},
+		}}
+		o.Cleanup = NewCleanup(CleanupOptions{Checker: &prune.Checker{}, Log: st})
+	})
+	return srv.Handler()
+}
+
+// wtRowsOf are the worktrees a section lists, by their ids.
+func wtRowsOf(t *testing.T, list, key string) []string {
+	t.Helper()
+	_, body := sectionOf(t, list, key)
+	var out []string
+	for _, m := range regexp.MustCompile(`<span class="wt-path" title="([^"]*)">`).FindAllStringSubmatch(body, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// Grouped by repo (the default), plan or cleanup status: each worktree in
+// its section with its verdict, the sections with nothing on a plan or a
+// monitored session's collapsed, the verdicts' all open.
+func TestWorktreesGroupBy(t *testing.T) {
+	h := wtGroupsEnv(t)
+	short := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
+
+	repo := get(t, h, "/app/worktrees?fragment=list")
+	if got := strings.Join(sectionKeys(repo), " "); got != "repo:acme/app repo:example-org/web repo:"+worktrees.PathKey(wtNotes) {
+		t.Errorf("repo: sections %s", got)
+	}
+	wantIn(t, "control", repo, `<div class="gby" role="group" aria-label="Group by" data-group-cookie="aim_group_worktrees">`,
+		`data-group-by="repo" class="on" aria-current="true">Repo</a>`, `data-group-by="plan">Plan</a>`, `data-group-by="status">Cleanup status</a>`)
+	wantSection(t, repo, "repo:acme/app", true, false)
+	wantSection(t, repo, "repo:example-org/web", false, false)
+	wantSection(t, repo, "repo:"+worktrees.PathKey(wtNotes), false, false)
+	if got := wtRowsOf(t, repo, "repo:acme/app"); !sameSet(got, []string{short(wtS1), short(wtS2), short(wtS3), short(wtWatched), short(wtStray)}) {
+		t.Errorf("acme/app rows %v", got)
+	}
+	_, notes := sectionOf(t, repo, "repo:"+worktrees.PathKey(wtNotes))
+	wantIn(t, "notes", notes, `<span>notes</span><span>1</span>`, `<span class="pill tone-info">Scratch</span>`)
+	// Every row keeps its verdict.
+	_, acme := sectionOf(t, repo, "repo:acme/app")
+	wantIn(t, "acme rows", acme, `<span class="pill tone-warn">Not safe</span>`, `<span class="pill tone-ok">Safe to remove</span>`,
+		"PR #5 is open", `name="pick" value="`+wtID(wtStray)+`"`)
+
+	plan := get(t, h, "/app/worktrees?group=plan&fragment=list")
+	if got := strings.Join(sectionKeys(plan), " "); got != "plan:search-v2 plan:-watched plan:-none" {
+		t.Errorf("plan: sections %s", got)
+	}
+	wantSection(t, plan, "plan:search-v2", true, false)
+	wantSection(t, plan, "plan:-watched", true, false)
+	wantSection(t, plan, "plan:-none", false, false)
+	_, sv2 := sectionOf(t, plan, "plan:search-v2")
+	wantIn(t, "search v2", sv2, `<span>Search v2</span><span>3</span>`)
+	for key, want := range map[string][]string{
+		"plan:search-v2": {short(wtS1), short(wtS2), short(wtS3)},
+		"plan:-watched":  {short(wtWatched)},
+		"plan:-none":     {short(wtStray), short(wtWebStray), short(wtTry)},
+	} {
+		if got := wtRowsOf(t, plan, key); !sameSet(got, want) {
+			t.Errorf("plan: %s rows %v, want %v", key, got, want)
+		}
+	}
+	wantIn(t, "plan", plan, `<input type="hidden" name="group" value="plan">`, `href="/app/worktrees?all=1&amp;group=plan"`)
+
+	status := get(t, h, "/app/worktrees?group=status&fragment=list")
+	if got := strings.Join(sectionKeys(status), " "); got != "status:safe status:scratch status:not-safe" {
+		t.Errorf("status: sections %s", got)
+	}
+	for _, k := range sectionKeys(status) {
+		wantSection(t, status, k, true, false)
+	}
+
+	// A search opens every section it leaves; the records stay their own.
+	found := get(t, h, "/app/worktrees?q=old&fragment=list")
+	if got := strings.Join(sectionKeys(found), " "); got != "repo:acme/app repo:example-org/web" {
+		t.Errorf("search: sections %s", got)
+	}
+	wantSection(t, found, "repo:example-org/web", true, true)
+}
+
+// confirmation reads the confirmation's form as the browser would send it
+// once the rows are checked: the run, the return and each enabled wt.
+func confirmation(t *testing.T, list string) url.Values {
+	t.Helper()
+	i := strings.Index(list, `action="/app/worktrees/remove"`)
+	if i < 0 {
+		t.Fatalf("no confirmation in:\n%s", list)
+	}
+	form := list[i : i+strings.Index(list[i:], "</form>")]
+	vals := url.Values{}
+	for _, m := range regexp.MustCompile(`<input type="hidden" name="(run|return|wt)" value="([^"]*)"( disabled)?>`).FindAllStringSubmatch(form, -1) {
+		if m[3] == "" {
+			vals.Add(m[1], html.UnescapeString(m[2]))
+		}
+	}
+	return vals
+}
+
+// The cleanup flow works in every grouping: the rows checked in the URL,
+// in collapsed sections too, are in the confirmation, and its post
+// removes them and comes back to the same grouping.
+func TestWorktreesRemoveGrouped(t *testing.T) {
+	for _, group := range []string{"repo", "plan"} {
+		e := newCleanupEnv(t)
+		merged, scratch := wtID(e.rows["merged"].Path), wtID(e.rows["detached-main"].Path)
+		list := get(t, e.h, "/app/worktrees?group="+group+"&pick="+merged+"&pick="+scratch+"&fragment=list")
+		// No plan, no monitored session: every section is collapsed, and
+		// the checked rows are still in the form.
+		for _, k := range sectionKeys(list) {
+			wantSection(t, list, k, k == "records", false)
+		}
+		wantIn(t, group, list, `value="`+merged+`" checked data-wt-pick>`, `value="`+scratch+`" checked data-wt-pick>`,
+			`data-wt-open>Remove selected (<span data-wt-n>2</span>)`, `<input type="hidden" name="group" value="`+group+`">`)
+		vals := confirmation(t, list)
+		if got := vals["wt"]; !sameSet(got, []string{e.pickOf(t, "merged"), e.pickOf(t, "detached-main")}) {
+			t.Fatalf("%s: the confirmation sends %v", group, got)
+		}
+		if want := "/app/worktrees?group=" + group + "&pick=" + merged + "&pick=" + scratch; vals.Get("return") != want {
+			t.Errorf("%s: return %q, want %q", group, vals.Get("return"), want)
+		}
+		rec := e.post(t, "/app/worktrees/remove", vals, true)
+		var a appAnswer
+		decode(t, rec, &a)
+		if rec.Code != http.StatusOK || a.Toast == nil || !strings.HasPrefix(a.Toast.Text, "Removed 2 worktrees") {
+			t.Fatalf("%s: remove = %d %+v", group, rec.Code, a)
+		}
+		if a.Location != "/app/worktrees?group="+group {
+			t.Errorf("%s: location %q", group, a.Location)
+		}
+		for _, name := range []string{"merged", "detached-main"} {
+			if prunetest.Exists(e.w.WT[name]) {
+				t.Errorf("%s: %s still there", group, name)
+			}
+		}
 	}
 }

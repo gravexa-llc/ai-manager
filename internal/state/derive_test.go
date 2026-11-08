@@ -595,13 +595,16 @@ func TestReach(t *testing.T) {
 }
 
 // The board carries the lanes table, and a linked agent its last action
-// from the session row (or, for a subagent, its agent row).
+// and start from the session row (or, for a subagent, its agent row), and
+// its token count from its agent row: a subagent's own, a session's main
+// loop's (none until the mod reports one).
 func TestLanesAndLastAction(t *testing.T) {
 	in := baseInput(t)
 	in.Worktrees = append(in.Worktrees, worktree("a1", "aim/a1-x"), worktree("b1", "aim/b1-x"))
 	in.Sessions = []store.Session{{SessionID: "s1", Kind: "interactive", State: "working", Cwd: wtRoot + "a1", WorktreePath: wtRoot + "a1",
-		LastAction: "Bash: make check", LastEventAt: now.Add(-time.Minute)}}
-	in.Agents = []store.Agent{{SessionID: "s1", AgentID: "b", Kind: "subagent", State: "running", WorktreePath: wtRoot + "b1", LastAction: "Edit: x.go"}}
+		LastAction: "Bash: make check", LastEventAt: now.Add(-time.Minute), StartedAt: now.Add(-time.Hour)}}
+	in.Agents = []store.Agent{{SessionID: "s1", AgentID: "b", Kind: "subagent", AgentType: "general-purpose", State: "running",
+		WorktreePath: wtRoot + "b1", LastAction: "Edit: x.go", Tokens: 52_000, StartedAt: now.Add(-20 * time.Minute)}}
 	ps := derive(in)
 
 	var lanes []string
@@ -619,11 +622,22 @@ func TestLanesAndLastAction(t *testing.T) {
 		t.Fatalf("%s has no agent link", id)
 		return nil
 	}
-	if a := agentOf("A1"); a.LastAction != "Bash: make check" || !a.LastEventAt.Equal(now.Add(-time.Minute)) {
+	if a := agentOf("A1"); a.LastAction != "Bash: make check" || !a.LastEventAt.Equal(now.Add(-time.Minute)) ||
+		!a.StartedAt.Equal(now.Add(-time.Hour)) || a.Tokens != 0 {
 		t.Errorf("A1's agent = %+v", a)
 	}
-	if a := agentOf("B1"); a.LastAction != "Edit: x.go" {
+	if a := agentOf("B1"); a.LastAction != "Edit: x.go" || a.Name != "general-purpose" || a.Tokens != 52_000 || !a.StartedAt.Equal(now.Add(-20*time.Minute)) {
 		t.Errorf("B1's agent = %+v", a)
+	}
+
+	// The session's main loop reports its count: A1's session link has it.
+	in.Agents = append(in.Agents, store.Agent{SessionID: "s1", Kind: "lead", State: "running", LastAction: "Bash: make check", Tokens: 61_200, StartedAt: now.Add(-time.Hour)})
+	ps = derive(in)
+	if a := agentOf("A1"); a.Tokens != 61_200 || a.LastAction != "Bash: make check" || !a.StartedAt.Equal(now.Add(-time.Hour)) {
+		t.Errorf("A1's agent with its main loop's count = %+v", a)
+	}
+	if a := agentOf("B1"); a.Tokens != 52_000 {
+		t.Errorf("B1's agent took the main loop's count: %+v", a)
 	}
 }
 

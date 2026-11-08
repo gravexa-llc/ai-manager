@@ -18,7 +18,8 @@ func TestNormalizeTruncatesToTheCaps(t *testing.T) {
 		Kind: Tool, SessionID: " s1 ", At: at, AgentID: "a1",
 		Tool: long, Label: long + "\nline two", Reason: "why\n\tso", LastSaid: "first line\nsecond line",
 		OriginKind: long, Source: long, Name: long, ToolUseID: long, Cwd: strings.Repeat("/x", 3000),
-		Agents: []Agent{{ID: " a2 ", Status: long, Type: long}, {ID: ""}},
+		PluginBuild: long, PluginRoot: strings.Repeat("/p", 3000), Tokens: 2 * MaxTokens,
+		Agents: []Agent{{ID: " a2 ", Status: long, Type: long, Tokens: 3 * MaxTokens}, {ID: ""}, {ID: "a3", Tokens: -5}},
 	}
 	if err := e.Normalize(); err != nil {
 		t.Fatal(err)
@@ -30,6 +31,7 @@ func TestNormalizeTruncatesToTheCaps(t *testing.T) {
 		"tool": {e.Tool, MaxToolLen}, "label": {e.Label, MaxSummaryLen}, "origin_kind": {e.OriginKind, MaxKindLen},
 		"source": {e.Source, MaxKindLen}, "name": {e.Name, MaxToolLen}, "tool_use_id": {e.ToolUseID, MaxToolLen},
 		"cwd": {e.Cwd, MaxPathLen}, "status": {e.Agents[0].Status, MaxKindLen}, "type": {e.Agents[0].Type, MaxKindLen},
+		"plugin_build": {e.PluginBuild, MaxToolLen}, "plugin_root": {e.PluginRoot, MaxPathLen},
 	} {
 		if n := utf8.RuneCountInString(c.got); n != c.max {
 			t.Errorf("%s: %d characters, want %d", name, n, c.max)
@@ -41,8 +43,17 @@ func TestNormalizeTruncatesToTheCaps(t *testing.T) {
 	if strings.Contains(e.Label, "\n") {
 		t.Errorf("label has a line break: %q", e.Label)
 	}
-	if len(e.Agents) != 1 || e.Agents[0].ID != "a2" {
-		t.Errorf("agents = %+v, want the one with an id", e.Agents)
+	if len(e.Agents) != 2 || e.Agents[0].ID != "a2" || e.Agents[1].ID != "a3" {
+		t.Errorf("agents = %+v, want the two with an id", e.Agents)
+	}
+	// A build is one line; a folder is trimmed.
+	b := Event{Kind: SessionStart, SessionID: "s1", At: at, PluginBuild: "  v1.0.0-3-gabc1234\n-dirty ", PluginRoot: " /r/app/plugin\n"}
+	if err := b.Normalize(); err != nil || b.PluginBuild != "v1.0.0-3-gabc1234 -dirty" || b.PluginRoot != "/r/app/plugin" {
+		t.Errorf("plugin build %q in %q (%v)", b.PluginBuild, b.PluginRoot, err)
+	}
+	// A token count is cut to MaxTokens, and a negative one is none.
+	if got := []int64{e.Agents[0].Tokens, e.Agents[1].Tokens, e.Tokens}; got[0] != MaxTokens || got[1] != 0 || got[2] != MaxTokens {
+		t.Errorf("tokens = %v, want [%d 0 %d]", got, MaxTokens, MaxTokens)
 	}
 }
 
@@ -89,12 +100,12 @@ func TestTruncate(t *testing.T) {
 
 func TestDecodeBatch(t *testing.T) {
 	b, err := DecodeBatch(strings.NewReader(`{"events": [
-		{"kind": "tool", "session_id": "s", "at": "2026-11-06T09:00:00.123Z", "tool": "Bash", "label": "Bash: x"},
+		{"kind": "tool", "session_id": "s", "at": "2026-11-06T09:00:00.123Z", "tool": "Bash", "label": "Bash: x", "tokens": 61200},
 		{"kind": "nope", "session_id": "s", "at": "2026-11-06T09:00:00Z"},
 		{"kind": "tool", "session_id": "s", "at": 12345},
 		{"kind": "nope2", "at": "bad"},
 		"not an object",
-		{"kind": "agent_list", "session_id": "s", "at": "2026-11-06T09:00:01+02:00", "agents": [{"id": "a1", "status": "running", "background": true}]}
+		{"kind": "agent_list", "session_id": "s", "at": "2026-11-06T09:00:01+02:00", "agents": [{"id": "a1", "status": "running", "background": true, "tokens": 284100}]}
 	], "extra": "ignored"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +113,10 @@ func TestDecodeBatch(t *testing.T) {
 	if len(b.Events) != 2 || b.Invalid != 2 || b.Unknown["nope"] != 1 || b.Unknown["nope2"] != 1 || b.Dropped() != 4 {
 		t.Fatalf("batch = %+v", b)
 	}
-	if e := b.Events[0]; !e.At.Equal(at.Add(123*time.Millisecond)) || e.Label != "Bash: x" {
+	if e := b.Events[0]; !e.At.Equal(at.Add(123*time.Millisecond)) || e.Label != "Bash: x" || e.Tokens != 61_200 {
 		t.Errorf("event 0 = %+v", e)
 	}
-	if a := b.Events[1].Agents; len(a) != 1 || a[0].Background == nil || !*a[0].Background {
+	if a := b.Events[1].Agents; len(a) != 1 || a[0].Background == nil || !*a[0].Background || a[0].Tokens != 284_100 {
 		t.Errorf("agents = %+v", a)
 	}
 

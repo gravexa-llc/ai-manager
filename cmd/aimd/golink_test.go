@@ -145,7 +145,7 @@ func TestMonitorMergesOverride(t *testing.T) {
 		{ID: "T1", Links: []api.Link{{Target: api.Target{Kind: "pr", Ref: "o/app#7"}}}},
 	}}}}}
 	src := newMonitor(st, config.Sessions{Monitor: config.MonitorOptIn}, boards, func() map[string]string { return nil })
-	ready := store.PR{Repo: "o/app", Number: 7, State: store.PROpen, MergeStateStatus: "CLEAN"}
+	ready := store.PR{Repo: "o/app", Number: 7, HeadBranch: "aim/t1-thing", State: store.PROpen, MergeStateStatus: "CLEAN"}
 	waits := func() string {
 		t.Helper()
 		set, err := src.Load(ctx, nil, []store.Worktree{})

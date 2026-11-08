@@ -43,9 +43,10 @@ flowchart LR
 | **GitHub** | GraphQL queries, built from fixed templates, with tokens from `gh auth token` | See below |
 | **Plan files** | Each registered plan file is watched | On every save |
 
-**GitHub** is read with your own `gh` login, or with a personal access token file if you configure one. It answers four kinds of query:
+**GitHub** is read with your own `gh` login, or with a personal access token file if you configure one. It answers five kinds of query:
 
 - **the PRs of each tracked branch:** branches checked out in a worktree, or linked to a plan. Repos with something going on are asked every 60 s, the rest every 5 minutes;
+- **PRs by number:** a PR the plugin saw a tool call create, merge or close, within seconds; and every 5 minutes, any PR an agent linked by URL that aimd still hasn't read (see below);
 - **your open PRs** across your GitHub owners: every 60 s while a dashboard page is open, every 5 minutes otherwise;
 - **PRs that ask for your review**, right after that;
 - **a one-off backfill** of a repo's PRs when a plan for it is registered.
@@ -53,6 +54,12 @@ flowchart LR
 aimd tracks GitHub's rate limit. Below 1,000 points left it polls everything at the slow rate, and below 200 it stops until the limit resets.
 
 Your owners are the `[owners]` table in `config.toml`, or else the owners of the repos aimd found.
+
+**Which repos are on GitHub.** A repo counts when one of its remotes is on `github.com`, over `https://` or ssh (or `ssh.github.com`, GitHub's ssh host on port 443). A remote on an SSH host alias counts too when the alias points at GitHub: a remote like `github-work:owner/name.git`, with a `Host github-work` block in `~/.ssh/config` whose `HostName` is `github.com`, the usual way to use two GitHub accounts. aimd asks ssh with `ssh -G <alias>`, which prints your ssh config for that host and never connects, and keeps the answer for an hour. If ssh fails or takes over 2 seconds, the repo doesn't count as GitHub's until aimd asks again, 5 minutes later.
+
+**PRs the plugin saw change.** When an agent creates a PR, the plugin reports its URL (`POST /api/links/pr`) and aimd stores it at once, before GitHub has been read. Until GitHub answers for it, it is shown as **not read from GitHub yet**, not as an open PR. aimd reads it by number right away. It does the same when the plugin sees `gh pr merge`, `gh pr close` or the GitHub MCP server's merge work (`POST /api/prs/refresh`). These reads are joined, at most one every 10 seconds, and what aimd stores is what GitHub answers, never the command's output. The polls stay the backstop: every 5 minutes aimd reads any linked PR it still hasn't read, so nothing depends on the plugin seeing the call.
+
+**Repos GitHub can't read.** A repo GitHub doesn't answer for (not found, no access for your token, a PR number it has no PR for) keeps its PRs as last read. It is listed in `/api/status` under `github.unreadable`, `aim status` says "GitHub can't read owner/name", and the Overview's GitHub chip counts it.
 
 **After each change,** aimd runs a **state pass**, at most once every 5 seconds and right after every write through the API. A state pass:
 
@@ -131,6 +138,7 @@ aimd is built for a Mac with one user account.
 | `internal/worktrees` | Finding repos and reading their worktrees |
 | `internal/github` | The GraphQL client, tokens and the rate limit |
 | `internal/live`, `internal/events` | The plugin's events: checks, redaction and live session state |
+| `internal/pluginbuild` | The plugin build on disk in a plugin folder, to flag sessions on an older one |
 | `internal/plans` | The plan parser (the format is in its `doc.go`) |
 | `internal/state` | Matching work to packages, lifecycles, badges and alerts |
 | `internal/planapi` | Registering plans, links, and the plan API's logic |

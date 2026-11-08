@@ -71,7 +71,7 @@ Every setting, with its default, is listed at the top of `internal/config/config
 
 ```sh
 aim up        # aimd is running at http://127.0.0.1:7777
-aim status    # one line: what needs you, stale sources, GitHub budget
+aim status    # one line: what needs you, stale sources, GitHub budget, aimd's version
 ```
 
 **5. Install the plugin** for every Claude Code session, and hand it aimd's token:
@@ -195,7 +195,7 @@ There are two ways to remove them:
 | In a terminal | Does |
 |---|---|
 | `aim up`, `aim down` | Start aimd (and reload it after an update), or stop it |
-| `aim status` | One line: what needs you, stale sources, GitHub budget |
+| `aim status` | One line: what needs you, stale sources, GitHub budget, and the running aimd's version (with a note when it isn't this `aim`'s: run `aim up` to restart it) |
 | `aim ls`, `aim prune [--apply]` | Worktrees and cleanup |
 | `aim go <session>` | Brings a session's tab to the front |
 

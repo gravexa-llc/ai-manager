@@ -15,11 +15,13 @@
 // The hooks themselves are in register.tsx; this module keeps what they
 // need between calls: the session id the events are stamped with, the
 // session's facts for a session_start after /clear, the asks not yet
-// answered, the spawned agents' flags, and the 30 s agent_list ticker.
+// answered, the spawned agents' flags and token counts, the main loop's
+// token count, and the 30 s agent_list ticker.
 
 import type { EngineInterface } from 'claude-code'
 
 import { request, type Settings } from './aimd'
+import { pluginBuild } from './build'
 import { firstLine, label, truncate, waitFor, MAX_SUMMARY, type Wait } from './wait'
 
 /** One event as aimd's internal/events defines it. */
@@ -69,6 +71,10 @@ let asks = new Map<string, string>()
 /** Each loop's last ask (classic.PermissionRequest carries no tool_use_id). */
 let lastAsk = new Map<string, string>()
 let spawned = new Map<string, Spawned>()
+/** Each subagent's token count (onStep), for agent_list. */
+let tokens = new Map<string, number>()
+/** The main loop's token count (onStep), for its tool and turn_complete events; 0 until its first response. */
+let mainTokens = 0
 let ticker: Timer | null = null
 
 const MAIN = ''
@@ -90,6 +96,8 @@ export function resetReporter(s: Settings): void {
   asks = new Map()
   lastAsk = new Map()
   spawned = new Map()
+  tokens = new Map()
+  mainTokens = 0
   ticker = null
 }
 
@@ -227,6 +235,7 @@ export function onClassicSessionStart($: EngineInterface, e: { session_id?: unkn
     sid = id
     asks.clear()
     lastAsk.clear()
+    mainTokens = 0 // a new conversation: the next response's size is its own
     emit($, { kind: 'session_start', ...facts, source: src, ...(src === 'clear' ? { prev_session_id: prev } : {}) })
     return
   }
@@ -234,7 +243,7 @@ export function onClassicSessionStart($: EngineInterface, e: { session_id?: unkn
   source = src
 }
 
-/** session.start: the session's facts, gathered unawaited (git and hostname take ~15 ms), then session_start. */
+/** session.start: the session's facts, gathered unawaited (git and hostname take ~15 ms), then session_start, with the plugin build (build.ts). */
 export function onSessionStart($: EngineInterface, e: { cwd: string; isInteractive?: boolean }): void {
   started = true
   const at = now()
@@ -245,7 +254,7 @@ export function onSessionStart($: EngineInterface, e: { cwd: string; isInteracti
 async function startFacts($: EngineInterface, e: { cwd: string; isInteractive?: boolean }, at: string): Promise<void> {
   try {
     const run = (argv: string[]) => quietly($.process.run(argv, { cwd: e.cwd, timeoutMs: 2000 }))
-    const [id, repo, root, branch, host, iterm, kind] = await Promise.all([
+    const [id, repo, root, branch, host, iterm, kind, build] = await Promise.all([
       sid !== '' ? Promise.resolve(sid) : quietly($.session.id()),
       quietly($.session.repo()),
       quietly($.session.root()),
@@ -253,6 +262,7 @@ async function startFacts($: EngineInterface, e: { cwd: string; isInteractive?: 
       run(['hostname']),
       quietly($.env.get('ITERM_SESSION_ID')),
       quietly($.env.get('CLAUDE_CODE_SESSION_KIND')),
+      quietly(pluginBuild($)),
     ])
     if (sid === '' && typeof id === 'string') sid = id
     const out = (r: { exitCode: number; stdout: string } | undefined) => (r?.exitCode === 0 ? r.stdout.trim() : '')
@@ -265,6 +275,7 @@ async function startFacts($: EngineInterface, e: { cwd: string; isInteractive?: 
     if (typeof iterm === 'string' && iterm !== '') f.iterm_session_id = iterm
     if (typeof e.isInteractive === 'boolean') f.interactive = e.isInteractive
     if (kind === 'bg') f.background = true
+    if (build !== undefined) Object.assign(f, build)
     facts = f
     emit($, { kind: 'session_start', at, ...f, ...(source !== '' ? { source } : {}) })
   } catch {
@@ -303,12 +314,24 @@ export function onTurnStart($: EngineInterface, e: { agentId?: string }): void {
   })
 }
 
-/** turn.complete: the reason and the first line of the answer, then an agent_list snapshot. */
+/** turn.complete: the reason, the first line of the answer and, in the main loop, its token count; then an agent_list snapshot. */
 export function onTurnComplete($: EngineInterface, e: { agentId?: string; reason?: unknown; answer?: unknown }): void {
-  loopMovedOn(e.agentId ?? MAIN)
+  const loop = e.agentId ?? MAIN
+  loopMovedOn(loop)
   const said = truncate(firstLine(str(e.answer)), MAX_SUMMARY)
-  emit($, { kind: 'turn_complete', ...withAgent(e.agentId), reason: str(e.reason), ...(said !== '' ? { last_said: said } : {}) })
+  emit($, {
+    kind: 'turn_complete',
+    ...withAgent(e.agentId),
+    reason: str(e.reason),
+    ...(said !== '' ? { last_said: said } : {}),
+    ...mainCount(loop),
+  })
   void snapshot($)
+}
+
+/** The main loop's token count, for an event in that loop: nothing in a subagent's, or before the first response. */
+function mainCount(loop: string): { tokens?: number } {
+  return loop === MAIN && mainTokens > 0 ? { tokens: mainTokens } : {}
 }
 
 /** The arguments of a tool.call's e: everything but the envelope. */
@@ -318,7 +341,7 @@ export function argsOf(e: Readonly<Record<string, unknown>>): Record<string, unk
   return out
 }
 
-/** tool.call, after the call: the last-action label, with the loop's cwd after the call ran. */
+/** tool.call, after the call: the last-action label, with the loop's cwd after the call ran and, in the main loop, its token count. */
 export function onToolDone($: EngineInterface, e: Readonly<Record<string, unknown>>): void {
   const at = now()
   const tool = str(e.tool)
@@ -326,6 +349,7 @@ export function onToolDone($: EngineInterface, e: Readonly<Record<string, unknow
   const loop = str(e.agentId)
   asks.delete(id)
   const args = argsOf(e)
+  const size = mainCount(loop) // the step that made this call, read now
   void quietly($.session.cwd()).then(cwd => {
     const dir = typeof cwd === 'string' && cwd !== '' ? cwd : (cwds.get(loop) ?? '')
     if (dir !== '') cwds.set(loop, dir)
@@ -337,16 +361,28 @@ export function onToolDone($: EngineInterface, e: Readonly<Record<string, unknow
       label: label(tool, args, dir),
       ...(id !== '' ? { tool_use_id: id } : {}),
       ...(dir !== '' ? { cwd: dir } : {}),
+      ...size,
     })
   })
 }
 
 export type Ask = {
-  source: 'tool_check' | 'permission_request' | 'ask_user_question' | 'exit_plan_mode'
+  source: 'permission_request' | 'ask_user_question' | 'exit_plan_mode'
   agentId?: string
   toolUseId?: string
   tool: string
   input: unknown
+}
+
+/**
+ * tool.check answered "ask" on a real call: noted, not reported. The
+ * mode's decider takes the ask first, and in auto mode its classifier
+ * answers most asks with no dialog at all. If a dialog does open,
+ * classic.PermissionRequest reports it, under this call's id (it names no
+ * call itself).
+ */
+export function noteAsk(agentId: string | undefined, toolUseId: string): void {
+  lastAsk.set(agentId ?? MAIN, toolUseId)
 }
 
 /** A dialog opened: needs_you at once, with what it waits on. */
@@ -402,6 +438,25 @@ export function onWorktreeCreate($: EngineInterface, e: { name?: unknown }): voi
   if (name !== '') emit($, { kind: 'worktree_create', name })
 }
 
+/**
+ * classic.SubagentStart: a run of a subagent begins, with the type it was
+ * spawned as and its cwd. Claude Code fires it at the start of every run
+ * (the first, and each SendMessage resume, which goes on under the same
+ * id), wherever no settings hook is set, with the id `$.agent.list()`
+ * lists the agent by. Its own forks of an agent (compaction, memory) carry
+ * ids no list names, so this never names one: aimd counts a loop as an
+ * agent from this, its turn_start or the agent list, never from its tool
+ * calls alone.
+ */
+export function onSubagentStart($: EngineInterface, e: { agent_id?: unknown; agent_type?: unknown; cwd?: unknown }): void {
+  const id = str(e.agent_id)
+  if (id === '') return
+  const type = str(e.agent_type)
+  const cwd = str(e.cwd)
+  if (cwd !== '') cwds.set(id, cwd)
+  emit($, { kind: 'agent_start', agent_id: id, ...(type !== '' ? { agent_type: type } : {}), ...(cwd !== '' ? { cwd } : {}) })
+}
+
 /** agent.spawn, after it: remembers the agent's flags, snapshots the list, and ticks every 30 s while agents run. */
 export function onSpawned($: EngineInterface, e: { background?: unknown; parentAgentId?: unknown }, agentId: string | undefined): void {
   if (agentId !== undefined && agentId !== '') {
@@ -419,24 +474,57 @@ export function onSpawned($: EngineInterface, e: { background?: unknown; parentA
   }
 }
 
+/** A usage count as a whole number of tokens: 0 for anything else. */
+const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0)
+
+/**
+ * turn.step, after it: a loop's token count. A subagent's goes on the next
+ * agent_list; the main loop's (agentId absent) on the main loop's next
+ * tool and turn_complete events, which follow every step: a step either
+ * asks for tools or ends the turn. It is the count Claude Code's agent
+ * list shows ("↓ 284.1k tokens"): the latest response's input, cache
+ * read, cache write and output tokens added up, so about the loop's
+ * context size now. Not a running total: the CLI's own count takes each
+ * response's input in place of the last, and a subagent's final total is
+ * exactly that sum for its last response.
+ */
+export function onStep(agentId: unknown, usage: unknown): void {
+  if (usage === null || typeof usage !== 'object') return
+  const main = agentId === undefined || agentId === ''
+  const id = str(agentId)
+  if (!main && id === '') return // not a loop the API names
+  const u = usage as Record<string, unknown>
+  const n = count(u.input_tokens) + count(u.cache_read_input_tokens) + count(u.cache_creation_input_tokens) + count(u.output_tokens)
+  if (n === 0) return
+  if (main) {
+    mainTokens = n
+    return
+  }
+  tokens.delete(id) // the newest last, so the oldest go first
+  tokens.set(id, n)
+  if (tokens.size > 500) tokens.delete(tokens.keys().next().value as string)
+}
+
 function stopTicker(): void {
   if (ticker !== null) quietCancel(ticker)
   ticker = null
 }
 
-/** A $.agent.list() snapshot as agent_list; the ticker stops once none runs. */
+/** A $.agent.list() snapshot as agent_list, with each agent's token count; the ticker stops once none runs. */
 async function snapshot($: EngineInterface): Promise<void> {
   try {
     const list = await $.agent.list()
     const agents = list.map(a => {
       const known = spawned.get(a.id)
       const parent = a.parentId ?? known?.parent
+      const n = tokens.get(a.id)
       return {
         id: a.id,
         status: a.status,
         type: a.type,
         ...(known !== undefined ? { background: known.background } : {}),
         ...(parent !== undefined && parent !== '' ? { parent_id: parent } : {}),
+        ...(n !== undefined ? { tokens: n } : {}),
       }
     })
     if (agents.length > 0) emit($, { kind: 'agent_list', agents })

@@ -1,23 +1,28 @@
 {{/* Worktrees & cleanup (GET /app/worktrees; app_worktrees.go).
 
-The list: worktrees grouped by verdict. The safe and scratch rows' checkboxes
-are in the selection form (a GET, so the selection is in the URL), and the
-confirmation dialog posts the checked ones to /app/worktrees/remove. The
-prunable records post to /app/worktrees/prune. The detail pane is the
-removal log. app-worktrees.js keeps the count, the dialog's rows and the URL
-in step with the checkboxes; without it, "Remove selected…" loads the page
-with ?confirm=1, which opens the dialog. */}}
+The list: worktrees in sections that fold, by repo, plan or verdict
+(?group=), every row with its verdict. Every section is in the selection
+form (a GET, so the selection is in the URL), which holds the safe and
+scratch rows' checkboxes, and the confirmation dialog posts the checked ones
+to /app/worktrees/remove. The prunable records, their own section in every
+grouping, post to /app/worktrees/prune. The detail pane is the removal log.
+app-worktrees.js keeps the count, the dialog's rows and the URL in step with
+the checkboxes; without it, "Remove selected…" loads the page with
+?confirm=1, which opens the dialog. */}}
 
 {{define "head" -}}
 <link rel="stylesheet" href="/static/app-worktrees.css?v={{.AssetVersion}}">
 <script src="/static/app-worktrees.js?v={{.AssetVersion}}" defer></script>
+<script src="/static/app-groups.js?v={{.AssetVersion}}" defer></script>
 {{- end}}
 
 {{define "list" -}}
 {{$d := .}}{{with .View -}}
 <form id="wt-pick" method="get" action="/app/worktrees" data-pane="list detail">
 {{if $d.Query}}<input type="hidden" name="q" value="{{$d.Query}}">{{end}}
+{{with .Group}}<input type="hidden" name="group" value="{{.}}">{{end}}
 <div class="toolbar">
+{{template "group-by" .GroupBy}}
 {{if .Removable -}}
 {{if .AllPicked}}<a class="btn sm" href="{{.ClearURL}}" data-pane="list" data-wt-all>Clear selection</a>{{else}}<a class="btn sm" href="{{.AllURL}}" data-pane="list" data-wt-all>Select all safe</a>{{end}}
 <button type="button" class="btn primary sm js-only" data-open="wt-confirm" data-wt-open{{if not .Picked}} disabled{{end}}>Remove selected (<span data-wt-n>{{.Picked}}</span>)</button>
@@ -25,11 +30,11 @@ with ?confirm=1, which opens the dialog. */}}
 {{end -}}
 <span class="wt-rules">Same rules as <code>aim prune</code>: never forced, and a branch is deleted only when its commits are in its PR or the base. Each one is checked again just before it goes.</span>
 </div>
-{{range .Pickable}}{{template "wt-group" .}}{{end}}
+{{range .Groups}}{{template "wt-group" .}}{{end}}
 </form>
-{{range .Others}}{{template "wt-group" .}}{{end}}
 {{with .Records -}}
-<div class="ghead" role="heading" aria-level="2"><span>{{.Title}}</span><span>{{len .Rows}}</span></div>
+{{template "group-open" .}}
+<summary class="ghead"><span>{{.Title}}</span><span>{{len .Rows}}</span></summary>
 {{if $d.View.CanRemove -}}
 <form class="wt-prune" method="post" action="/app/worktrees/prune" data-pane="list detail">
 <input type="hidden" name="csrf_token" value="{{$d.CSRF}}">
@@ -42,6 +47,7 @@ with ?confirm=1, which opens the dialog. */}}
 </form>
 {{end -}}
 <ul class="rows">{{range .Rows}}{{template "wt-row" .}}{{end}}</ul>
+</details>
 {{end -}}
 {{if not .Shown}}<p class="empty">{{if $d.Query}}No worktree matches “{{$d.Query}}”.{{else}}No worktrees besides the main checkouts.{{end}}</p>{{end}}
 <p class="hint wt-foot">{{with .Note}}{{.}} {{end}}Main checkouts ({{.Mains}}) are never candidates.{{if not .CanRemove}} This aimd can't remove worktrees; <code>aim prune</code> can.{{end}}</p>
@@ -70,10 +76,12 @@ with ?confirm=1, which opens the dialog. */}}
 {{- end}}
 {{- end}}
 
-{{/* One group: its header with the count, and its rows. */}}
+{{/* One section: its header with the count, and its rows. */}}
 {{define "wt-group" -}}
-<div class="ghead" role="heading" aria-level="2"><span>{{.Title}}</span><span>{{len .Rows}}</span></div>
+{{template "group-open" .}}
+<summary class="ghead"><span>{{.Title}}</span><span>{{len .Rows}}</span></summary>
 <ul class="rows">{{range .Rows}}{{template "wt-row" .}}{{end}}</ul>
+</details>
 {{- end}}
 
 {{/* One worktree: a label around its checkbox when it can be removed. */}}

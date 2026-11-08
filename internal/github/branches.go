@@ -188,10 +188,11 @@ func (c *Client) BranchPRs(ctx context.Context, repos []RepoBranches) BranchPRsR
 	return res
 }
 
-// chunkRepo is one repo's share of a query: some of its branches.
+// chunkRepo is one repo's share of a query: some of its branches (or, for
+// PRsByNumber, some of its numbers).
 type chunkRepo struct {
-	repo        int   // index in BranchPRsResult.Repos
-	branches    []int // indices in that repo's Branches
+	repo        int   // index in BranchPRsResult.Repos (NumberPRsResult.Repos)
+	branches    []int // indices in that repo's Branches (Numbers)
 	owner, name string
 }
 
@@ -200,6 +201,20 @@ type chunkRepo struct {
 // queries only when it has more branches than that. A repo with no
 // branches to read still takes a slot (it resolves the repo's name).
 func (c *Client) chunk(all []RepoPRs, repos []int) [][]chunkRepo {
+	return c.pack(repos, func(i int) []int {
+		var bs []int
+		for b, br := range all[i].Branches {
+			if br.Err == nil {
+				bs = append(bs, b)
+			}
+		}
+		return bs
+	})
+}
+
+// pack is chunk for any items: items(i) are the indices of repo i's items
+// to read.
+func (c *Client) pack(repos []int, items func(i int) []int) [][]chunkRepo {
 	var chunks [][]chunkRepo
 	var cur []chunkRepo
 	n := 0
@@ -210,12 +225,7 @@ func (c *Client) chunk(all []RepoPRs, repos []int) [][]chunkRepo {
 		cur, n = nil, 0
 	}
 	for _, i := range repos {
-		var bs []int
-		for b, br := range all[i].Branches {
-			if br.Err == nil {
-				bs = append(bs, b)
-			}
-		}
+		bs := items(i)
 		need := max(len(bs), 1)
 		if need <= c.maxBranches && n+need > c.maxBranches {
 			flush()

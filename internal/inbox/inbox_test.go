@@ -624,3 +624,43 @@ func TestPlanRowEpisode(t *testing.T) {
 		t.Errorf("items = %+v", items)
 	}
 }
+
+// Your step is an episode like a plan row's: its "you:" step is its
+// detail and, closed off in its signature, a change of it (a longer one
+// too) wakes a snooze "until it changes"; it ends by itself, and as gone
+// when its package goes.
+func TestYourStepEpisode(t *testing.T) {
+	st := newStore(t)
+	step := func(note string) Episode {
+		return Episode{Source: SourcePlan, Ref: YourStepRef("Search-V2", "q2"), Kind: KindYourStep, Since: t0, Detail: note,
+			Sig: KindYourStep + "|Q2|" + note + "|", Title: "Q2 Ship the index", PlanSlug: "search-v2", Pkg: "Q2",
+			Why: "your step is ready: " + note}
+	}
+	if ref := YourStepRef("Search-V2", "q2"); ref != "step:search-v2/Q2" {
+		t.Errorf("YourStepRef = %q", ref)
+	}
+	if KindLabel(KindYourStep) != "Your step" {
+		t.Errorf("KindLabel(your_step) = %q", KindLabel(KindYourStep))
+	}
+	sync(t, st, t0, nil, step("sign off"))
+	it := only(t, st)
+	if it.State != Open || it.Kind != KindYourStep || it.Detail != "sign off" {
+		t.Fatalf("item = %+v", it)
+	}
+	act(t, st, it.ID, Action{Do: ActSnooze, Snooze: SnoozeChange}, t0.Add(time.Minute))
+	// The same step again: still snoozed.
+	sync(t, st, t0.Add(2*time.Minute), nil, step("sign off"))
+	wantState(t, only(t, st), Snoozed)
+	// A longer step is a change, not the same one told better.
+	sync(t, st, t0.Add(3*time.Minute), nil, step("sign off: then tag"))
+	it = only(t, st)
+	wantState(t, it, Open)
+	if h := history(t, st, it.ID); h[len(h)-1] != "Back to Open: it changed: sign off: then tag" {
+		t.Errorf("history = %q", h)
+	}
+	// The plan goes: its episode is gone.
+	sync(t, st, t0.Add(4*time.Minute), nil)
+	if it = only(t, st); it.Waiting() || it.EndReason != "the package is gone: its plan was unregistered, or its row left the plan file" {
+		t.Errorf("after its plan went: %+v", it)
+	}
+}

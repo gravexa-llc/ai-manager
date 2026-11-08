@@ -28,17 +28,23 @@ type Agent struct {
 	WorktreePath  string
 	State         string
 	LastAction    string // a short label, never a prompt or tool output
-	StartedAt     time.Time
-	EndedAt       time.Time
+	// Tokens is the loop's latest model response's size (input, cache
+	// read, cache write and output tokens), as Claude Code's agent list
+	// counts it: a subagent's from agent_list, the main loop's from its
+	// tool and turn_complete events (migration 0012 says the main loop's
+	// row keeps 0: newer mods report it). 0 when not reported.
+	Tokens    int64
+	StartedAt time.Time
+	EndedAt   time.Time
 }
 
 const agentColumns = `session_id, agent_id, kind, agent_type, background, model,
-	parent_agent_id, worktree_path, state, last_action, started_at, ended_at`
+	parent_agent_id, worktree_path, state, last_action, tokens, started_at, ended_at`
 
 func scanAgent(sc scanner) (Agent, error) {
 	var a Agent
 	err := sc.Scan(&a.SessionID, &a.AgentID, &a.Kind, &a.AgentType, &a.Background, &a.Model,
-		&a.ParentAgentID, &a.WorktreePath, &a.State, &a.LastAction, msTime{&a.StartedAt}, msTime{&a.EndedAt})
+		&a.ParentAgentID, &a.WorktreePath, &a.State, &a.LastAction, &a.Tokens, msTime{&a.StartedAt}, msTime{&a.EndedAt})
 	return a, err
 }
 
@@ -52,7 +58,7 @@ func (s *Store) UpsertAgents(ctx context.Context, agents ...Agent) error {
 			}
 			_, err := tx.ExecContext(ctx, `
 				INSERT INTO agents (`+agentColumns+`)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT (session_id, agent_id) DO UPDATE SET
 					kind = excluded.kind,
 					agent_type = excluded.agent_type,
@@ -62,10 +68,11 @@ func (s *Store) UpsertAgents(ctx context.Context, agents ...Agent) error {
 					worktree_path = excluded.worktree_path,
 					state = excluded.state,
 					last_action = excluded.last_action,
+					tokens = excluded.tokens,
 					started_at = excluded.started_at,
 					ended_at = excluded.ended_at`,
 				a.SessionID, a.AgentID, a.Kind, a.AgentType, a.Background, a.Model,
-				a.ParentAgentID, a.WorktreePath, a.State, a.LastAction, ms(a.StartedAt), ms(a.EndedAt))
+				a.ParentAgentID, a.WorktreePath, a.State, a.LastAction, a.Tokens, ms(a.StartedAt), ms(a.EndedAt))
 			if err != nil {
 				return fmt.Errorf("store: upsert agent %s/%s: %w", a.SessionID, a.AgentID, err)
 			}

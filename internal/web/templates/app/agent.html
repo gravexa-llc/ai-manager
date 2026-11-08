@@ -1,0 +1,13 @@
+{{/* Partials every page gets with the shell (parseApp). */}}
+
+{{/* An agent's line (an *agentNow: agentLine or endedLine, agent_line.go),
+as Claude Code's agent list shows it: who, what it did last (or how it
+ended), how long it has run and its tokens. A package's pane and the
+Sessions page's detail both draw it; app-shell.css styles it. */}}
+{{define "agent-now" -}}
+<span class="agent-now"><strong class="agent-now-who">{{.Who}}</strong>
+{{- if .Ended}} <span class="agent-now-doing agent-now-quiet">{{.Ended}}</span>
+{{- else if .Doing}} <span class="agent-now-doing" title="its last action, as the plugin reported it">{{.Doing}}</span>
+{{- else}} <span class="agent-now-doing agent-now-quiet">no action reported yet</span>{{end}}
+{{- if or .Ran .Tokens}} <span class="agent-now-stat">{{if .Ran}}<span title="{{.RanTitle}}">{{.Ran}}</span>{{end}}{{if and .Ran .Tokens}} · {{end}}{{if .Tokens}}<span title="{{.TokensTitle}}">{{.Tokens}}</span>{{end}}</span>{{end}}</span>
+{{- end}}

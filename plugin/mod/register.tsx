@@ -20,6 +20,7 @@ import {
 import { appUrl, moreText, needYouText, planOrder, progressLine, progressOf, sameProgress, withFirst } from './progress'
 import {
   argsOf,
+  noteAsk,
   onAsk,
   onClassicSessionStart,
   onNotification,
@@ -27,7 +28,9 @@ import {
   onSessionEnd,
   onSessionStart,
   onSpawned,
+  onStep,
   onStopFailure,
+  onSubagentStart,
   onToolDone,
   onTurnComplete,
   onTurnStart,
@@ -44,8 +47,11 @@ import {
   hasPlanLine,
   idsIn,
   mentionsPrCreate,
+  mentionsPrEnd,
   planLineDeny,
   prBody,
+  prEnds,
+  prRefIn,
   prUrlIn,
   provisionalId,
   sameRef,
@@ -370,6 +376,27 @@ async function postPr($: EngineInterface, linked: Linked, agentId: string | unde
   await call($, s, 'POST', '/api/links/pr', { session_id: sessionId, agent_id: agentId ?? '', url })
 }
 
+/**
+ * Asks aimd to read a PR from GitHub now (POST /api/prs/refresh): a tool
+ * call just created, merged or closed it. Only which PR is sent; aimd
+ * reads its state from GitHub. Never throws.
+ */
+async function postRefresh($: EngineInterface, pr: { ref: string; repo?: string; action: 'create' | 'merge' | 'close' }): Promise<void> {
+  const cwd = (await quietly($.session.cwd())) ?? ctxCwd
+  await call($, s, 'POST', '/api/prs/refresh', { ...pr, cwd })
+}
+
+/** postRefresh from a hook: unawaited, then the band's line follows. */
+function refreshSoon($: EngineInterface, pr: { ref: string; repo?: string; action: 'create' | 'merge' | 'close' }): void {
+  void postRefresh($, pr).then(() => kick($), () => kick($))
+}
+
+/** What a Bash call printed: its text, stdout and stderr. */
+function bashOutput(ran: { text?: string; result?: unknown }): string {
+  const r = ran.result as { stdout?: unknown; stderr?: unknown } | undefined
+  return [ran.text ?? '', typeof r?.stdout === 'string' ? r.stdout : '', typeof r?.stderr === 'string' ? r.stderr : ''].join('\n')
+}
+
 async function registerPlan($: EngineInterface, path: string): Promise<string> {
   const sessionId = await quietly($.session.id())
   const got = await call<Registered>($, s, 'POST', '/api/plans', { path, session_id: sessionId })
@@ -685,6 +712,17 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // Each model request: once its response is in, the loop's token count: a
+  // subagent's for the next agent_list, the main loop's for its next tool
+  // and turn_complete events. The chunks pass through untouched.
+  on('turn.step', async function* ($, e, next) {
+    const out = yield* next(e)
+    safely(() => onStep(e.agentId, out?.usage))
+    return out
+  }).catch(async function* ($, e, next) {
+    return yield* next(e)
+  })
+
   on('turn.complete', ($, e, next) => {
     safely(() => onTurnComplete($, e))
     // A turn's end (the main loop's or an agent's) may have moved the plan.
@@ -711,13 +749,15 @@ export const register: Register = (on, options) => {
     return ran
   }).catch(($, e, next) => next(e))
 
-  // An ask on a real call that a person answers: approver "person", or
-  // absent (as under -p). A host's ask isn't the person's.
+  // An ask on a real call that a person could answer: approver "person",
+  // or absent (as under -p). A host's ask isn't the person's. It is only
+  // noted: the mode's decider answers it first (auto mode's classifier,
+  // with no dialog), and classic.PermissionRequest reports a dialog.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     safely(() => {
       if (verdict.decision === 'ask' && e.tool_use_id !== undefined && (e.approver === undefined || e.approver === 'person')) {
-        onAsk($, { source: 'tool_check', agentId: e.agentId, toolUseId: e.tool_use_id, tool: e.tool, input: e.input })
+        noteAsk(e.agentId, e.tool_use_id)
       }
     })
     return verdict
@@ -740,6 +780,13 @@ export const register: Register = (on, options) => {
 
   on('classic.WorktreeCreate', ($, e, next) => {
     safely(() => onWorktreeCreate($, e))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Each run of a subagent, a resumed one's too: what makes a loop an
+  // agent for aimd, rather than one of Claude Code's own forks.
+  on('classic.SubagentStart', ($, e, next) => {
+    safely(() => onSubagentStart($, e))
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -921,9 +968,10 @@ export const register: Register = (on, options) => {
     if (ran.deny === undefined && ran.isError !== true) {
       const stdout = (ran.result as { stdout?: unknown } | undefined)?.stdout
       const url = prUrlIn(`${ran.text ?? ''}\n${typeof stdout === 'string' ? stdout : ''}`)
-      // A PR was created: linked, aimd hears of it first; either way the band's line follows.
+      // A PR was created: linked, aimd links it and reads it at once; else
+      // aimd only reads it. Either way the band's line follows.
       if (url !== undefined && linked !== undefined) void postPr($, linked, e.agentId, url).then(() => kick($), () => kick($))
-      else if (url !== undefined) kick($)
+      else if (url !== undefined) refreshSoon($, { ref: url, action: 'create' })
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -938,7 +986,51 @@ export const register: Register = (on, options) => {
     if (ran.deny === undefined && ran.isError !== true) {
       const url = prUrlIn(ran.text ?? '') ?? prUrlIn(JSON.stringify(ran.result ?? null))
       if (url !== undefined && linked !== undefined) void postPr($, linked, e.agentId, url).then(() => kick($), () => kick($))
-      else if (url !== undefined) kick($)
+      else if (url !== undefined) refreshSoon($, { ref: url, action: 'create' })
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // --- PRs merged or closed: aimd reads them now -----------------------------
+  // Never blocks or changes the call: it has run by the time aimd is told,
+  // and only a call that worked is reported. GitHub stays the source of
+  // truth: aimd reads the PR by number, and the polls are the backstop.
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    // Hot path: a local regex, then nothing.
+    if (!mentionsPrEnd(e.command)) return next(e)
+    const ran = await next(e)
+    try {
+      if (ran.deny === undefined && ran.isError !== true) {
+        const ends = prEnds(e.command)
+        const out = bashOutput(ran)
+        // gh prints the PR it merged only on a terminal; when it does, that names it best.
+        const printed = ends.length === 1 ? (prUrlIn(out) ?? prRefIn(out)) : undefined
+        for (const end of ends) {
+          const ref = end.ref !== '' ? end.ref : printed
+          // No PR named: the current branch's, which only the main loop's cwd tells.
+          if (ref === undefined && e.agentId !== undefined) continue
+          refreshSoon($, { ref: ref ?? '', ...(end.repo !== '' ? { repo: end.repo } : {}), action: end.action })
+        }
+      }
+    } catch {
+      // The call has run; telling aimd is a nicety.
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: /^mcp__.*(?:merge_pull_request|update_pull_request)$/ }, async ($, e, next) => {
+    const ran = await next(e)
+    try {
+      const a = e as { tool: string; owner?: unknown; repo?: unknown; pullNumber?: unknown; pull_number?: unknown; state?: unknown }
+      const merge = /merge_pull_request$/.test(a.tool)
+      const n = Number(a.pullNumber ?? a.pull_number)
+      if (ran.deny === undefined && ran.isError !== true && (merge || a.state === 'closed') &&
+        typeof a.owner === 'string' && typeof a.repo === 'string' && Number.isInteger(n) && n > 0) {
+        refreshSoon($, { ref: `${a.owner}/${a.repo}#${n}`, action: merge ? 'merge' : 'close' })
+      }
+    } catch {
+      // As above.
     }
     return ran
   }).catch(($, e, next) => next(e))

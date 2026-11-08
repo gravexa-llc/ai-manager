@@ -9,13 +9,17 @@ package web
 //     Go switches to the session's terminal tab first (Go's rules in
 //     golink.go, s.goTo), or, for a PR, opens it on GitHub: the page's
 //     script opens the tab, and without the script the form posts into a
-//     new tab that the answer sends to the PR.
+//     new tab that the answer sends to the PR. For your step, Go is Open
+//     in plan: the answer goes to the package on its plan's page. Its
+//     Mark done is the plan page's own form (POST /app/plans/{slug}/done),
+//     which comes back here.
 //   - GET /api/inbox?tab=, GET /api/inbox/{id} and POST /api/inbox/{id}:
 //     the same for programs (docs/api.md), with the token on writes. With
 //     the token, a waiting session item also carries what the mod
 //     reported it waits on (waiting_on, as GET /api/sessions gives it).
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
 	"strconv"
@@ -100,6 +104,11 @@ func (s *Server) inboxGoTo(r *http.Request, it store.InboxItem) (what, msg strin
 	if it.State != inbox.Open && it.State != inbox.InProgress {
 		return "", "", &inboxFail{http.StatusConflict, "Go moves an Open item to In progress; this one is " + inbox.StateLabel(it.State) + "."}
 	}
+	if it.Source == inbox.SourcePlan && it.Kind == inbox.KindYourStep {
+		// Open in plan: the form's answer goes to the package on its plan's
+		// page (inboxForm).
+		return "opened in its plan", "Opened " + cmp.Or(it.Pkg, "it") + " in its plan · moved to In progress", nil
+	}
 	if it.Source == inbox.SourcePlan {
 		return "", "", &inboxFail{http.StatusUnprocessableEntity, "Go is for sessions and PRs. Add the row to the plan file; the item closes by itself."}
 	}
@@ -156,6 +165,11 @@ func (s *Server) inboxForm(do string) http.HandlerFunc {
 		if fail != nil {
 			s.appRefuse(w, r, fail.status, ret, fail.msg)
 			return
+		}
+		// Open in plan, your step's Go, lands on the package in its plan,
+		// and its Undo comes back there.
+		if do == inbox.ActGo && it.Kind == inbox.KindYourStep {
+			ret = itemPkgURL(it)
 		}
 		t := &appToast{Text: msg}
 		if do != inbox.ActUndo && mv.ID > 0 {

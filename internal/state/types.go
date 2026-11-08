@@ -25,6 +25,9 @@ type Input struct {
 	Agents     []store.Agent
 	Links      []store.Link // every plan's stored links
 	Tombstones []store.Tombstone
+	// Hidden are the PRs and branches you said aren't part of a plan:
+	// they leave its Unmatched lane for PlanState.Hidden.
+	Hidden []store.HiddenUnmatched
 
 	// RepoNames maps a main checkout's path (store.Worktree.MainRepo) to its
 	// GitHub nameWithOwner. Worktrees only join PRs, and only match plans
@@ -190,6 +193,14 @@ type Agent struct {
 	LastAction   string
 	LastEventAt  time.Time
 	WorktreePath string
+	// StartedAt is when the session started (its row's started_at), or
+	// the subagent did (its agent row's: the first event aimd had of it);
+	// zero when unknown.
+	StartedAt time.Time
+	// Tokens is the agent's token count as Claude Code's agent list shows
+	// it: its latest model response's input, cache and output tokens; a
+	// session's is its main loop's (from its agent row). 0 when unknown.
+	Tokens int64
 	// Repo and Branch are where a session is, as the session poller
 	// resolved them. Empty for subagents.
 	Repo   string
@@ -222,8 +233,10 @@ type Link struct {
 
 // PackageState is one package on the board.
 type PackageState struct {
-	ID        string
-	Title     string
+	ID    string
+	Title string
+	// What is the package table's What cell, as written (markdown).
+	What      string
 	Repo      string
 	Size      string
 	Owner     string
@@ -270,6 +283,15 @@ type Unmatched struct {
 	// Note says why it didn't match, when the matcher knows: "ambiguous: …",
 	// "you unlinked it from …".
 	Note string
+	// Since is when it appeared: a PR's opening (GitHub's createdAt, or
+	// when aimd first stored it), a branch's first sighting in a worktree
+	// (the first scan that saw it). New is true when that is after the plan
+	// was registered, or isn't known.
+	Since time.Time
+	New   bool
+	// HiddenAt is when you said it isn't part of the plan (PlanState.Hidden
+	// only).
+	HiddenAt time.Time
 }
 
 // PlanState is a plan's board.
@@ -291,7 +313,11 @@ type PlanState struct {
 	// default) or plans.MergesLead, from its Merges line.
 	Merges string
 
+	// Unmatched is the Unmatched lane; Hidden the targets that would be
+	// in it but that you said aren't part of this plan (Input.Hidden), most
+	// recently hidden first.
 	Unmatched []Unmatched
+	Hidden    []Unmatched
 	Warnings  []Warning
 	Alerts    []Alert
 }

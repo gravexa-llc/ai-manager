@@ -22,6 +22,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/term"
+	"github.com/gravexa-llc/ai-manager/internal/timezone"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 	"github.com/gravexa-llc/ai-manager/internal/worktrees"
 )
@@ -66,7 +67,11 @@ const (
 
 // snapshot is what one render reads from the store and the daemon.
 type snapshot struct {
+	// now is in zone, the Time zone setting's (Server.timeZone), so the
+	// formatting helpers (clock, stamp, dueText, the timeline's ticks)
+	// write every clock time and day in it.
 	now       time.Time
+	zone      timezone.Zone
 	sessions  []store.Session  // live rows, headless included
 	worktrees []store.Worktree // live rows
 	prs       []store.PR       // every state
@@ -98,8 +103,10 @@ func (s *Server) load(ctx context.Context) (*snapshot, error) {
 	}
 	mon := s.monitorSet(ctx, sess, wts)
 	expired := s.expiredJobs(sess)
+	zone := s.timeZone(s.settings(ctx))
 	snap := &snapshot{
-		now:       s.now(),
+		now:       s.now().In(zone.Loc),
+		zone:      zone,
 		sessions:  sess,
 		worktrees: wts,
 		prs:       prs,
@@ -284,6 +291,11 @@ func (idx prIndex) best(repo, branch string) *store.PR {
 }
 
 // ---- Formatting ----
+//
+// Clock times are written in now's time zone, and days ("today",
+// "tomorrow", "Jan 2") are its days: a page passes sn.now, which is in
+// the Time zone setting's zone. Machine-readable times (datetime=
+// attributes, the API's JSON) stay in UTC.
 
 // ago is how long before now t was, in one unit: 45s, 12m, 5h, 3d. It is
 // "" for a zero time.
@@ -313,12 +325,13 @@ func clock(now, t time.Time) string {
 	return t.Format("Jan 2 15:04")
 }
 
-// stamp is a full timestamp for a tooltip, or "unknown".
-func stamp(t time.Time) string {
+// stamp is a full timestamp for a tooltip, in now's time zone (RFC 3339,
+// with its offset), or "unknown".
+func stamp(now, t time.Time) string {
 	if t.IsZero() {
 		return "unknown"
 	}
-	return t.Format(time.RFC3339)
+	return t.In(now.Location()).Format(time.RFC3339)
 }
 
 func shortSHA(sha string) string {

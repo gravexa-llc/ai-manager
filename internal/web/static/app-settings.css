@@ -9,6 +9,12 @@
 .set-override { margin-left: 6px; vertical-align: 1px; }
 .set-reset { margin-top: 8px; }
 .card .hint .btn { margin-left: 6px; }
+.set-zone { display: flex; align-items: center; gap: 8px; }
+.set-zone select {
+  max-width: 240px; height: 30px; padding: 0 8px;
+  border: 1px solid var(--control-edge); border-radius: 7px; background: var(--ground);
+  color: var(--ink); font: inherit; font-size: 12px;
+}
 
 @media (max-width: 600px) {
   .trow { flex-wrap: wrap; }

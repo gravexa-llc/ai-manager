@@ -433,9 +433,9 @@ func (o *ovData) sessionAgent(row store.Session) ovAgent {
 	a.Plan = joinNonEmpty(" · ", o.planOrNone(plan), roleOf(ws))
 	a.Doing, a.Dot = sessionDoing(row)
 	if row.State == needsYou {
-		a.For, a.ForTitle = ago(sn.now, row.NeedsYouSince), "waiting since "+stamp(row.NeedsYouSince)
+		a.For, a.ForTitle = ago(sn.now, row.NeedsYouSince), "waiting since "+stamp(sn.now, row.NeedsYouSince)
 	} else if start := cmp.Or(row.StartedAt, row.FirstSeenAt); !start.IsZero() {
-		a.For, a.ForTitle = ago(sn.now, start), "running since "+stamp(start)
+		a.For, a.ForTitle = ago(sn.now, start), "running since "+stamp(sn.now, start)
 	}
 	if o.s.opts.Go != nil {
 		a.ShowGo, a.Go = true, o.s.goButtonOf(row, app)
@@ -533,11 +533,11 @@ func (o *ovData) subagent(lead store.Session, a store.Agent) ovAgent {
 	case lead.State == needsYou && inbox.AgentOf(lead.StateReason) == a.AgentID:
 		v.Doing = "waiting on you: " + needReason(inbox.Core(lead.StateReason))
 		v.Dot = inboxKindClass(inbox.SessionKind(lead.StateReason))
-		v.For, v.ForTitle = ago(sn.now, lead.NeedsYouSince), "waiting since "+stamp(lead.NeedsYouSince)
+		v.For, v.ForTitle = ago(sn.now, lead.NeedsYouSince), "waiting since "+stamp(sn.now, lead.NeedsYouSince)
 	default:
 		v.Doing, v.Dot = agentDoing(a)
 		if !a.StartedAt.IsZero() {
-			v.For, v.ForTitle = ago(sn.now, a.StartedAt), "running since "+stamp(a.StartedAt)
+			v.For, v.ForTitle = ago(sn.now, a.StartedAt), "running since "+stamp(sn.now, a.StartedAt)
 		}
 	}
 	if o.s.opts.Go != nil {
@@ -1057,7 +1057,7 @@ func uptimeChip(st api.Status, now time.Time) ovChip {
 	c := ovChip{Text: "aimd running", Tone: "ok", Title: "version " + cmp.Or(st.Version, "unknown")}
 	if !st.StartedAt.IsZero() {
 		c.Text += " · " + ago(now, st.StartedAt)
-		c.Title = "started " + stamp(st.StartedAt) + " · " + c.Title
+		c.Title = "started " + stamp(now, st.StartedAt) + " · " + c.Title
 	}
 	return c
 }
@@ -1074,9 +1074,9 @@ func sessionPollChip(st api.Status, now time.Time) ovChip {
 	case src.LastOK.IsZero():
 		return ovChip{Text: "Sessions not polled yet", Title: "aimd's first poll of claude agents hasn't finished."}
 	case now.Sub(src.LastOK) > sessionPollLate:
-		return ovChip{Text: "Sessions last polled " + ago(now, src.LastOK) + " ago", Tone: "warn", Title: "last good poll " + stamp(src.LastOK)}
+		return ovChip{Text: "Sessions last polled " + ago(now, src.LastOK) + " ago", Tone: "warn", Title: "last good poll " + stamp(now, src.LastOK)}
 	}
-	return ovChip{Text: "Sessions polled " + ago(now, src.LastOK) + " ago", Tone: "ok", Title: "last good poll " + stamp(src.LastOK)}
+	return ovChip{Text: "Sessions polled " + ago(now, src.LastOK) + " ago", Tone: "ok", Title: "last good poll " + stamp(now, src.LastOK)}
 }
 
 // plansChip counts the plans and their parser warnings.
@@ -1125,6 +1125,16 @@ func githubChip(st api.Status, now time.Time) ovChip {
 		c.Text += " · failing since " + clock(now, src.FailingSince)
 		c.Title = src.Error
 	}
+	if un := st.GitHub.Unreadable; len(un) > 0 {
+		// Repos GitHub didn't answer for: their PRs stay as last read.
+		c.Tone = "warn"
+		c.Text += " · " + counted(len(un), "repo unreadable", "repos unreadable")
+		var whys []string
+		for _, e := range un {
+			whys = append(whys, e.Repo+": "+e.Error)
+		}
+		c.Title = strings.TrimPrefix(c.Title+"; "+strings.Join(whys, "; "), "; ")
+	}
 	return c
 }
 
@@ -1144,10 +1154,10 @@ func pluginChip(st api.Status, now time.Time) ovChip {
 	switch {
 	case (ev.ModLive || st.ModLive) && !last.IsZero():
 		return ovChip{Text: "Plugin reporting · live · last event " + ago(now, last) + " ago", Tone: "ok",
-			Title: strconv.FormatInt(ev.Events, 10) + " events since aimd started · last " + stamp(last)}
+			Title: strconv.FormatInt(ev.Events, 10) + " events since aimd started · last " + stamp(now, last)}
 	case !last.IsZero():
 		return ovChip{Text: "Plugin reporting · waiting for events",
-			Title: "Last event " + ago(now, last) + " ago (" + stamp(last) + "): no session has done anything for 5 minutes."}
+			Title: "Last event " + ago(now, last) + " ago (" + stamp(now, last) + "): no session has done anything for 5 minutes."}
 	}
 	return ovChip{Text: "Plugin reporting · waiting for events", Title: "No event has reached aimd since it started."}
 }

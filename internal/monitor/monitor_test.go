@@ -279,6 +279,29 @@ func TestNilSet(t *testing.T) {
 	if !set.All() || !set.Monitored(row) || set.Why(row) != nil || !set.PR(store.PR{}) || set.Mode() != ModeAll {
 		t.Error("a nil set doesn't monitor everything")
 	}
+	if set.Leads("aim") != nil {
+		t.Error("a nil set has leads")
+	}
+}
+
+// Leads lists a plan's stored leads in the order they registered, whether
+// a live row matches them or not, by the slug in any case; the watches
+// aren't leads.
+func TestLeads(t *testing.T) {
+	in := input()
+	gone := store.MonitoredSession{SessionID: "s-gone", Reason: store.MonitorPlan, PlanID: 1, PlanSlug: "aim", Since: t0.Add(2 * time.Minute)}
+	other := store.MonitoredSession{SessionID: "s-lead2", Reason: store.MonitorPlan, PlanID: 2, PlanSlug: "sharing", Since: t0.Add(3 * time.Minute)}
+	in.Explicit = append(in.Explicit, gone, other)
+	set := Compute(in)
+	if got := set.Leads("AIM"); len(got) != 2 || got[0].SessionID != "s-lead" || got[1] != gone {
+		t.Errorf("aim's leads: %+v", got)
+	}
+	if got := set.Leads("sharing"); len(got) != 1 || got[0] != other {
+		t.Errorf("sharing's leads: %+v", got)
+	}
+	if got := set.Leads("nope"); got != nil {
+		t.Errorf("an unknown plan's leads: %+v", got)
+	}
 }
 
 func TestSummary(t *testing.T) {

@@ -2,22 +2,41 @@ package web
 
 // The Worktrees & cleanup page (GET /app/worktrees).
 //
-// The list groups the live worktrees by `aim prune`'s verdict, as
-// SafeToRemove last worked it out: Safe to remove, Scratch (detached, safe
-// by rule), Not safe (with the reason), Locked and Prunable records (folder
-// gone). Main checkouts are never candidates and aren't listed. Safe and
-// scratch rows have checkboxes; Remove selected opens a confirmation that
-// lists each one with its branch and reason, and its POST
-// (/app/worktrees/remove) hands them to Cleanup (cleanup.go), which checks
-// each again at that moment and removes only those still safe. A separate
-// POST (/app/worktrees/prune) runs `git worktree prune` for the records
-// listed. The detail pane is the removal log.
+// Each live worktree has `aim prune`'s verdict, as SafeToRemove last
+// worked it out: Safe to remove, Scratch (detached, safe by rule), Not safe
+// (with the reason), Locked, or Prunable record (folder gone). Main
+// checkouts are never candidates and aren't listed. The list's sections
+// fold (groups.go), grouped by ?group= (Group by, remembered as the page's
+// default):
+//
+//   - repo (the default): one section per repo, by its GitHub name (else
+//     its main checkout's folder name); the repos with a worktree on a plan
+//     or a monitored session's first, then by name;
+//   - plan: one section per registered plan, in the order they were
+//     registered, then "No plan · watched" (a monitored session works in
+//     it), then "Not on a plan". A worktree is on a plan when a board
+//     links it, its branch, or its branch's PR (wtPlans);
+//   - status: the verdicts' sections, in the order above.
+//
+// Under Repo and Plan grouping a section with no worktree on a plan or a
+// monitored session's starts collapsed; every verdict section starts open;
+// a search opens them all. The prunable records are their own section in
+// every grouping, with their own form. Every row shows its verdict.
+//
+// Safe and scratch rows have checkboxes, in one selection form around
+// every section; Remove selected opens a confirmation that lists each one
+// with its branch and reason, and its POST (/app/worktrees/remove) hands
+// them to Cleanup (cleanup.go), which checks each again at that moment and
+// removes only those still safe. A separate POST (/app/worktrees/prune)
+// runs `git worktree prune` for the records listed. The detail pane is the
+// removal log.
 //
 // Selections are in the URL: ?pick=<id> for each checked row, ?all=1 for
 // all the safe ones, and ?confirm=1 opens the confirmation (the way to it
-// without the script). A request names worktrees by id (wtID) only, never
-// by path: the server maps each id to a worktree aimd lists, and Cleanup
-// matches that path against what git lists at that moment.
+// without the script); ?group= rides along. A request names worktrees by
+// id (wtID) only, never by path: the server maps each id to a worktree
+// aimd lists, and Cleanup matches that path against what git lists at that
+// moment.
 
 import (
 	"cmp"
@@ -34,8 +53,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gravexa-llc/ai-manager/internal/monitor"
 	"github.com/gravexa-llc/ai-manager/internal/prune"
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/web/api"
 	"github.com/gravexa-llc/ai-manager/internal/worktrees"
 )
 
@@ -72,7 +93,7 @@ func (s *Server) safeToRemoveCount(ctx context.Context, sn *snapshot) int {
 	return n
 }
 
-// The groups, in the order the list shows them.
+// The verdicts' groups, in the order Cleanup status grouping shows them.
 const (
 	wtSafe     = "safe"
 	wtScratch  = "scratch"
@@ -81,7 +102,10 @@ const (
 	wtPrunable = "prunable"
 )
 
-// wtGroupTitles are the groups' headers.
+// wtVerdictOrder is the verdicts' order.
+var wtVerdictOrder = []string{wtSafe, wtScratch, wtNotSafe, wtLocked, wtPrunable}
+
+// wtGroupTitles are the verdicts' headers.
 var wtGroupTitles = map[string]string{
 	wtSafe:     "Safe to remove",
 	wtScratch:  "Scratch: detached, safe by rule",
@@ -90,13 +114,23 @@ var wtGroupTitles = map[string]string{
 	wtPrunable: "Prunable records: folder gone",
 }
 
+// wtGroupChoices are the page's Group by choices, the default first.
+var wtGroupChoices = []groupChoice{
+	{Value: groupRepo, Label: "Repo"},
+	{Value: groupPlan, Label: "Plan"},
+	{Value: groupStatus, Label: "Cleanup status"},
+}
+
 // worktreesAppView is the page's data.
 type worktreesAppView struct {
-	// Pickable are the groups with checkboxes (safe, scratch), Others the
-	// rest but the records, and Records the prunable records; each only
-	// when it has rows.
-	Pickable, Others []wtGroup
-	Records          *wtGroup
+	// GroupBy is the list's Group by control, and Group the ?group= the
+	// page's links and its selection form carry on.
+	GroupBy groupControl
+	Group   string
+	// Groups are the worktrees' sections, in the selection form, and
+	// Records the prunable records; each only when it has rows.
+	Groups  []wtGroup
+	Records *wtGroup
 	// Removable are the rows with a checkbox, for the confirmation.
 	Removable []wtRow
 	// Picked counts the checked rows; AllPicked is true when every one is.
@@ -122,10 +156,15 @@ type worktreesAppView struct {
 	LogError string
 }
 
-// wtGroup is one group of rows.
+// wtGroup is one section of rows.
 type wtGroup struct {
-	Key, Title string
-	Rows       []wtRow
+	listGroup
+	Title string
+	Rows  []wtRow
+	// involved is true when a row is on a plan or a monitored session's;
+	// rank orders Plan grouping's sections.
+	involved bool
+	rank     int
 }
 
 // wtRow is one worktree.
@@ -208,18 +247,25 @@ func fillWorktreesApp(s *Server, r *http.Request, sn *snapshot, d *appData) erro
 		picks[id] = true
 	}
 	all := truthy(q.Get("all"))
-	groups := map[string]*wtGroup{}
+	group, kept, ctl := groupBy(r, d, "worktrees", wtGroupChoices)
+	v.GroupBy, v.Group = ctl, kept
+	var plans wtPlans
+	if group == groupPlan || group == groupRepo {
+		plans = s.wtPlansOf(ctx, sn)
+	}
+	sections := map[string]*wtGroup{}
+	var order []*wtGroup
 	records := 0 // prunable records, whatever the search
 	for _, w := range sn.worktrees {
 		if at, ok := removed[worktrees.PathKey(w.Path)]; ok && !w.LastSeen.After(at) {
 			continue
 		}
-		row, group := s.wtRowOf(w, verdicts)
-		if group == "" {
+		row, verdict := s.wtRowOf(w, verdicts)
+		if verdict == "" {
 			v.Mains++
 			continue
 		}
-		if group == wtPrunable {
+		if verdict == wtPrunable {
 			records++
 		}
 		if !wtMatches(row, d.Query) {
@@ -227,50 +273,65 @@ func fillWorktreesApp(s *Server, r *http.Request, sn *snapshot, d *appData) erro
 		}
 		row.Checkable = row.Checkable && v.CanRemove
 		row.Checked = row.Checkable && (all || picks[row.ID])
-		g := groups[group]
-		if g == nil {
-			g = &wtGroup{Key: group, Title: wtGroupTitles[group]}
-			groups[group] = g
-		}
-		g.Rows = append(g.Rows, row)
 		v.Shown++
-	}
-	for _, key := range []string{wtSafe, wtScratch, wtNotSafe, wtLocked, wtPrunable} {
-		g := groups[key]
-		if g == nil {
+		if verdict == wtPrunable {
+			if v.Records == nil {
+				v.Records = &wtGroup{listGroup: listGroup{Key: "records", Open: true, Force: d.Query != ""}, Title: wtGroupTitles[wtPrunable]}
+			}
+			v.Records.Rows = append(v.Records.Rows, row)
 			continue
 		}
-		slices.SortStableFunc(g.Rows, func(a, b wtRow) int {
-			return strings.Compare(worktrees.PathKey(a.PathFull), worktrees.PathKey(b.PathFull))
-		})
-		switch key {
-		case wtSafe, wtScratch:
-			v.Pickable = append(v.Pickable, *g)
-			for _, row := range g.Rows {
-				if row.Checkable {
-					v.Removable = append(v.Removable, row)
-					if row.Checked {
-						v.Picked++
-					}
+		g := plans.section(group, w, verdict)
+		if have := sections[g.Key]; have != nil {
+			g = have
+		} else {
+			g.Force = d.Query != ""
+			sections[g.Key] = g
+			order = append(order, g)
+		}
+		g.Rows = append(g.Rows, row)
+		if group != groupStatus {
+			// Repo and Plan grouping fold what is on no plan and no
+			// monitored session's.
+			g.involved = g.involved || plans.involved(w)
+			g.Open = g.involved
+		}
+	}
+	slices.SortStableFunc(order, func(a, c *wtGroup) int {
+		if group == groupRepo {
+			return byInvolvedThenName(a.involved, a.Title, c.involved, c.Title)
+		}
+		return cmp.Compare(a.rank, c.rank)
+	})
+	byPath := func(a, b wtRow) int {
+		return strings.Compare(worktrees.PathKey(a.PathFull), worktrees.PathKey(b.PathFull))
+	}
+	for _, g := range order {
+		slices.SortStableFunc(g.Rows, byPath)
+		v.Groups = append(v.Groups, *g)
+		for _, row := range g.Rows {
+			if row.Checkable {
+				v.Removable = append(v.Removable, row)
+				if row.Checked {
+					v.Picked++
 				}
 			}
-		case wtPrunable:
-			v.Records = g
-		default:
-			v.Others = append(v.Others, *g)
 		}
+	}
+	if v.Records != nil {
+		slices.SortStableFunc(v.Records.Rows, byPath)
 	}
 	v.AllPicked = len(v.Removable) > 0 && v.Picked == len(v.Removable)
 	v.Confirm = truthy(q.Get("confirm")) && v.Picked > 0
-	v.AllURL = worktreesURL(d.Query, url.Values{"all": {"1"}})
-	v.ClearURL = worktreesURL(d.Query, nil)
+	v.AllURL = worktreesURL(d.Query, kept, url.Values{"all": {"1"}})
+	v.ClearURL = worktreesURL(d.Query, kept, nil)
 	cancel := url.Values{}
 	for _, row := range v.Removable {
 		if row.Checked {
 			cancel.Add("pick", row.ID)
 		}
 	}
-	v.CancelURL = worktreesURL(d.Query, cancel)
+	v.CancelURL = worktreesURL(d.Query, kept, cancel)
 	for _, e := range log {
 		v.Log = append(v.Log, wtLogEntryOf(s, sn.now, e))
 	}
@@ -285,6 +346,165 @@ func fillWorktreesApp(s *Server, r *http.Request, sn *snapshot, d *appData) erro
 	d.Summary = strings.Join(parts, " · ")
 	d.View = v
 	return nil
+}
+
+// wtPlans says which registered plan each worktree is on and whether a
+// monitored session works in it, for Repo and Plan grouping. A worktree is
+// on a plan when a board links it (the matcher links a package's worktrees
+// through its branch and PR too), links its branch or a PR on its branch,
+// or its branch's PR is on one (sn.mon.PRWait, else its Plan: line); else
+// the plan of the monitored session that works in it, if any. In "all"
+// mode, where every session is monitored, only plans count.
+type wtPlans struct {
+	all   bool
+	plans []api.Plan
+	mon   *monitor.Set
+	prs   prIndex
+	// names maps a main checkout (worktrees.PathKey) to its GitHub name.
+	names map[string]string
+	// byPath and byBranch are the plans boards link worktrees to, by path
+	// (worktrees.PathKey) and by branch (branchRef), as indexes in plans.
+	byPath, byBranch map[string]int
+	// byFolder and bySession are the monitored sessions' plans (an index,
+	// or -1 for none) by the worktree they work in (worktrees.PathKey) and
+	// by session id.
+	byFolder, bySession map[string]int
+}
+
+// branchRef keys a repo's branch: lower-case nameWithOwner, NUL, branch.
+func branchRef(repo, branch string) string { return strings.ToLower(repo) + "\x00" + branch }
+
+// wtPlansOf reads what wtPlans needs from the snapshot and the plans.
+func (s *Server) wtPlansOf(ctx context.Context, sn *snapshot) wtPlans {
+	x := wtPlans{all: sn.mon.All(), plans: s.registeredPlans(ctx, sn), mon: sn.mon, prs: indexPRs(sn.prs),
+		names: map[string]string{}, byPath: map[string]int{}, byBranch: map[string]int{},
+		byFolder: map[string]int{}, bySession: map[string]int{}}
+	if s.opts.Repos != nil {
+		for path, name := range s.opts.Repos.RepoNames() {
+			if name != "" {
+				x.names[worktrees.PathKey(path)] = name
+			}
+		}
+	}
+	first := func(m map[string]int, k string, i int) {
+		if _, ok := m[k]; !ok {
+			m[k] = i
+		}
+	}
+	for i, p := range x.plans {
+		for _, pk := range p.Packages {
+			for _, l := range pk.Links {
+				switch l.Kind {
+				case store.LinkWorktree:
+					path := l.Ref
+					if l.Worktree != nil {
+						path = cmp.Or(l.Worktree.Path, path)
+					}
+					if path != "" {
+						first(x.byPath, worktrees.PathKey(path), i)
+					}
+				case store.LinkBranch:
+					if repo, br, ok := strings.Cut(l.Ref, ":"); ok && br != "" {
+						first(x.byBranch, branchRef(repo, br), i)
+					}
+				case store.LinkPR:
+					if l.PR != nil && l.PR.HeadBranch != "" {
+						first(x.byBranch, branchRef(l.PR.Repo, l.PR.HeadBranch), i)
+					}
+				}
+			}
+		}
+	}
+	if x.all {
+		return x
+	}
+	for _, row := range sn.sessions {
+		if row.Headless || !sn.mon.Monitored(row) {
+			continue
+		}
+		i := planIndex(x.plans, monitor.PlanOf(sn.mon.Why(row)))
+		if path := cmp.Or(row.WorktreePath, row.Cwd); path != "" {
+			if have, ok := x.byFolder[worktrees.PathKey(path)]; !ok || have < 0 {
+				x.byFolder[worktrees.PathKey(path)] = i
+			}
+		}
+		if row.SessionID != "" {
+			first(x.bySession, row.SessionID, i)
+		}
+	}
+	return x
+}
+
+// of is the plan a worktree is on (an index in x.plans, or -1) and
+// whether a monitored session's work is in it (see wtPlans).
+func (x wtPlans) of(w store.Worktree) (plan int, monitored bool) {
+	plan = -1
+	if i, ok := x.byPath[worktrees.PathKey(w.Path)]; ok {
+		plan = i
+	}
+	if repo := x.names[worktrees.PathKey(w.MainRepo)]; plan < 0 && repo != "" && w.Branch != "" {
+		if i, ok := x.byBranch[branchRef(repo, w.Branch)]; ok {
+			plan = i
+		} else if p := x.prs.best(repo, w.Branch); p != nil {
+			v := x.mon.PRWait(*p)
+			if plan = planIndex(x.plans, v.Plan); plan < 0 {
+				plan = planIndex(x.plans, p.PlanSlug)
+			}
+			monitored = !x.all && v.Monitored
+		}
+	}
+	if x.all {
+		return plan, false
+	}
+	i, ok := x.byFolder[worktrees.PathKey(w.Path)]
+	if !ok && w.SessionID != "" {
+		i, ok = x.bySession[w.SessionID]
+	}
+	if ok {
+		monitored = true
+		if plan < 0 {
+			plan = i
+		}
+	}
+	return plan, monitored
+}
+
+// involved reports whether a worktree is on a plan or a monitored
+// session's: its section starts open.
+func (x wtPlans) involved(w store.Worktree) bool {
+	plan, monitored := x.of(w)
+	return plan >= 0 || monitored
+}
+
+// repo names a worktree's repo: its GitHub name, else its main checkout's
+// folder; key tells two local repos of one folder name apart.
+func (x wtPlans) repo(w store.Worktree) (key, name string) {
+	if n := x.names[worktrees.PathKey(w.MainRepo)]; n != "" {
+		return repoKey(n), n
+	}
+	return repoKey(worktrees.PathKey(w.MainRepo)), filepath.Base(w.MainRepo)
+}
+
+// section is the section a worktree of the verdict goes in under the
+// Group by (a new one; the caller merges it with one it has by Key).
+func (x wtPlans) section(group string, w store.Worktree, verdict string) *wtGroup {
+	switch group {
+	case groupStatus:
+		return &wtGroup{listGroup: listGroup{Key: "status:" + verdict, Open: true}, Title: wtGroupTitles[verdict],
+			rank: slices.Index(wtVerdictOrder, verdict)}
+	case groupPlan:
+		plan, monitored := x.of(w)
+		switch {
+		case plan >= 0:
+			p := x.plans[plan]
+			return &wtGroup{listGroup: listGroup{Key: planKey(p.Slug)}, Title: cmp.Or(p.Title, p.Slug), rank: plan}
+		case monitored:
+			return &wtGroup{listGroup: listGroup{Key: watchedKey}, Title: noPlanLabel, rank: len(x.plans)}
+		}
+		return &wtGroup{listGroup: listGroup{Key: notOnPlanKey}, Title: notOnPlanLabel, rank: len(x.plans) + 1}
+	}
+	key, name := x.repo(w)
+	return &wtGroup{listGroup: listGroup{Key: key}, Title: name}
 }
 
 // wtRowOf is a worktree's row and the group it goes in ("" for a main
@@ -357,14 +577,18 @@ func wtMatches(row wtRow, q string) bool {
 	return false
 }
 
-// worktreesURL is the page with the search box's q and more.
-func worktreesURL(q string, more url.Values) string {
+// worktreesURL is the page with the search box's q, the Group by the URL
+// has (group, or ""), and more.
+func worktreesURL(q, group string, more url.Values) string {
 	vals := url.Values{}
 	for k, v := range more {
 		vals[k] = v
 	}
 	if q != "" {
 		vals.Set("q", q)
+	}
+	if group != "" {
+		vals.Set("group", group)
 	}
 	if len(vals) == 0 {
 		return "/app/worktrees"
@@ -375,7 +599,7 @@ func worktreesURL(q string, more url.Values) string {
 // wtLogEntryOf is a log entry as the page shows it.
 func wtLogEntryOf(s *Server, now time.Time, e store.Removal) wtLogEntry {
 	l := wtLogEntry{
-		When: clock(now, e.At), Stamp: stamp(e.At),
+		When: clock(now, e.At), Stamp: stamp(now, e.At),
 		Path: s.displayPath(e.Path), PathFull: s.shortPath(e.Path),
 		Note: e.Detail,
 	}
@@ -410,14 +634,17 @@ const (
 )
 
 // worktreesReturn is where a post's answer goes: the page, with its search
-// but without the selection or the confirmation.
+// and Group by but without the selection or the confirmation.
 func worktreesReturn(r *http.Request) string {
 	u, err := url.Parse(appReturn(r))
-	q := ""
+	q, group := "", ""
 	if err == nil {
-		q = u.Query().Get("q")
+		q, group = u.Query().Get("q"), u.Query().Get("group")
 	}
-	return worktreesURL(q, nil)
+	if !slices.ContainsFunc(wtGroupChoices, func(c groupChoice) bool { return c.Value == group }) {
+		group = ""
+	}
+	return worktreesURL(q, group, nil)
 }
 
 // worktreesRemove is POST /app/worktrees/remove: the confirmation's

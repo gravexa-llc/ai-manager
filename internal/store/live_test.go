@@ -42,11 +42,13 @@ func TestUpdateSessionLive(t *testing.T) {
 		State: "needs_you", StateReason: "permission prompt: Bash: x", NeedsYouSince: at(time.Second),
 		LastAction: "Bash: x", LastSaid: "done", LastEventAt: at(time.Second),
 		Cwd: "/r/a/.claude/worktrees/w", WorktreePath: "/r/a/.claude/worktrees/w", ItermSessionID: "w0", Kind: "background", Headless: &f,
+		PluginBuild: "v1.0.0-3-gabc1234", PluginRoot: "/r/a/plugin",
 	}))
 	got, err := s.GetSession(ctx, "pid:1")
 	must(t, err)
 	if got.State != "needs_you" || got.StateReason != "permission prompt: Bash: x" || !got.NeedsYouSince.Equal(at(time.Second)) ||
-		got.LastAction != "Bash: x" || got.LastSaid != "done" || !got.LastEventAt.Equal(at(time.Second)) || got.ItermSessionID != "w0" {
+		got.LastAction != "Bash: x" || got.LastSaid != "done" || !got.LastEventAt.Equal(at(time.Second)) || got.ItermSessionID != "w0" ||
+		got.PluginBuild != "v1.0.0-3-gabc1234" || got.PluginRoot != "/r/a/plugin" {
 		t.Errorf("live fields = %+v", got)
 	}
 	// Empty values keep what's stored; the branch goes with the worktree;
@@ -57,7 +59,8 @@ func TestUpdateSessionLive(t *testing.T) {
 	}
 	must(t, s.UpdateSessionLive(ctx, "pid:1", SessionLive{State: "working", Branch: "ignored without a worktree"}))
 	got, _ = s.GetSession(ctx, "pid:1")
-	if got.State != "working" || !got.NeedsYouSince.IsZero() || got.Branch != "" || got.Headless || got.WorktreePath == "" {
+	if got.State != "working" || !got.NeedsYouSince.IsZero() || got.Branch != "" || got.Headless || got.WorktreePath == "" ||
+		got.PluginBuild != "v1.0.0-3-gabc1234" || got.PluginRoot != "/r/a/plugin" {
 		t.Errorf("after a sparse update = %+v", got)
 	}
 	if err := s.UpdateSessionLive(ctx, "pid:9", SessionLive{}); !errors.Is(err, ErrNotFound) {
@@ -80,12 +83,14 @@ func TestAdoptSession(t *testing.T) {
 	must(t, s.UpsertSessions(ctx, Session{Key: "pid:2", SessionID: "s2", PID: 2, State: "idle", LastSeenAt: at(0)}))
 	must(t, s.UpsertSessions(ctx, Session{Key: "session:s2", SessionID: "s2", LastSeenAt: at(0)}))
 	must(t, s.UpdateSessionLive(ctx, "session:s2", SessionLive{State: "needs_you", StateReason: "question", NeedsYouSince: at(time.Second),
-		LastAction: "AskUserQuestion", LastSaid: "hm", LastEventAt: at(time.Second), ItermSessionID: "w1"}))
+		LastAction: "AskUserQuestion", LastSaid: "hm", LastEventAt: at(time.Second), ItermSessionID: "w1",
+		PluginBuild: "v1.0.0-3-gabc1234", PluginRoot: "/r/a/plugin"}))
 	must(t, s.AdoptSession(ctx, "session:s2", "pid:2"))
 	got, err := s.GetSession(ctx, "pid:2")
 	must(t, err)
 	if got.PID != 2 || got.State != "needs_you" || got.StateReason != "question" || !got.NeedsYouSince.Equal(at(time.Second)) ||
-		got.LastAction != "AskUserQuestion" || got.LastSaid != "hm" || got.ItermSessionID != "w1" || !got.LastEventAt.Equal(at(time.Second)) {
+		got.LastAction != "AskUserQuestion" || got.LastSaid != "hm" || got.ItermSessionID != "w1" || !got.LastEventAt.Equal(at(time.Second)) ||
+		got.PluginBuild != "v1.0.0-3-gabc1234" || got.PluginRoot != "/r/a/plugin" {
 		t.Errorf("adopting row = %+v", got)
 	}
 	all, _ := s.ListSessions(ctx, SessionFilter{IncludeEnded: true})

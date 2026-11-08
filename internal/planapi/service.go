@@ -91,6 +91,12 @@ type Options struct {
 	// It is called in its own goroutine after a registration. Nil turns
 	// the backfill off.
 	Backfill func(ctx context.Context, repos []string)
+	// Refresh asks for PRs to be read from GitHub by number soon, rather
+	// than at the next poll (the daemon's RefreshPRs, which joins and
+	// paces the reads), and returns how many it queued. It must not
+	// block. Nil turns it off: RefreshPRs still answers, and nothing is
+	// read until the polls.
+	Refresh func(prs []store.PRKey) int
 	// Notify is told api.TopicPlans when a state pass changes a board. It
 	// must not block. Nil tells nobody.
 	Notify func(topic string)
@@ -113,6 +119,7 @@ type Service struct {
 	lastScan  func() *worktrees.Result
 	canonical func(string) string
 	backfill  func(ctx context.Context, repos []string)
+	refresh   func(prs []store.PRKey) int
 	notify    func(string)
 	log       *slog.Logger
 	now       func() time.Time
@@ -144,6 +151,7 @@ func New(opts Options) *Service {
 		lastScan:  opts.LastScan,
 		canonical: opts.Canonical,
 		backfill:  opts.Backfill,
+		refresh:   opts.Refresh,
 		notify:    opts.Notify,
 		log:       opts.Logger,
 		now:       opts.Now,
@@ -187,9 +195,11 @@ func (s *Service) Kick() {
 }
 
 // Run re-reads every registered plan file (it may have changed while aimd
-// was down), watches them, runs a first state pass, and then runs passes
-// on Kick and re-reads files as they change, until ctx is done. It waits
-// for background backfills before it returns nil.
+// was down), re-parses the stored copy of each one that hasn't (this aimd
+// may read more of it than the one that stored it: reparseStored), watches
+// them, runs a first state pass, and then runs passes on Kick and re-reads
+// files as they change, until ctx is done. It waits for background
+// backfills before it returns nil.
 func (s *Service) Run(ctx context.Context) error {
 	s.mu.Lock()
 	s.baseCtx = ctx
@@ -213,9 +223,15 @@ func (s *Service) Run(ctx context.Context) error {
 	} else {
 		for _, p := range ps {
 			s.watch(p.SourcePath)
-			if _, err := s.resyncPlan(ctx, p); err != nil && ctx.Err() == nil {
+			changed, err := s.resyncPlan(ctx, p)
+			if err != nil && ctx.Err() == nil {
 				s.log.Info("plan file unreadable for now; keeping the last copy", "plan", p.Slug, "path", p.SourcePath, "err", err)
 				retry = append(retry, p.ID)
+			}
+			if !changed && ctx.Err() == nil {
+				if err := s.reparseStored(ctx, p); err != nil {
+					s.log.Warn("re-parse the stored plan", "plan", p.Slug, "err", err)
+				}
 			}
 		}
 	}

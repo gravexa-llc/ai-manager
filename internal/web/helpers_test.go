@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/timezone"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
 
@@ -22,6 +23,13 @@ const (
 
 // t0 is the tests' fixed "now".
 var t0 = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+// The tests' machine is in UTC, whatever zone the machine running them
+// is in, so clock times read the same everywhere. A test of the Time zone
+// setting's System sets Options.SystemZone.
+func init() {
+	machineZone = func() timezone.Zone { return timezone.UTC }
+}
 
 // fakeStatus is a StatusSource with a fixed answer.
 type fakeStatus struct{ st api.Status }

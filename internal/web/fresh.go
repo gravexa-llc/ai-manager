@@ -77,7 +77,7 @@ func (f freshFacts) link(l api.Link) api.Link {
 	case store.LinkPR:
 		if p, ok := f.prs[strings.ToLower(l.Ref)]; ok {
 			l.PR = &api.LinkPR{
-				Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL, State: p.State, Draft: p.Draft,
+				Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL, State: p.State, Unread: p.Unread(), Draft: p.Draft,
 				HeadBranch: p.HeadBranch, ChecksState: p.ChecksState, Mergeable: p.Mergeable,
 				MergeStateStatus: p.MergeStateStatus, ReviewDecision: p.ReviewDecision,
 				MergedAt: p.MergedAt, ClosedAt: p.ClosedAt,
@@ -114,6 +114,7 @@ func (f freshFacts) agent(a api.LinkAgent) api.LinkAgent {
 		a.NeedsYou = state.SessionNeedsYou(row)
 		a.NeedsYouSince, a.Reason = row.NeedsYouSince, row.StateReason
 		a.LastAction, a.LastEventAt, a.WorktreePath = row.LastAction, row.LastEventAt, row.WorktreePath
+		a.StartedAt = row.StartedAt
 		// The main loop's agent row fills in what the session row lacks.
 		if lead, ok := f.agents[[2]string{row.SessionID, ""}]; ok {
 			a.LastAction = cmp.Or(a.LastAction, lead.LastAction)
@@ -137,6 +138,17 @@ func (f freshFacts) agent(a api.LinkAgent) api.LinkAgent {
 	a.State, a.Live = row.State, live
 	if row.LastAction != "" {
 		a.LastAction = row.LastAction
+	}
+	// A subagent's name is its type (internal/state), which the first
+	// agent_list brings.
+	if row.AgentType != "" {
+		a.Name = row.AgentType
+	}
+	if row.Tokens > 0 {
+		a.Tokens = row.Tokens
+	}
+	if !row.StartedAt.IsZero() {
+		a.StartedAt = row.StartedAt
 	}
 	a.NeedsYou = live && row.State == state.AgentWaiting
 	if a.NeedsYou && a.Reason == "" {

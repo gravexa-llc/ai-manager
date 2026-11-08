@@ -118,7 +118,7 @@
   // swap replaces el's content, keeping what the user had: open <details>
   // (by id), the focus, the j/k cursor, the scroll of the boxes inside it
   // (by id: a plan's graph scrolled sideways) and, with keep, its own
-  // scroll. A data-scroll-start box new to el starts at its end.
+  // scroll.
   function swap(el, html, keep) {
     var open = {};
     el.querySelectorAll("details[id]").forEach(function (d) {
@@ -126,7 +126,7 @@
     });
     var scrolled = {};
     el.querySelectorAll("[id]").forEach(function (x) {
-      if (x.scrollLeft || x.scrollTop || x.hasAttribute("data-scroll-start")) scrolled[x.id] = [x.scrollLeft, x.scrollTop];
+      if (x.scrollLeft || x.scrollTop) scrolled[x.id] = [x.scrollLeft, x.scrollTop];
     });
     var a = doc.activeElement;
     var focusKey = a && a !== doc.body && el.contains(a) ? keyOf(a) : null;
@@ -146,7 +146,6 @@
         x.scrollTop = scrolled[id][1];
       }
     });
-    scrollStart(el, scrolled);
     el.scrollTop = keep ? top : 0;
     if (anchor) {
       var m = el.querySelector(anchor.key);
@@ -158,16 +157,6 @@
     if (f) f.focus({ preventScroll: true });
     after(el, true);
     emit(el, "aim:swap", { id: el.id });
-  }
-
-  // scrollStart puts each data-scroll-start="end" box in el that just
-  // showed (not one whose scroll a swap kept, in kept) at its far end: a
-  // plan's graph opens on its rightmost columns, where the work usually
-  // is. A box that fits doesn't move.
-  function scrollStart(el, kept) {
-    el.querySelectorAll('[data-scroll-start="end"]').forEach(function (x) {
-      if (!(x.id && kept[x.id])) x.scrollLeft = x.scrollWidth - x.clientWidth;
-    });
   }
 
   // windowAnchor notes the first keyed element on screen, so a swap in a
@@ -822,12 +811,12 @@
 
   // busy reports whether the user is typing, choosing or confirming inside
   // el (a dialog open in it): its refresh waits so nothing they entered or
-  // are reading is lost.
+  // are reading is lost. A list's open section (.group) isn't a menu.
   function busy(el) {
     if (el.querySelector("dialog[open]")) return true;
     var a = doc.activeElement;
     if (!a || !el.contains(a)) return false;
-    return typing(a) || !!a.closest("details[open]");
+    return typing(a) || !!a.closest("details[open]:not(.group)");
   }
 
   // covered reports whether a live region around el is due too.
@@ -951,16 +940,6 @@
     csrf: csrf,
   };
 
-  scrollStart(doc.body, {});
-  // On a full page load the page's own stylesheet (linked after this script)
-  // can arrive after that first call, when a data-scroll-start box isn't
-  // scrollable yet, so the jump to its end did nothing. Try once more when
-  // everything has loaded, unless the user has scrolled it meanwhile.
-  window.addEventListener("load", function () {
-    doc.querySelectorAll('[data-scroll-start="end"]').forEach(function (x) {
-      if (x.scrollLeft === 0) x.scrollLeft = x.scrollWidth - x.clientWidth;
-    });
-  });
   after(doc.body, false);
   doc.querySelectorAll("#toasts [data-toast]").forEach(function (el) {
     hold(el);

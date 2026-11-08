@@ -121,7 +121,7 @@ func TestReplayInteractiveDialogsWaitingOn(t *testing.T) {
 func TestPollAnswersAGrantedPermission(t *testing.T) {
 	h := newHarness(t, nil)
 	ctx := context.Background()
-	h.post(start("s1", t0), ev(events.TurnStart, "s1", t0.Add(time.Second)))
+	h.post(start("s1", t0), ev(events.TurnStart, "s1", t0.Add(time.Second)), subStart("s1", "sub1", t0.Add(time.Second)))
 	ask := needs("s1", "sub1", "t1", t0.Add(2*time.Second))
 	ask.Wait = &events.Wait{Kind: events.WaitPermission, Tool: "Bash", Summary: "npm test"}
 	h.post(ask)

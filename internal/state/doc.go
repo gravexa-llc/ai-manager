@@ -123,7 +123,11 @@
 // The Unmatched lane lists the same-repo PRs in the plan's repos that no
 // package of any plan links (open ones, and ones closed after the plan
 // was registered), then the branches without a PR that are checked out in
-// a worktree and linked to nothing, each with the matcher's note.
+// a worktree and linked to nothing, each with the matcher's note, when it
+// appeared (a PR's createdAt, a branch's first worktree sighting) and
+// whether that was after the plan was registered (New). Targets you hid
+// from the plan (Input.Hidden: "Not part of this plan") go to
+// PlanState.Hidden instead; other plans still list them.
 //
 // Alerts: dependencies unlocked (since Options.UnlockedSince), each
 // stalled package, each single-writer lane with two live agents, and each

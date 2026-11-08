@@ -60,16 +60,21 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/store"
 )
 
-// appTemplates are the app's templates: the shell and one file per page.
+// appTemplates are the app's templates: the shell, the partials pages
+// share, and one file per page.
 //
 //go:embed templates/app/*.html
 var appTemplates embed.FS
 
-// parseApp parses the shell and one page's template file. The files are
-// embedded, so an error is a bug the tests catch.
+// appShared are the template files every page gets: the shell, and the
+// partials more than one page draws (agent.html: an agent's line).
+var appShared = []string{"templates/app/shell.html", "templates/app/agent.html"}
+
+// parseApp parses the shared files and one page's template file. The files
+// are embedded, so an error is a bug the tests catch.
 func parseApp(file string) *template.Template {
 	return template.Must(template.New(file).Funcs(templateFuncs).ParseFS(appTemplates,
-		"templates/app/shell.html", "templates/app/"+file))
+		append(slices.Clone(appShared), "templates/app/"+file)...))
 }
 
 // appPage is one page of the app.
@@ -178,6 +183,9 @@ type appData struct {
 	// View is the page's own data, set by its fill; its template reads
 	// it as .View.
 	View any
+	// cookies are set on the answer: a page's remembered choice, such as
+	// its Group by (groups.go).
+	cookies []*http.Cookie
 }
 
 // appFlags are the alert, keyboard and theme settings the shell obeys,
@@ -322,6 +330,9 @@ func (s *Server) appHandler(p *appPage) http.HandlerFunc {
 		h.Set("Content-Type", "text/html; charset=utf-8")
 		h.Set("Cache-Control", "no-store")
 		h.Set(appCSRFHeader, d.CSRF)
+		for _, c := range d.cookies {
+			http.SetCookie(w, c)
+		}
 		_, _ = w.Write(buf.Bytes())
 	}
 }

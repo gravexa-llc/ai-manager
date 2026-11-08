@@ -19,6 +19,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/focus"
 	"github.com/gravexa-llc/ai-manager/internal/monitor"
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/term"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
 
@@ -32,6 +33,7 @@ type planEnv struct {
 	g     *stubGo
 	terms fakeTerms
 	noGo  bool
+	noMon bool // serve without a monitor source
 }
 
 func newPlanEnv(t *testing.T) *planEnv {
@@ -57,6 +59,9 @@ func (e *planEnv) serve() {
 		HomeDir: e.tmp, Now: func() time.Time { return t0 }}
 	if !e.noGo {
 		o.Go = e.g
+	}
+	if e.noMon {
+		o.Monitor = nil
 	}
 	e.srv = New(o)
 	e.h = e.srv.Handler()
@@ -268,7 +273,9 @@ func TestAppPlanSelection(t *testing.T) {
 
 	// The detail's close link and the toolbar's notes select nothing.
 	wantIn(t, "close", inner(t, page, "detail"), `<a class="btn sm pd-close" href="/app/plans/sharing?view=graph" data-pane="list detail"`)
-	wantIn(t, "notes", list, `<a href="/app/plans/sharing?view=graph#plan-unmatched" data-pane="list detail">1 unmatched</a>`)
+	// The notes count only the new Unmatched entries: #219 was opened
+	// before the plan was registered, so there is no note for it.
+	wantNotIn(t, "notes", list, "#plan-unmatched")
 
 	// ?q= dims what it doesn't match, and the links keep it.
 	q := inner(t, get(t, e.h, "/app/plans/sharing?view=kanban&q=re"), "list")
@@ -329,6 +336,7 @@ func TestAppPlanDetail(t *testing.T) {
 	e := newPlanEnv(t)
 
 	t1 := get(t, e.h, "/app/plans/sharing?pkg=T1&fragment=detail")
+	t1Off := attr(t, "No live agent on this package. No lead registered for this plan: run /plan-register "+e.sharing+" in its main session.")
 	wantIn(t, "T1", t1, `<span class="pill lc-blocked">Blocked</span>`, `<span class="nid pd-id">T1</span>`, "<h2>Tile filters</h2>",
 		"Pivot share links: delivery plan · pivot · size M · lane Access",
 		// Needs, each with its state, linking to it; then what it unblocks.
@@ -337,8 +345,8 @@ func TestAppPlanDetail(t *testing.T) {
 		`href="/app/plans/sharing?view=graph&amp;pkg=Q1"`, `href="/app/plans/sharing?view=graph&amp;pkg=Q2"`,
 		"<dt>PR</dt><dd>none yet</dd>", "<dt>Agent</dt><dd>none</dd>", "the conventions suggest <code>sharing/t1-tile-filters</code>",
 		"<dt>Merges</dt><dd>you (Merges: you): a ready PR waits on you</dd>",
-		// No agent: Go is off, with why; Mark done is on (no PR).
-		`disabled data-key="g" data-off="No live agent on this package."`, `<p class="hint pd-why">No live agent on this package.</p>`,
+		// No agent and no lead: Go is off, with why; Mark done is on (no PR).
+		`disabled data-key="g" data-off="`+t1Off+`"`, `<p class="hint pd-why">`+t1Off+`</p>`,
 		`<input type="hidden" name="done" value="1">`, `data-key="d"`,
 		`<details id="pd-link-T1" class="pd-linker">`, `<option value="pr acme/pivot#219">`)
 	if i, j := strings.Index(t1, "Needs</p>"), strings.Index(t1, "Unblocks</p>"); i < 0 || j < i || strings.Contains(t1[i:j], "pkg=Q1") {
@@ -369,7 +377,10 @@ func TestAppPlanDetail(t *testing.T) {
 	// The Link picker: the Unmatched lane and the sessions no package
 	// links (C6's and the job are linked; the lead and the loose one
 	// aren't).
-	wantIn(t, "picker", d1, `<optgroup label="Unmatched">`, `<option value="pr example-user/ai-manager#30">PR #30 · Tidy the README (example-user/ai-manager)</option>`,
+	// #30 was opened before the plan was registered: an older one. The
+	// picker starts on a disabled "Pick …", so nothing is preselected.
+	wantIn(t, "picker", d1, `<option value="" disabled selected>Pick a PR, branch or session…</option>`,
+		`<optgroup label="Unmatched, older than the plan">`, `<option value="pr example-user/ai-manager#30">PR #30 · Tidy the README (example-user/ai-manager)</option>`,
 		`<optgroup label="Sessions">`, `<option value="agent loose-1">loose session (interactive)</option>`)
 	wantNotIn(t, "picker", d1, `value="agent sess-c6"`, `value="agent job:0a1b2c3d"`)
 
@@ -381,6 +392,116 @@ func TestAppPlanDetail(t *testing.T) {
 		`<input type="hidden" name="ref" value="acme/pivot#219">`, "<code>acme/pivot</code>")
 	// What needs you there is the page's badges (internal/prwait's rule).
 	wantIn(t, "plan pane", plan, `<span class="badge b-waiting">waiting on you</span> #215 ready to merge · this plan merges: you`)
+}
+
+// A live agent's line on its package's pane, as Claude Code's agent list
+// has it: its type, its last action, how long it has run and its tokens.
+// The facts under it don't repeat the action. An ended agent is just its
+// link. GET /api/plans/{slug} carries the tokens and the start.
+func TestAppPlanAgentLine(t *testing.T) {
+	e := newPlanEnv(t)
+	ctx := context.Background()
+	d1 := store.Agent{SessionID: "lead-1", AgentID: "agent-d1", Kind: store.AgentSubagent, AgentType: "general-purpose", State: "running",
+		LastAction: "Bash: Run the tests", Tokens: 284_123, StartedAt: t0.Add(-(19*time.Minute + 30*time.Second))}
+	must(t, e.st.UpsertAgents(ctx, d1))
+
+	work := func() string {
+		t.Helper()
+		page := get(t, e.h, "/app/plans/aim?pkg=D1&fragment=detail")
+		i, j := strings.Index(page, "<dt>Agent</dt>"), strings.Index(page, "<dt>Branch</dt>")
+		if i < 0 || j < i {
+			t.Fatalf("no Agent row in D1's pane:\n%s", page)
+		}
+		return page[i:j]
+	}
+	row := work()
+	wantIn(t, "D1's agent", row,
+		`<span class="pd-link pd-agent"><span class="agent-now"><strong class="agent-now-who">general-purpose</strong>`,
+		` <span class="agent-now-doing" title="its last action, as the plugin reported it">Bash: Run the tests</span>`,
+		` <span class="agent-now-stat"><span title="running since 2026-`, `">19m 30s</span> · <span title="284,123 tokens: its latest model response`,
+		`">284.1k tokens</span></span></span>`,
+		`<span class="pd-now-facts"><span class="fact">subagent</span> · <span class="fact fact-quiet">running</span></span>`)
+	wantNotIn(t, "D1's agent", row, "last: Bash", "↓")
+	checkNoInline(t, "D1's agent", row)
+
+	// Before its first response (or from an older mod): no tokens.
+	d1.Tokens = 0
+	must(t, e.st.UpsertAgents(ctx, d1))
+	row = work()
+	wantIn(t, "D1's agent, no tokens", row, `">19m 30s</span></span></span><span class="pd-now-facts">`)
+	wantNotIn(t, "D1's agent, no tokens", row, "tokens")
+
+	// The API: the link's agent has the tokens and when it started, from
+	// the next state pass (the spawn link again runs one).
+	d1.Tokens = 284_123
+	must(t, e.st.UpsertAgents(ctx, d1))
+	e.api("POST", "/api/links/spawn", api.SpawnLinkRequest{SessionID: "lead-1", AgentID: "agent-d1", Plan: "aim", Pkg: "D1"}, http.StatusCreated)
+	var b api.Plan
+	decode(t, e.api("GET", "/api/plans/aim", nil, http.StatusOK), &b)
+	var got *api.LinkAgent
+	for _, p := range b.Packages {
+		for _, l := range p.Links {
+			if p.ID == "D1" && l.Kind == store.LinkAgent {
+				got = l.Agent
+			}
+		}
+	}
+	if got == nil || got.Tokens != 284_123 || !got.StartedAt.Equal(d1.StartedAt) || got.Name != "general-purpose" {
+		t.Errorf("D1's agent in the API = %+v", got)
+	}
+
+	// Ended: no line, the link as before.
+	d1.State, d1.EndedAt = "completed", t0.Add(-time.Minute)
+	must(t, e.st.UpsertAgents(ctx, d1))
+	row = work()
+	wantNotIn(t, "D1's ended agent", row, "agent-now", "tokens")
+	wantIn(t, "D1's ended agent", row, `<strong>general-purpose</strong> · <span class="fact">subagent</span> · <span class="fact fact-quiet">ended</span>`)
+}
+
+// A live agent's line says what aimd knows: no action yet, no start, no
+// tokens. An ended agent, or one aimd hasn't seen, has none.
+func TestPkgAgentOf(t *testing.T) {
+	lv := linkView{Kind: store.LinkAgent, Label: "Explore", Facts: []factView{{Text: "subagent"}, {Text: "last: Grep: TODO", lastAction: true}}}
+	got := pkgAgentOf(t0, lv, &api.LinkAgent{AgentID: "a1", Live: true})
+	if n := got.Now; n == nil || n.Who != "Explore" || n.Doing != "" || n.Ran != "" || n.Tokens != "" {
+		t.Errorf("line = %+v", n)
+	}
+	if len(got.Link.Facts) != 1 || got.Link.Facts[0].Text != "subagent" || len(lv.Facts) != 2 {
+		t.Errorf("facts = %+v (the link's own: %+v)", got.Link.Facts, lv.Facts)
+	}
+	var buf strings.Builder
+	must(t, parseApp("plan.html").ExecuteTemplate(&buf, "plan-agent", got))
+	page := buf.String()
+	wantIn(t, "no action yet", page, `<strong class="agent-now-who">Explore</strong> <span class="agent-now-doing agent-now-quiet">no action reported yet</span></span>`)
+	wantNotIn(t, "no action yet", page, "agent-now-stat")
+	for _, a := range []*api.LinkAgent{nil, {AgentID: "a1", Tokens: 9}} {
+		if got := pkgAgentOf(t0, lv, a); got.Now != nil || len(got.Link.Facts) != 2 {
+			t.Errorf("pkgAgentOf(%+v) = %+v, want the link alone", a, got)
+		}
+	}
+}
+
+func TestAgentLineFormats(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		-time.Second: "0s", 45 * time.Second: "45s", 19*time.Minute + 30*time.Second: "19m 30s",
+		2*time.Hour + 5*time.Minute + 59*time.Second: "2h 5m", 76 * time.Hour: "3d 4h",
+	} {
+		if got := runFor(d); got != want {
+			t.Errorf("runFor(%v) = %q, want %q", d, got, want)
+		}
+	}
+	for n, want := range map[int64]string{
+		950: "950", 1000: "1k", 19_040: "19k", 284_123: "284.1k", 999_949: "999.9k", 999_950: "1m", 1_249_999: "1.2m",
+	} {
+		if got := tokenCount(n); got != want {
+			t.Errorf("tokenCount(%d) = %q, want %q", n, got, want)
+		}
+	}
+	for n, want := range map[int64]string{7: "7", 1000: "1,000", 284_123: "284,123", 1_249_999: "1,249,999"} {
+		if got := groupDigits(n); got != want {
+			t.Errorf("groupDigits(%d) = %q, want %q", n, got, want)
+		}
+	}
 }
 
 // The badges on boxes, cards and rows: needs you, waiting on you, review
@@ -597,22 +718,25 @@ func TestAppPlanLink(t *testing.T) {
 }
 
 // Go to agent follows Go's rules, shows why it's off, and decides again on
-// the server.
+// the server. The plan has no lead here, so the reasons say that too.
 func TestAppPlanGo(t *testing.T) {
 	e := newPlanEnv(t)
 
 	// D1's agent is a subagent whose lead runs in iTerm2: on.
 	d1 := get(t, e.h, "/app/plans/aim?view=kanban&pkg=D1&fragment=detail")
 	wantIn(t, "D1", d1, `<form method="post" action="/app/plans/aim/go" data-pane="detail">`, `<input type="hidden" name="pkg" value="D1">`,
+		`<input type="hidden" name="to" value="agent">`,
 		`<input type="hidden" name="return" value="/app/plans/aim?pkg=D1&amp;view=kanban">`,
 		`<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g">Go to agent <kbd>g</kbd></button>`)
-	wantNotIn(t, "D1", d1, "pd-why\">No", "data-off=\"Runs")
+	wantNotIn(t, "D1", d1, "pd-why\">No", "data-off=\"Runs", "Go to lead")
 
-	// Off, with the reason shown and given to the g key.
+	// Off, with the reason shown and given to the g key: the agent's, then
+	// the lead's.
+	noLead := " No lead registered for this plan: run /plan-register " + e.aimPlan + " in its main session."
 	for id, why := range map[string]string{
-		"C6": "Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs.",
-		"E2": "Background session: no terminal tab to switch to. Open it with `claude attach 0a1b2c3d`.",
-		"A1": "No live agent on this package.",
+		"C6": "Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs." + noLead,
+		"E2": "Background session: no terminal tab to switch to. Open it with `claude attach 0a1b2c3d`." + noLead,
+		"A1": "No live agent on this package." + noLead,
 	} {
 		d := get(t, e.h, "/app/plans/aim?pkg="+id+"&fragment=detail")
 		r := attr(t, why)
@@ -636,7 +760,7 @@ func TestAppPlanGo(t *testing.T) {
 	// the form says, and Go isn't called.
 	e.g.keys = nil
 	rec, a = e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"C6"}, "key": {"pid:42"}, "return": {"/app/plans/aim?pkg=C6"}})
-	if rec.Code != http.StatusConflict || a.Error != "Go: Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs." || len(e.g.keys) != 0 {
+	if rec.Code != http.StatusConflict || a.Error != "Go: Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs."+noLead || len(e.g.keys) != 0 {
 		t.Errorf("Go on C6 = %d %+v, keys %v", rec.Code, a, e.g.keys)
 	}
 	if rec, a = e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"Z9"}}); rec.Code != http.StatusNotFound || !strings.Contains(a.Error, "has no package") {
@@ -651,9 +775,266 @@ func TestAppPlanGo(t *testing.T) {
 	// Without a Go service: off everywhere, and the route refuses.
 	e.noGo = true
 	e.serve()
-	wantIn(t, "no Go", get(t, e.h, "/app/plans/aim?pkg=D1&fragment=detail"), `data-off="Go isn&#39;t available: this aimd runs without it."`)
-	if rec, _ := e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"D1"}}); rec.Code != http.StatusNotFound {
-		t.Errorf("Go without a service = %d", rec.Code)
+	for _, target := range []string{"/app/plans/aim?pkg=D1&fragment=detail", "/app/plans/aim?fragment=detail"} {
+		wantIn(t, "no Go", get(t, e.h, target), `data-off="Go isn&#39;t available: this aimd runs without it."`)
+	}
+	for _, vals := range []url.Values{{"pkg": {"D1"}}, {"to": {"lead"}}} {
+		if rec, _ := e.postJSON("/app/plans/aim/go", vals); rec.Code != http.StatusNotFound {
+			t.Errorf("Go %v without a service = %d", vals, rec.Code)
+		}
+	}
+}
+
+// leadSession is a live interactive session named lead-session, for the
+// Go to lead tests.
+func leadSession(key, sid string) store.Session {
+	return store.Session{Key: key, SessionID: sid, Kind: "interactive", Name: "lead-session", Cwd: "/w/app", State: "idle",
+		StartedAt: t0.Add(-3 * time.Hour), LastSeenAt: t0}
+}
+
+// addLead records sid as plan aim's lead since at, as POST /api/plans with
+// a session id does (store.MonitorPlanLead). row, unless nil, is first
+// stored as a live session, running in app (term.App{} for none).
+func (e *planEnv) addLead(sid string, at time.Time, row *store.Session, app term.App) {
+	e.t.Helper()
+	ctx := context.Background()
+	if row != nil {
+		must(e.t, e.st.UpsertSessions(ctx, *row))
+		if app.Kind != "" {
+			e.terms[row.Key] = app
+		}
+	}
+	p, err := e.st.GetPlanBySlug(ctx, "aim")
+	must(e.t, err)
+	_, err = e.st.MonitorPlanLead(ctx, sid, p.ID, at)
+	must(e.t, err)
+}
+
+// goForm is the Go form in a pane: from its action to its end.
+func goForm(t *testing.T, pane string) string {
+	t.Helper()
+	i := strings.Index(pane, `action="/app/plans/aim/go"`)
+	if i < 0 {
+		t.Fatal("no Go form")
+	}
+	return pane[i : i+strings.Index(pane[i:], "</form>")]
+}
+
+// Go to lead: the plan's own pane has it, and a package's pane gets it
+// when no agent linked to the package can be reached (A1 has none). It
+// goes to the lead registered most recently of those Go can reach, and is
+// off otherwise, saying why; on a package's pane, after the agent's
+// reason. Either posts to=lead, and the plan's pane no package.
+func TestAppPlanGoToLead(t *testing.T) {
+	ctx := context.Background()
+	session := func(key, sid string) *store.Session { r := leadSession(key, sid); return &r }
+	newer := func(key, sid string) *store.Session { r := leadSession(key, sid); r.Name = "newer-lead"; return &r }
+	vscode := term.App{Kind: term.KindOther, Name: "Visual Studio Code"}
+	const unreachable = "The plan's lead, lead-session, can't be reached: "
+	for _, tc := range []struct {
+		name  string
+		setup func(e *planEnv)
+		// key is where Go goes and lead its name; off why it's off
+		// instead, with FILE for the plan file.
+		key, lead, off string
+	}{
+		{name: "no lead", setup: func(*planEnv) {},
+			off: "No lead registered for this plan: run /plan-register FILE in its main session."},
+		{name: "not running", setup: func(e *planEnv) { e.addLead("lead-gone", t0, nil, term.App{}) },
+			off: "The plan's lead isn't running."},
+		{name: "none of two running", setup: func(e *planEnv) {
+			e.addLead("lead-gone", t0, nil, term.App{})
+			e.addLead("lead-gone-2", t0.Add(time.Minute), nil, term.App{})
+		}, off: "None of the plan's 2 leads is running."},
+		{name: "in tmux", setup: func(e *planEnv) { e.addLead("lead-a", t0, session("pid:60", "lead-a"), appTmux) },
+			off: unreachable + "runs inside tmux; Go can only switch to iTerm2 and Terminal tabs."},
+		{name: "in another app", setup: func(e *planEnv) { e.addLead("lead-a", t0, session("pid:60", "lead-a"), vscode) },
+			off: unreachable + "runs in Visual Studio Code; Go can only switch to iTerm2 and Terminal tabs."},
+		{name: "a background job", setup: func(e *planEnv) {
+			r := session("job:1a2b3c4d", "lead-a")
+			r.Kind, r.JobID = "background", "1a2b3c4d"
+			e.addLead("lead-a", t0, r, term.App{})
+		}, off: unreachable + "background session: no terminal tab to switch to. Open it with `claude attach 1a2b3c4d`."},
+		{name: "headless", setup: func(e *planEnv) {
+			r := session("pid:60", "lead-a")
+			r.Headless = true
+			e.addLead("lead-a", t0, r, appITerm2)
+		}, off: unreachable + "headless `claude -p` run; Go only switches to interactive sessions."},
+		{name: "no terminal", setup: func(e *planEnv) { e.addLead("lead-a", t0, session("pid:60", "lead-a"), term.App{}) },
+			off: unreachable + "no terminal."},
+		{name: "in iTerm2", setup: func(e *planEnv) { e.addLead("lead-a", t0, session("pid:60", "lead-a"), appITerm2) },
+			key: "pid:60", lead: "lead-session"},
+		// Registered before a /clear the store hadn't seen yet: the row
+		// has the new id, and the old one as its previous.
+		{name: "after /clear", setup: func(e *planEnv) {
+			r := session("pid:60", "lead-old")
+			must(e.t, e.st.UpsertSessions(ctx, *r))
+			r.SessionID = "lead-new"
+			e.addLead("lead-old", t0, r, appTerminal)
+		}, key: "pid:60", lead: "lead-session"},
+		// Two leads: the newest that Go can reach wins.
+		{name: "two leads, the newer reachable", setup: func(e *planEnv) {
+			e.addLead("lead-a", t0.Add(-2*time.Hour), session("pid:60", "lead-a"), appITerm2)
+			e.addLead("lead-b", t0.Add(-time.Hour), newer("pid:61", "lead-b"), appTerminal)
+			e.addLead("lead-gone", t0, nil, term.App{}) // newest of all, but not running
+		}, key: "pid:61", lead: "newer-lead"},
+		{name: "two leads, the newer in tmux", setup: func(e *planEnv) {
+			e.addLead("lead-a", t0.Add(-2*time.Hour), session("pid:60", "lead-a"), appITerm2)
+			e.addLead("lead-b", t0.Add(-time.Hour), newer("pid:61", "lead-b"), appTmux)
+		}, key: "pid:60", lead: "lead-session"},
+		{name: "two leads registered at once", setup: func(e *planEnv) {
+			e.addLead("lead-a", t0, session("pid:60", "lead-a"), appITerm2)
+			e.addLead("lead-b", t0, newer("pid:61", "lead-b"), appITerm2) // the later row
+		}, key: "pid:61", lead: "newer-lead"},
+		{name: "two leads, neither reachable", setup: func(e *planEnv) {
+			e.addLead("lead-a", t0.Add(-2*time.Hour), session("pid:60", "lead-a"), appTmux)
+			e.addLead("lead-b", t0.Add(-time.Hour), newer("pid:61", "lead-b"), vscode)
+		}, off: "The plan's lead, newer-lead, can't be reached: runs in Visual Studio Code; Go can only switch to iTerm2 and Terminal tabs."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newPlanEnv(t)
+			tc.setup(e)
+			plan := get(t, e.h, "/app/plans/aim?fragment=detail")
+			a1 := get(t, e.h, "/app/plans/aim?pkg=A1&fragment=detail")
+			checkNoInline(t, "plan pane", plan)
+			// g is the plan pane's one key; Unregister stays.
+			if n := strings.Count(plan, "data-key="); n != 1 {
+				t.Errorf("plan pane: %d data-key attributes, want g alone", n)
+			}
+			wantIn(t, "plan pane", plan, `data-open="plan-unregister">Unregister plan…</button>`)
+
+			if tc.key == "" {
+				off := strings.ReplaceAll(tc.off, "FILE", e.aimPlan)
+				for pane, why := range map[string]string{"plan": off, "A1": "No live agent on this package. " + off} {
+					d, label := plan, "Go to lead"
+					if pane == "A1" {
+						d, label = a1, "Go to agent"
+					}
+					r := attr(t, why)
+					wantIn(t, pane, d, `<button type="button" class="btn primary" disabled data-key="g" data-off="`+r+`" title="`+r+`">`+label+` <kbd>g</kbd></button>`,
+						`<p class="hint pd-why">`+r+`</p>`)
+					wantNotIn(t, pane, d, `action="/app/plans/aim/go"`)
+				}
+				for _, vals := range []url.Values{{"to": {"lead"}}, {"pkg": {"A1"}, "to": {"lead"}}} {
+					rec, a := e.postJSON("/app/plans/aim/go", vals)
+					want := "Go: " + off
+					if vals.Has("pkg") {
+						want = "Go: No live agent on this package. " + off
+					}
+					if rec.Code != http.StatusConflict || a.Error != want {
+						t.Errorf("Go %v = %d %+v, want %q", vals, rec.Code, a, want)
+					}
+				}
+				if len(e.g.keys) != 0 {
+					t.Errorf("Go called: %v", e.g.keys)
+				}
+				return
+			}
+
+			why := attr(t, "Goes to the plan's lead, "+tc.lead+".")
+			wantIn(t, "plan pane", plan, `<input type="hidden" name="to" value="lead">`,
+				`<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g" title="`+why+`">Go to lead <kbd>g</kbd></button>`,
+				`<p class="hint pd-why">`+why+`</p>`)
+			wantNotIn(t, "plan pane's Go", goForm(t, plan), `name="pkg"`)
+			why = attr(t, "No live agent on this package. Goes to the plan's lead instead: "+tc.lead+".")
+			wantIn(t, "A1", a1, `<input type="hidden" name="pkg" value="A1">`, `<input type="hidden" name="to" value="lead">`,
+				`<button type="submit" class="btn primary" data-key="g" aria-keyshortcuts="g" title="`+why+`">Go to lead <kbd>g</kbd></button>`,
+				`<p class="hint pd-why">`+why+`</p>`)
+			wantNotIn(t, "A1", a1, "Go to agent")
+
+			for _, vals := range []url.Values{{"to": {"lead"}}, {"pkg": {"A1"}, "to": {"lead"}}} {
+				e.g.keys = nil
+				vals.Set("return", "/app/plans/aim")
+				rec, a := e.postJSON("/app/plans/aim/go", vals)
+				if rec.Code != http.StatusOK || a.Toast == nil || a.Toast.Text != e.g.res.Message || a.Location != "/app/plans/aim" {
+					t.Errorf("Go %v = %d %+v", vals, rec.Code, a)
+				}
+				if !slices.Equal(e.g.keys, []string{tc.key}) {
+					t.Errorf("Go %v went to %v, want %s", vals, e.g.keys, tc.key)
+				}
+			}
+		})
+	}
+}
+
+// The agent comes first, and the POST decides again: it uses what the
+// server finds now, never a key from the form, and refuses when Go is off
+// now or would go to the other of agent and lead than the button said.
+func TestAppPlanGoDecidesAgain(t *testing.T) {
+	e := newPlanEnv(t)
+	lead := leadSession("pid:60", "lead-a")
+	e.addLead("lead-a", t0, &lead, appITerm2)
+
+	// D1's agent can be reached: Go to agent, as without a lead. C6's (in
+	// tmux) and E2's (a background job) can't: Go to lead, after why.
+	d1 := get(t, e.h, "/app/plans/aim?pkg=D1&fragment=detail")
+	wantIn(t, "D1", d1, `<input type="hidden" name="to" value="agent">`, "Go to agent <kbd>g</kbd></button>")
+	wantNotIn(t, "D1", d1, "Go to lead", "pd-why\">No")
+	for id, agent := range map[string]string{
+		"C6": "Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs.",
+		"E2": "Background session: no terminal tab to switch to. Open it with `claude attach 0a1b2c3d`.",
+	} {
+		why := attr(t, agent+" Goes to the plan's lead instead: lead-session.")
+		wantIn(t, id, get(t, e.h, "/app/plans/aim?pkg="+id+"&fragment=detail"), `<input type="hidden" name="to" value="lead">`,
+			`title="`+why+`">Go to lead <kbd>g</kbd></button>`, `<p class="hint pd-why">`+why+`</p>`)
+	}
+	if rec, _ := e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"C6"}, "to": {"lead"}, "key": {"pid:42"}}); rec.Code != http.StatusOK ||
+		!slices.Equal(e.g.keys, []string{"pid:60"}) {
+		t.Errorf("Go to lead on C6 = %d, keys %v", rec.Code, e.g.keys)
+	}
+
+	// D1's agent now can't be reached (its session moved into tmux): a Go
+	// to agent pressed now is refused, saying where the button goes now.
+	e.terms["pid:43"] = appTmux
+	e.g.keys = nil
+	rec, a := e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"D1"}, "to": {"agent"}})
+	if want := "Go: Runs inside tmux; Go can only switch to iTerm2 and Terminal tabs. The button now goes to the plan's lead, lead-session."; rec.Code != http.StatusConflict || a.Error != want {
+		t.Errorf("Go to agent after the agent left = %d %+v", rec.Code, a)
+	}
+	wantIn(t, "D1 now", get(t, e.h, "/app/plans/aim?pkg=D1&fragment=detail"), `<input type="hidden" name="to" value="lead">`)
+	if rec, _ := e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"D1"}, "to": {"lead"}}); rec.Code != http.StatusOK || !slices.Equal(e.g.keys, []string{"pid:60"}) {
+		t.Errorf("Go to lead on D1 = %d, keys %v", rec.Code, e.g.keys)
+	}
+	// And back: a Go to lead pressed now is refused for the agent.
+	e.terms["pid:43"] = appITerm2
+	e.g.keys = nil
+	rec, a = e.postJSON("/app/plans/aim/go", url.Values{"pkg": {"D1"}, "to": {"lead"}})
+	if rec.Code != http.StatusConflict || a.Error != "Go: A live agent on this package can be reached now; the button now goes to it." {
+		t.Errorf("Go to lead with the agent back = %d %+v", rec.Code, a)
+	}
+
+	// The plan pane's Go to lead, with the lead moved into tmux after the
+	// page was drawn: refused with why, whatever key the form carries,
+	// from the script and from a plain form.
+	e.terms["pid:60"] = appTmux
+	why := "Go: The plan's lead, lead-session, can't be reached: runs inside tmux; Go can only switch to iTerm2 and Terminal tabs."
+	if rec, a = e.postJSON("/app/plans/aim/go", url.Values{"to": {"lead"}, "key": {"pid:60"}}); rec.Code != http.StatusConflict || a.Error != why {
+		t.Errorf("Go to lead in tmux = %d %+v", rec.Code, a)
+	}
+	page := e.follow(e.post("/app/plans/aim/go", url.Values{"to": {"lead"}, "return": {"/app/plans/aim"}}), "/app/plans/aim?toast=")
+	wantIn(t, "plain form", section(t, page, "toasts"), "toast error", "<span>"+attr(t, why)+"</span>")
+	if len(e.g.keys) != 0 {
+		t.Errorf("Go called: %v", e.g.keys)
+	}
+
+	// It needs the CSRF token.
+	e.terms["pid:60"] = appITerm2
+	if rec := e.post("/app/plans/aim/go", url.Values{"to": {"lead"}, CSRFField: {"forged"}}); rec.Code != http.StatusForbidden || len(e.g.keys) != 0 {
+		t.Errorf("Go to lead with a forged token = %d, keys %v", rec.Code, e.g.keys)
+	}
+	// The plan's pane has no agent to go to: there, to=agent is no change.
+	if rec, a := e.postJSON("/app/plans/aim/go", url.Values{"to": {"agent"}}); rec.Code != http.StatusOK || !slices.Equal(e.g.keys, []string{"pid:60"}) {
+		t.Errorf("the plan pane's Go with to=agent = %d %+v, keys %v", rec.Code, a, e.g.keys)
+	}
+
+	// Without the monitored sessions, aimd can't tell who leads the plan.
+	e.noMon = true
+	e.serve()
+	off := "aimd couldn't read which session leads this plan."
+	wantIn(t, "no monitor", get(t, e.h, "/app/plans/aim?fragment=detail"), `data-off="`+attr(t, off)+`"`)
+	wantIn(t, "no monitor", get(t, e.h, "/app/plans/aim?pkg=A1&fragment=detail"), `data-off="`+attr(t, "No live agent on this package. "+off)+`"`)
+	if rec, a := e.postJSON("/app/plans/aim/go", url.Values{"to": {"lead"}}); rec.Code != http.StatusConflict || a.Error != "Go: "+off {
+		t.Errorf("Go to lead without a monitor = %d %+v", rec.Code, a)
 	}
 }
 
@@ -694,7 +1075,7 @@ func TestAppPlanUnregisterDialog(t *testing.T) {
 		`<h2 id="plan-unregister-title">Unregister ai-manager — build plan?</h2>`,
 		"aimd forgets this plan. There's no Undo.",
 		"It leaves the dashboard and the menu.",
-		"Its packages, links and history go: every link (the ones you made by hand too), your unlinks and Mark done, the timeline and its alerts",
+		"Its packages, links and history go: every link (the ones you made by hand too), your unlinks, Mark done and what you hid from Unmatched, the timeline and its alerts",
 		"Its lead session is no longer monitored as a lead",
 		"The plan file stays as it is in the repo",
 		"Registering the file again starts afresh",
@@ -998,9 +1379,13 @@ func TestAppPlanStatic(t *testing.T) {
 	}
 	js := string(staticFiles["app-plan.js"].data)
 	// The shell loads the graph's links and keeps the scroll: the page
-	// only brings the selected box into view.
-	wantIn(t, "app-plan.js", js, "aim:swap", "data-keep-scroll", "scrollIntoView")
-	wantNotIn(t, "app-plan.js", js, "AIM.navigate", "data-plan-pane", "scrollLeft =")
+	// only places a view when it first shows (show), and never moves it
+	// after that.
+	wantIn(t, "app-plan.js", js, "aim:swap", "data-keep-scroll", "scrollIntoView", "if (seen[el.id]) return;")
+	wantNotIn(t, "app-plan.js", js, "AIM.navigate", "data-plan-pane")
+	if n := strings.Count(js, "scrollLeft = "); n != 1 {
+		t.Errorf("app-plan.js sets scrollLeft in %d places; only show should", n)
+	}
 	wantNotIn(t, "app-plan.js", js, "innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function", "http://", "https://", "fetch(")
 	if len(js) > 4<<10 {
 		t.Errorf("app-plan.js is %d bytes; keep it small", len(js))
@@ -1012,6 +1397,61 @@ func TestAppPlanStatic(t *testing.T) {
 		must(t, os.WriteFile(f, staticFiles["app-plan.js"].data, 0o644))
 		if out, err := exec.Command(node, "--check", f).CombinedOutput(); err != nil {
 			t.Errorf("node --check app-plan.js: %v\n%s", err, out)
+		}
+	}
+}
+
+// A plan's graph opens at its left end, panned just far enough to show
+// the packages being worked on (data-focus), not at its far right; the
+// selected package is brought into view after that.
+func TestPlanGraphOpensOnWork(t *testing.T) {
+	e := newBoardEnv(t)
+	e.registerSharing()
+	for _, p := range []string{"/app/plans/sharing", "/app/plans/sharing?view=graph&pkg=T1&fragment=list"} {
+		page := get(t, e.h, p)
+		wantIn(t, p, page, `<div id="plan-graph" class="pg-scroll" data-keep-scroll>`)
+		// The fixture has nothing working; its in-review packages are the
+		// focus, not its ready or blocked ones.
+		wantIn(t, p, page, `data-item="A2" data-focus tabindex`, `data-item="S1" data-focus tabindex`)
+		wantNotIn(t, p, page, `data-item="A1" data-focus`, `data-item="T1" data-focus`, "data-scroll-start")
+	}
+	for _, view := range []string{"kanban", "timeline"} {
+		wantNotIn(t, view, get(t, e.h, "/app/plans/sharing?view="+view+"&fragment=list"), "data-focus")
+	}
+	js := string(staticFiles["app-plan.js"].data)
+	wantIn(t, "show", jsFunc(t, js, "show"), "el.scrollLeft = focusLeft(el);", "sel.scrollIntoView(")
+	wantIn(t, "focusLeft", jsFunc(t, js, "focusLeft"), `box.querySelectorAll("[data-focus]")`, "if (!items.length) return 0;",
+		"Math.max(0, Math.min(right + margin - box.clientWidth, left - margin))")
+	wantIn(t, "app-plan.js", js, `window.addEventListener("load"`, "if (el.scrollLeft === 0) show(el);")
+	wantNotIn(t, "app-plan.js", js, "scrollWidth")
+}
+
+// The graph opens on the packages being worked on or in review; with none,
+// on the ones ready to start; with none of those either, nothing is marked
+// and it stays at its left end.
+func TestMarkFocus(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []string
+		want []bool
+	}{
+		{"working and in review", []string{"done", "working", "ready", "in_review", "blocked"}, []bool{false, true, false, true, false}},
+		{"none working: ready", []string{"done", "ready", "blocked", "ready"}, []bool{false, true, false, true}},
+		{"all done", []string{"done", "done", "dropped"}, []bool{false, false, false}},
+		{"only blocked", []string{"blocked"}, []bool{false}},
+		{"empty", nil, nil},
+	} {
+		nodes := make([]planNode, len(tc.in))
+		for i, lc := range tc.in {
+			nodes[i].Lifecycle = lc
+		}
+		markFocus(nodes)
+		var got []bool
+		for _, n := range nodes {
+			got = append(got, n.Focus)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s: focus %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

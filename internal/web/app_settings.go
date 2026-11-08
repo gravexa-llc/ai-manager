@@ -2,9 +2,9 @@ package web
 
 // The Settings page (GET /app/settings): alert switches, the inbox's
 // timings, who merges each plan's PRs, how sessions become monitored,
-// keyboard shortcuts on or off, and the theme. The settings live in
-// aimd's store (store/settings.go, migration 0010), not in config.toml,
-// and each takes effect where it is read:
+// keyboard shortcuts on or off, the theme and the time zone. The settings
+// live in aimd's store (store/settings.go, migration 0010), not in
+// config.toml, and each takes effect where it is read:
 //
 //   - the count in the tab title, the chime, the shortcuts and the theme
 //     are the shell's flags (appSettingsFlags), drawn on <html> with every
@@ -23,7 +23,12 @@ package web
 //     (internal/notify Options.On, wired in cmd/aimd);
 //   - who merges a plan's PRs replaces the plan's Merges line before
 //     monitor.Compute reads it (monitor.Source.Merges, wired in cmd/aimd),
-//     so the PR rule, Needs you and GET /api/prs follow it.
+//     so the PR rule, Needs you and GET /api/prs follow it;
+//   - the time zone (timeZone: System is the machine's, from
+//     /etc/localtime) is the snapshot's: load puts sn.now in it, and the
+//     formatting helpers (dashboard.go) write clock times and days in
+//     now's zone; the inbox's "tomorrow 9am" is in it too. A change
+//     publishes every topic, so open pages redraw their times.
 //
 // The page's switches and segmented controls are forms posting to
 // /app/settings/set and /app/settings/merges, answered with the toast
@@ -47,6 +52,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/inbox"
 	"github.com/gravexa-llc/ai-manager/internal/monitor"
 	"github.com/gravexa-llc/ai-manager/internal/store"
+	"github.com/gravexa-llc/ai-manager/internal/timezone"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
 
@@ -101,11 +107,25 @@ func (s *Server) appSettingsFlags(ctx context.Context) appFlags {
 	return appFlags{TabCount: set.TabCount, Chime: set.Chime, Keys: set.Shortcuts, Theme: set.Theme}
 }
 
+// timeZone is the zone the app writes clock times in: the Time zone
+// setting's, or the machine's for System. A stored zone that doesn't load
+// is System too (store.Settings already reads one so), never an error.
+func (s *Server) timeZone(set store.Settings) timezone.Zone {
+	if set.TimeZone != "" && set.TimeZone != store.TimeZoneSystem {
+		if loc, err := timezone.Load(set.TimeZone); err == nil {
+			return timezone.Zone{Name: set.TimeZone, Loc: loc}
+		}
+	}
+	return s.systemZone()
+}
+
 // inboxSettingsOf are the inbox's timings for the settings: the spec's
-// defaults with the stored back-to-Open delay and Done history.
-func inboxSettingsOf(set store.Settings) inbox.Settings {
+// defaults with the stored back-to-Open delay and Done history, and
+// "tomorrow 9am" in the Time zone setting's zone.
+func (s *Server) inboxSettingsOf(set store.Settings) inbox.Settings {
 	in := inbox.Defaults()
 	in.BackToOpen, in.KeepDone = set.BackToOpen(), set.KeepDone()
+	in.Location = s.timeZone(set).Loc
 	return in
 }
 
@@ -128,6 +148,26 @@ type settingsView struct {
 	Shortcuts            []settingSwitch
 	// Theme is the Appearance card's System / Dark / Light.
 	Theme settingChoice
+	// TimeZone is the Appearance card's time zone menu.
+	TimeZone settingZone
+	// Versions is what this Mac runs: aimd and the plugin on disk.
+	Versions versionsCard
+}
+
+// settingZone is the time zone row: a menu of System, the common zones
+// and every zone, posted with its Set button.
+type settingZone struct {
+	settingForm
+	Key, Title, Desc string
+	// System is the System choice, naming the machine's zone.
+	System settingOption
+	Groups []settingZoneGroup
+}
+
+// settingZoneGroup is an <optgroup> of the time zone menu.
+type settingZoneGroup struct {
+	Label   string
+	Options []settingOption
 }
 
 // settingForm is what every settings form carries.
@@ -178,6 +218,7 @@ var settingText = map[string][2]string{
 	store.SettingBackToOpen:    {"After Go, back to Open if still waiting", "An item you clicked Go on returns to Open when its session is still waiting after this long."},
 	store.SettingKeepDone:      {"Done history", "How long handled items stay in Done, with undo. A shorter history deletes the older ones at once."},
 	store.SettingTheme:         {"Theme", "System follows your Mac's appearance, light or dark, and changes with it."},
+	store.SettingTimeZone:      {"Time zone", "The zone every time on these pages is in, and whose midnight starts “today” and “tomorrow”. System is your Mac's, as Date & Time sets it."},
 }
 
 // themeLabels are the theme choices' labels, by value.
@@ -226,7 +267,7 @@ func fillSettings(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	v.BackToOpen = choice(store.SettingBackToOpen, store.BackToOpenChoices, "min", set.BackToOpenMinutes)
 	v.KeepDone = choice(store.SettingKeepDone, store.KeepDoneChoices, "days", set.KeepDoneDays)
 	var snoozes []string
-	for _, c := range inboxSettingsOf(set).Snoozes() {
+	for _, c := range s.inboxSettingsOf(set).Snoozes() {
 		snoozes = append(snoozes, strings.ToLower(c.Label[:1])+c.Label[1:])
 	}
 	v.Snoozes = strings.Join(snoozes, " · ")
@@ -244,7 +285,48 @@ func fillSettings(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	for _, th := range store.ThemeChoices {
 		v.Theme.Options = append(v.Theme.Options, settingOption{Value: th, Label: themeLabels[th], On: th == set.Theme})
 	}
+	v.TimeZone = s.zoneMenu(form, set)
+	v.Versions = s.versionsOf(ctx, sn)
 	return nil
+}
+
+// zoneMenu is the time zone row: System, then the common zones, then
+// every zone this machine lists (timezone.All), the one in use chosen
+// once. A zone in use that neither list has (one set through the API) is
+// listed with the common ones, so the menu shows it; one that doesn't
+// load is System, as timeZone has it.
+func (s *Server) zoneMenu(form settingForm, set store.Settings) settingZone {
+	cur := store.TimeZoneSystem
+	if z := s.timeZone(set); set.TimeZone == z.Name {
+		cur = z.Name
+	}
+	t := settingText[store.SettingTimeZone]
+	z := settingZone{settingForm: form, Key: store.SettingTimeZone, Title: t[0], Desc: t[1],
+		System: settingOption{Value: store.TimeZoneSystem, Label: systemZoneLabel(s.systemZone()), On: cur == store.TimeZoneSystem}}
+	chosen := z.System.On
+	group := func(label string, names []string) {
+		g := settingZoneGroup{Label: label}
+		for _, n := range names {
+			on := !chosen && n == cur
+			chosen = chosen || on
+			g.Options = append(g.Options, settingOption{Value: n, Label: n, On: on})
+		}
+		if len(g.Options) > 0 {
+			z.Groups = append(z.Groups, g)
+		}
+	}
+	common, all := timezone.Common, timezone.All()
+	if !chosen && !slices.Contains(common, cur) && !slices.Contains(all, cur) {
+		common = append(slices.Clone(common), cur)
+	}
+	group("Common", common)
+	group("All zones", all)
+	return z
+}
+
+// systemZoneLabel is the System choice: "System (Europe/Berlin)".
+func systemZoneLabel(z timezone.Zone) string {
+	return "System (" + z.Name + ")"
 }
 
 // mergesNote says where a plan's who-merges comes from.
@@ -352,6 +434,13 @@ func (s *Server) setSettings(ctx context.Context, values map[string]string) (bef
 	// The inbox's rows show the chime and the highlight, its footer the
 	// Done history; and the menu refreshes with it.
 	s.opts.Hub.Publish(api.TopicInbox)
+	// Another time zone rewrites every clock time: every region of every
+	// open page refreshes.
+	if before.TimeZone != after.TimeZone {
+		for _, t := range []string{api.TopicSessions, api.TopicWorktrees, api.TopicPRs, api.TopicStatus, api.TopicPlans} {
+			s.opts.Hub.Publish(t)
+		}
+	}
 	return before, after, nil
 }
 
@@ -390,7 +479,7 @@ func (s *Server) settingsSetForm(w http.ResponseWriter, r *http.Request) {
 		s.appRefuse(w, r, fail.status, ret, fail.msg)
 		return
 	}
-	t := &appToast{Text: settingToast(key, after)}
+	t := &appToast{Text: s.settingToast(key, after)}
 	if old := before.Value(key); formValue(r, "undo") == "" && old != value {
 		t.Undo = &appUndo{Action: "/app/settings/set", Fields: map[string]string{"key": key, "value": old, "return": ret, "undo": "1"}}
 	}
@@ -398,7 +487,7 @@ func (s *Server) settingsSetForm(w http.ResponseWriter, r *http.Request) {
 }
 
 // settingToast says what a setting is now.
-func settingToast(key string, set store.Settings) string {
+func (s *Server) settingToast(key string, set store.Settings) string {
 	switch key {
 	case store.SettingBackToOpen:
 		return "After Go, back to Open after " + plural(set.BackToOpenMinutes, "minute", "minutes")
@@ -409,6 +498,11 @@ func settingToast(key string, set store.Settings) string {
 			return "Theme: System, following your Mac"
 		}
 		return "Theme: " + themeLabels[set.Theme]
+	case store.SettingTimeZone:
+		if set.TimeZone == store.TimeZoneSystem {
+			return "Time zone: " + systemZoneLabel(s.systemZone())
+		}
+		return "Time zone: " + set.TimeZone
 	}
 	return settingText[key][0] + ": " + set.Value(key)
 }
@@ -461,7 +555,7 @@ func (s *Server) settingsJSON(ctx context.Context) api.Settings {
 	return api.Settings{
 		TabCount: set.TabCount, Notifications: set.Notifications, Chime: set.Chime, Highlight: set.Highlight,
 		BackToOpenMinutes: set.BackToOpenMinutes, KeepDoneDays: set.KeepDoneDays, Shortcuts: set.Shortcuts,
-		Theme: set.Theme, Merges: rows,
+		Theme: set.Theme, TimeZone: set.TimeZone, SystemTimeZone: s.systemZone().Name, Merges: rows,
 	}
 }
 
@@ -497,6 +591,9 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Theme != nil {
 		values[store.SettingTheme] = *req.Theme
+	}
+	if req.TimeZone != nil {
+		values[store.SettingTimeZone] = *req.TimeZone
 	}
 	// Check every change before making any.
 	var check store.Settings

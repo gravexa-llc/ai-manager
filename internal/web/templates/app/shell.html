@@ -153,3 +153,18 @@ its words. The script shows the hint the shortcuts setting calls for. */}}
 </div>
 </dialog>
 {{- end}}
+
+{{/* A list's section that folds (groups.go): the <details> that holds a
+group's header (a <summary class="ghead">) and its rows; the page closes it.
+. is a listGroup: open as the page decides, data-group-force when it holds
+the selected row or the search matched it (app-groups.js opens it then,
+whatever the browser remembers). */}}
+{{define "group-open"}}<details class="group" data-group="{{.Key}}"{{if or .Open .Force}} open{{end}}{{if .Force}} data-group-force{{end}}>{{end}}
+
+{{/* A list's Group by control (groupControl): links, so it works without
+the script; app-groups.js remembers a click in the page's cookie. */}}
+{{define "group-by" -}}
+<div class="gby" role="group" aria-label="Group by" data-group-cookie="{{.Cookie}}"><span class="gby-label" aria-hidden="true">Group by</span><span class="seg">
+{{- range .Choices}}<a href="{{.URL}}" data-pane="" data-group-by="{{.Value}}"{{if .On}} class="on" aria-current="true"{{end}}>{{.Label}}</a>{{end -}}
+</span></div>
+{{- end}}

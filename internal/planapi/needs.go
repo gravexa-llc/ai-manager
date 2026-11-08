@@ -4,11 +4,14 @@ package planapi
 // summary, a band and the dashboard's menu show.
 //
 //   - Needs you is the plan's Open items in the Needs you inbox
-//     (internal/inbox): the monitored sessions waiting on you and the
+//     (internal/inbox): the monitored sessions waiting on you, the
 //     PRs internal/prwait's rule says need you (a review request, on any
-//     PR, or a ready PR you merge). They are read from the store at each
-//     read, so a summary agrees with the inbox's Open tab as of its last
-//     sync pass. The dashboard's handlers run a pass first.
+//     PR, or a ready PR you merge), its provisional packages' missing rows
+//     and its packages that are your step and ready (Owner you, or a
+//     "you:" step, once everything they need is done). They are read from
+//     the store at each read, so a summary agrees with the inbox's Open
+//     tab as of its last sync pass. The dashboard's handlers run a pass
+//     first.
 //   - To merge is the plan's open PRs that wait for its lead to merge them:
 //     internal/prwait's rule (through monitor.Set.PRWait as the
 //     dashboard decides it) says they are ready to merge, the plan says

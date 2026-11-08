@@ -9,16 +9,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gravexa-llc/ai-manager/internal/timezone"
 )
 
 // This file holds the Settings page's settings (migration 0010): the alert
-// switches, the inbox's timings, the keyboard shortcuts and the theme,
-// and the per-plan overrides of who merges a plan's
+// switches, the inbox's timings, the keyboard shortcuts, the theme and
+// the time zone, and the per-plan overrides of who merges a plan's
 // PRs. They live in aimd's store, not in config.toml, so the page can
 // change them.
 //
 // A setting has a key and a value in its stored form: "on" or "off" for a
-// switch, a number of minutes or days for a timing, a word for the theme.
+// switch, a number of minutes or days for a timing, a word for the theme,
+// "system" or an IANA name for the time zone.
 // A missing row is the default (DefaultSettings), and so is a row this
 // build can't read, so a database written by a newer build never breaks an
 // older one.
@@ -42,11 +45,14 @@ const (
 	SettingKeepDone = "keep_done_days"
 	// SettingTheme: the app's colors, one of ThemeChoices.
 	SettingTheme = "theme"
+	// SettingTimeZone: the zone the app's clock times are in,
+	// TimeZoneSystem or an IANA name such as "America/New_York".
+	SettingTimeZone = "time_zone"
 )
 
 // SettingNames lists the keys in the Settings page's order.
 var SettingNames = []string{SettingTabCount, SettingNotifications, SettingChime, SettingHighlight,
-	SettingBackToOpen, SettingKeepDone, SettingShortcuts, SettingTheme}
+	SettingBackToOpen, SettingKeepDone, SettingShortcuts, SettingTheme, SettingTimeZone}
 
 // The values a switch holds.
 const (
@@ -71,6 +77,11 @@ const (
 // ThemeChoices are the themes, in the Settings page's order.
 var ThemeChoices = []string{ThemeSystem, ThemeDark, ThemeLight}
 
+// TimeZoneSystem is the time zone of the machine aimd runs on
+// (timezone.Machine). Any other value is an IANA name that loads
+// (timezone.Load).
+const TimeZoneSystem = "system"
+
 // Settings are the stored settings, each its default unless changed.
 type Settings struct {
 	TabCount      bool
@@ -84,15 +95,19 @@ type Settings struct {
 	KeepDoneDays      int
 	// Theme is one of ThemeChoices.
 	Theme string
+	// TimeZone is TimeZoneSystem or an IANA name that loads. A stored
+	// name this machine can't load any more reads as TimeZoneSystem.
+	TimeZone string
 }
 
 // DefaultSettings are the settings before any change: all four alerts
 // (the count in the tab title, notifications, the chime and highlighting)
 // and the shortcuts on, as the user chose in the spec's Q&A; back to Open
-// after 10 minutes; Done kept 30 days; the System theme.
+// after 10 minutes; Done kept 30 days; the System theme; the system's
+// time zone.
 func DefaultSettings() Settings {
 	return Settings{TabCount: true, Notifications: true, Chime: true, Highlight: true, Shortcuts: true,
-		BackToOpenMinutes: 10, KeepDoneDays: 30, Theme: ThemeSystem}
+		BackToOpenMinutes: 10, KeepDoneDays: 30, Theme: ThemeSystem, TimeZone: TimeZoneSystem}
 }
 
 // BackToOpen is the back-to-Open delay.
@@ -130,6 +145,8 @@ func (s Settings) Value(key string) string {
 		return strconv.Itoa(s.KeepDoneDays)
 	case SettingTheme:
 		return s.Theme
+	case SettingTimeZone:
+		return s.TimeZone
 	}
 	return ""
 }
@@ -180,6 +197,14 @@ func (s *Settings) Set(key, value string) error {
 			return fmt.Errorf("%w: %s is %s", ErrBadSetting, key, wordList(ThemeChoices))
 		}
 		s.Theme = value
+		return nil
+	case SettingTimeZone:
+		if value != TimeZoneSystem {
+			if _, err := timezone.Load(value); err != nil {
+				return fmt.Errorf("%w: %s is %s or a time zone this machine knows, such as America/New_York", ErrBadSetting, key, TimeZoneSystem)
+			}
+		}
+		s.TimeZone = value
 		return nil
 	}
 	return fmt.Errorf("%w: there is no setting %q", ErrBadSetting, key)

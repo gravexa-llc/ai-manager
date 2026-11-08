@@ -10,9 +10,9 @@ import (
 
 // This file holds what the event receiver (internal/live) writes: the
 // session fields the mod's events decide, a session row the mod reports
-// before the poller lists it, and /clear continuity. It needs no migration
-// of its own: its columns were in 0001 (MoveSessionID also moves 0006's
-// monitored_sessions rows).
+// before the poller lists it, and /clear continuity. Its columns were in
+// 0001, except the plugin build (0014); MoveSessionID also moves 0006's
+// monitored_sessions rows.
 
 // ModSessionKeyPrefix starts the key of a session row the event receiver
 // created before the poller listed the session: "session:<sessionId>"
@@ -37,7 +37,8 @@ func (s *Store) FindSession(ctx context.Context, sessionID string) (Session, err
 
 // SessionLive is what the event receiver decides about a live session row.
 // The state fields and the activity fields are always written; Cwd,
-// WorktreePath, Repo, Host, ItermSessionID and Kind only when non-empty,
+// WorktreePath, Repo, Host, ItermSessionID, PluginBuild, PluginRoot and
+// Kind only when non-empty,
 // Branch whenever WorktreePath is (an empty branch then means unknown: it
 // belongs to the worktree), and Headless only when set.
 type SessionLive struct {
@@ -55,6 +56,10 @@ type SessionLive struct {
 	Branch         string
 	Host           string
 	ItermSessionID string
+	// PluginBuild and PluginRoot are what session_start said about the
+	// plugin the session loaded (Session.PluginBuild).
+	PluginBuild string
+	PluginRoot  string
 	// Kind is written only when the row has none yet (the poller's kind
 	// wins).
 	Kind     string
@@ -82,6 +87,8 @@ func (s *Store) UpdateSessionLive(ctx context.Context, key string, u SessionLive
 			branch           = CASE WHEN :worktree_path = '' THEN branch ELSE :branch END,
 			host             = CASE WHEN :host = '' THEN host ELSE :host END,
 			iterm_session_id = CASE WHEN :iterm = '' THEN iterm_session_id ELSE :iterm END,
+			plugin_build     = CASE WHEN :plugin_build = '' THEN plugin_build ELSE :plugin_build END,
+			plugin_root      = CASE WHEN :plugin_root = '' THEN plugin_root ELSE :plugin_root END,
 			kind             = CASE WHEN kind = '' THEN :kind ELSE kind END,
 			headless         = coalesce(:headless, headless)
 		WHERE key = :key AND ended_at IS NULL`,
@@ -97,6 +104,8 @@ func (s *Store) UpdateSessionLive(ctx context.Context, key string, u SessionLive
 		sql.Named("branch", u.Branch),
 		sql.Named("host", u.Host),
 		sql.Named("iterm", u.ItermSessionID),
+		sql.Named("plugin_build", u.PluginBuild),
+		sql.Named("plugin_root", u.PluginRoot),
 		sql.Named("kind", u.Kind),
 		sql.Named("headless", headless),
 		sql.Named("key", key),
@@ -111,7 +120,8 @@ func (s *Store) UpdateSessionLive(ctx context.Context, key string, u SessionLive
 // created) into the live row for toKey (the poller's, for the same
 // session). When toKey has no live row, fromKey's row simply takes that
 // key. Otherwise toKey's row takes the mod's fields from it (the state,
-// the activity, iTerm session id, prev_session_id) and fromKey's row is
+// the activity, iTerm session id, the plugin build, prev_session_id) and
+// fromKey's row is
 // deleted, since both described the same session. A fromKey with no live
 // row is not an error: there is nothing to adopt.
 func (s *Store) AdoptSession(ctx context.Context, fromKey, toKey string) error {
@@ -148,7 +158,9 @@ func (s *Store) AdoptSession(ctx context.Context, fromKey, toKey string) error {
 				last_said        = CASE WHEN f.last_said = '' THEN sessions.last_said ELSE f.last_said END,
 				last_event_at    = coalesce(f.last_event_at, sessions.last_event_at),
 				iterm_session_id = CASE WHEN f.iterm_session_id = '' THEN sessions.iterm_session_id ELSE f.iterm_session_id END,
-				prev_session_id  = CASE WHEN sessions.prev_session_id = '' THEN f.prev_session_id ELSE sessions.prev_session_id END
+				plugin_build     = CASE WHEN f.plugin_build = '' THEN sessions.plugin_build ELSE f.plugin_build END,
+				plugin_root      = CASE WHEN f.plugin_root = '' THEN sessions.plugin_root ELSE f.plugin_root END,
+				prev_session_id  =CASE WHEN sessions.prev_session_id = '' THEN f.prev_session_id ELSE sessions.prev_session_id END
 			FROM (SELECT * FROM sessions WHERE id = ?) AS f
 			WHERE sessions.id = ?`, fromID, toID)
 		if err != nil {

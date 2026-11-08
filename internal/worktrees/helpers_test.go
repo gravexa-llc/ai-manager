@@ -14,9 +14,14 @@ import (
 
 // TestMain isolates git from the machine: no system or global config (one
 // test-only global config instead), fixed identities, and a ceiling at the
-// temp dir so no git call in a test can find a repo outside it.
+// temp dir so no git call in a test can find a repo outside it. An ssh
+// that always fails comes first on PATH, so a scanner a test makes
+// without a fake ssh (Options.SSH) never reads the real ssh config.
 func TestMain(m *testing.M) {
 	done := testenv.Setup() // a small TMPDIR, and the fork watchdog (see testenv)
+	// The fake ssh is a shell script: under the race detector on a busy
+	// machine it can take longer than the real cap to start (sshhost.go).
+	sshTimeout = 30 * time.Second
 	os.Exit(done(func() int {
 		dir, err := os.MkdirTemp("", "aim-a1-git")
 		if err != nil {
@@ -35,7 +40,16 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		bin := filepath.Join(dir, "bin")
+		if err := os.Mkdir(bin, 0o755); err == nil {
+			err = os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nexit 255\n"), 0o755)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 		for k, v := range map[string]string{
+			"PATH":                    bin + string(os.PathListSeparator) + os.Getenv("PATH"),
 			"GIT_CONFIG_GLOBAL":       cfg,
 			"GIT_CONFIG_NOSYSTEM":     "1",
 			"GIT_CEILING_DIRECTORIES": tmp,

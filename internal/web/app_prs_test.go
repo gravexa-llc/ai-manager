@@ -46,37 +46,60 @@ func newPRsEnv(t *testing.T, mode string) *boardEnv {
 	return e
 }
 
-func TestAppPRsGroups(t *testing.T) {
-	e := newPRsEnv(t, monitor.ModeOptIn)
-	list := get(t, e.h, "/app/prs?fragment=list")
+// rowsOf are a section's rows' keys, space-separated.
+func rowsOf(t *testing.T, list, key string) string {
+	t.Helper()
+	_, body := sectionOf(t, list, key)
+	return strings.Join(rowKeys(body), " ")
+}
 
-	// On a plan or a monitored session: what needs you first, then the
-	// rest by their last update (newest first; ties by repo, then newest
-	// number).
-	on := groupOf(t, list, `<span>On a plan or a monitored session</span><span>4</span>`)
-	if got := strings.Join(rowKeys(on), " "); got != "example-user/ai-manager#31 example-user/ai-manager#23 example-user/ai-manager#22 example-user/ai-manager#21" {
-		t.Errorf("on a plan = %s", got)
+// Grouped by repo, the default: one section per repo, the one with work on
+// a plan or a monitored session's first and open, the strays' collapsed;
+// a row leaves out its repo.
+func TestAppPRsGroupByRepo(t *testing.T) {
+	e := newPRsEnv(t, monitor.ModeOptIn)
+	for _, p := range []string{"/app/prs?fragment=list", "/app/prs?group=repo&fragment=list"} {
+		list := get(t, e.h, p)
+		if got := strings.Join(sectionKeys(list), " "); got != "repo:example-user/ai-manager repo:example-org/brand repo:o/web" {
+			t.Errorf("%s: sections %s", p, got)
+		}
 	}
-	wantIn(t, "on a plan", on,
-		`<span class="isub">example-user/ai-manager #31 · a monitored session&#39;s branch</span><span class="ititle">Watched work</span>`,
+	list := get(t, e.h, "/app/prs?fragment=list")
+	wantIn(t, "control", list, `<div class="toolbar"><div class="gby" role="group" aria-label="Group by" data-group-cookie="aim_group_prs">`,
+		`<a href="/app/prs?group=repo" data-pane="" data-group-by="repo" class="on" aria-current="true">Repo</a>`,
+		`<a href="/app/prs?group=plan" data-pane="" data-group-by="plan">Plan</a>`)
+
+	// In a section: what needs you first, then the rest by their last
+	// update (newest first; ties by newest number).
+	wantSection(t, list, "repo:example-user/ai-manager", true, false)
+	if got := rowsOf(t, list, "repo:example-user/ai-manager"); got !=
+		"example-user/ai-manager#31 example-user/ai-manager#30 example-user/ai-manager#23 example-user/ai-manager#22 example-user/ai-manager#21" {
+		t.Errorf("ai-manager = %s", got)
+	}
+	_, aim := sectionOf(t, list, "repo:example-user/ai-manager")
+	wantIn(t, "ai-manager", aim,
+		`<summary class="ghead"><span>example-user/ai-manager</span><span>5</span></summary>`,
+		`<span class="isub">#31 · a monitored session&#39;s branch</span><span class="ititle">Watched work</span>`,
 		`<span class="pill tone-warn" title="ready to merge · on no plan, so you merge it">Waiting on you</span>`,
-		`<span class="isub">example-user/ai-manager #22 · aim · C4</span>`,
+		`<span class="isub">#22 · aim · C4</span>`,
 		`<span class="pill tone-lead" title="draft · no agent is working on it, so it&#39;s for this plan&#39;s lead">Waiting on lead</span>`,
 		`<span class="pill tone-info" title="CI failing · an agent is still working on it">Agent working</span>`,
-		`<span class="iwait" title="updated 2026-11-05T10:00:00Z">2h</span>`)
+		`<span class="isub">#30 · not on a plan</span>`,
+		`<span class="pill tone-quiet" title="ready to merge, but not on a plan or a monitored session&#39;s branch: nobody waits on it">Ready</span>`)
 
-	// Not on a plan: the review request first (it needs you), then the
-	// rest by their last update.
-	off := groupOf(t, list, `<span>Not on a plan</span><span>4</span>`)
-	if got := strings.Join(rowKeys(off), " "); got != "example-org/brand#6 example-user/ai-manager#30 o/web#4 o/web#3" {
-		t.Errorf("not on a plan = %s", got)
-	}
-	wantIn(t, "not on a plan", off,
-		`<span class="isub">example-org/brand #6 · not on a plan</span><span class="ititle">Brand refresh</span>`,
+	// The repos of strays only: collapsed, by name.
+	wantSection(t, list, "repo:example-org/brand", false, false)
+	wantSection(t, list, "repo:o/web", false, false)
+	_, brand := sectionOf(t, list, "repo:example-org/brand")
+	wantIn(t, "brand", brand,
+		`<span class="isub">#6 · not on a plan</span><span class="ititle">Brand refresh</span>`,
 		`<span class="pill tone-warn" title="your review is requested">Review requested</span>`,
-		`<span class="iwait" title="review requested since 2026-11-05T10:00:00Z">2h</span>`,
-		`<span class="pill tone-quiet" title="ready to merge, but not on a plan or a monitored session&#39;s branch: nobody waits on it">Ready</span>`,
-		`<span class="tag">CI failing</span>`,
+		`<span class="iwait" title="review requested since 2026-11-05T10:00:00Z">2h</span>`)
+	if got := rowsOf(t, list, "repo:o/web"); got != "o/web#4 o/web#3" {
+		t.Errorf("o/web = %s", got)
+	}
+	_, web := sectionOf(t, list, "repo:o/web")
+	wantIn(t, "o/web", web, `<span class="tag">CI failing</span>`,
 		`<span class="pill tone-quiet" title="a draft with no update for 30 days or more">Stale draft</span>`)
 	// Merged and closed PRs aren't listed.
 	wantNotIn(t, "list", list, `data-item="example-user/ai-manager#7"`)
@@ -84,11 +107,67 @@ func TestAppPRsGroups(t *testing.T) {
 	wantIn(t, "summary", get(t, e.h, "/app/prs?fragment=summary"), "<p>8 open · 2 waiting on you</p>")
 	wantIn(t, "menu", get(t, e.h, "/app/prs?fragment=menu"), `Pull requests<span class="mini" title="8 open">`)
 
-	// "all" mode counts every PR: the first group is the ones on a plan.
+	// "all" mode: only plans make a repo's section open.
 	all := get(t, newPRsEnv(t, monitor.ModeAll).h, "/app/prs?fragment=list")
-	on = groupOf(t, all, "On a plan or a monitored session")
-	wantIn(t, "all mode", on, `data-item="example-user/ai-manager#21"`, `data-item="example-user/ai-manager#22"`)
-	wantNotIn(t, "all mode", on, `data-item="o/web#4"`, `data-item="example-org/brand#6"`)
+	wantSection(t, all, "repo:example-user/ai-manager", true, false)
+	wantSection(t, all, "repo:o/web", false, false)
+}
+
+// Grouped by plan: one section per registered plan, by its title, then the
+// PRs on a monitored session's branch on no plan, then Not on a plan,
+// collapsed; a row leaves out its plan.
+func TestAppPRsGroupByPlan(t *testing.T) {
+	e := newPRsEnv(t, monitor.ModeOptIn)
+	list := get(t, e.h, "/app/prs?group=plan&fragment=list")
+	if got := strings.Join(sectionKeys(list), " "); got != "plan:aim plan:-watched plan:-none" {
+		t.Errorf("sections %s", got)
+	}
+	wantIn(t, "control", list, `<a href="/app/prs?group=plan" data-pane="" data-group-by="plan" class="on" aria-current="true">Plan</a>`)
+	wantSection(t, list, "plan:aim", true, false)
+	wantSection(t, list, "plan:-watched", true, false)
+	wantSection(t, list, "plan:-none", false, false)
+	if got := rowsOf(t, list, "plan:aim"); got != "example-user/ai-manager#23 example-user/ai-manager#22 example-user/ai-manager#21" {
+		t.Errorf("aim = %s", got)
+	}
+	_, aim := sectionOf(t, list, "plan:aim")
+	wantIn(t, "aim", aim, `<summary class="ghead"><span>ai-manager — build plan</span><span>3</span></summary>`,
+		`<span class="isub">example-user/ai-manager #22 · C4</span>`)
+	_, watched := sectionOf(t, list, "plan:-watched")
+	wantIn(t, "watched", watched, `<span>No plan · watched</span><span>1</span>`, `<span class="isub">example-user/ai-manager #31</span>`)
+	if got := rowsOf(t, list, "plan:-none"); got != "example-org/brand#6 example-user/ai-manager#30 o/web#4 o/web#3" {
+		t.Errorf("not on a plan = %s", got)
+	}
+	_, none := sectionOf(t, list, "plan:-none")
+	wantIn(t, "not on a plan", none, `<span>Not on a plan</span><span>4</span>`, `<span class="isub">example-org/brand #6</span>`)
+	// The rows' links keep the Group by.
+	wantIn(t, "links", list, `href="/app/prs?group=plan&amp;pr=example-user%2Fai-manager%2322"`)
+
+	// "all" mode: no watched section; the plan's PRs, then the rest.
+	all := get(t, newPRsEnv(t, monitor.ModeAll).h, "/app/prs?group=plan&fragment=list")
+	if got := strings.Join(sectionKeys(all), " "); got != "plan:aim plan:-none" {
+		t.Errorf("all mode: sections %s", got)
+	}
+	wantIn(t, "all mode", rowsOf(t, all, "plan:-none"), "example-user/ai-manager#31")
+}
+
+// The section that holds the selected PR, and every section a search
+// matched, open whatever their default; the others keep theirs.
+func TestAppPRsSectionsOpen(t *testing.T) {
+	e := newPRsEnv(t, monitor.ModeOptIn)
+	sel := get(t, e.h, "/app/prs?pr="+url.QueryEscape("o/web#4")+"&fragment=list")
+	wantSection(t, sel, "repo:o/web", true, true)
+	wantSection(t, sel, "repo:example-org/brand", false, false)
+	wantSection(t, sel, "repo:example-user/ai-manager", true, false)
+	wantSection(t, get(t, e.h, "/app/prs?group=plan&pr="+url.QueryEscape("o/web#3")+"&fragment=list"), "plan:-none", true, true)
+	// The whole page, as a deep link lands.
+	wantSection(t, section(t, get(t, e.h, "/app/prs?pr="+url.QueryEscape("example-org/brand#6")), "list"), "repo:example-org/brand", true, true)
+
+	found := get(t, e.h, "/app/prs?q=parked&fragment=list")
+	if got := strings.Join(sectionKeys(found), " "); got != "repo:o/web" {
+		t.Errorf("search: sections %s", got)
+	}
+	wantSection(t, found, "repo:o/web", true, true)
+	wantSection(t, get(t, e.h, "/app/prs?group=plan&q=o%2Fweb&fragment=list"), "plan:-none", true, true)
 }
 
 func TestAppPRsSelection(t *testing.T) {
@@ -172,6 +251,8 @@ func TestWhoChips(t *testing.T) {
 		{"ready, not counted", ready, prwait.Verdict{WaitingOn: prwait.WaitingNone}, "", "Ready tone-quiet"},
 		{"red, not counted", red, prwait.Verdict{WaitingOn: prwait.WaitingNone}, "", "CI failing  plain"},
 		{"merged", merged, prwait.Verdict{WaitingOn: prwait.WaitingNone}, "", "Merged tone-quiet plain"},
+		// Linked by URL, never read: whatever the verdict, it isn't open.
+		{"not read yet", store.PR{State: store.PROpen}, prwait.Verdict{WaitingOn: prwait.WaitingNone, Reason: prwait.NotReadYet}, "", "Not read yet tone-quiet"},
 		// Snoozing only applies to what needs you.
 		{"snoozed, but not needing you", ready, prwait.Verdict{WaitingOn: prwait.WaitingNone}, "until 9am", "Ready tone-quiet"},
 	} {
@@ -214,12 +295,12 @@ func TestAppPRsSnoozed(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("snooze = %d %s", rec.Code, rec.Body)
 	}
-	wantIn(t, "snoozed row", groupOf(t, get(t, e.h, "/app/prs?fragment=list"), "Not on a plan"),
+	wantIn(t, "snoozed row", itemOf(t, get(t, e.h, "/app/prs?fragment=list"), "example-org/brand#6"),
 		`<span class="pill tone-quiet" title="snoozed until 13:00">Snoozed</span>`)
 	wantIn(t, "snoozed detail", get(t, e.h, "/app/prs?pr="+ref+"&fragment=detail"),
 		`<p class="dtext">In Needs you, snoozed until 13:00: your review is requested.</p>`, "Open in Needs you")
 	// Its neighbour isn't snoozed.
-	wantIn(t, "#31", groupOf(t, get(t, e.h, "/app/prs?fragment=list"), "On a plan or a monitored session"), ">Waiting on you</span>")
+	wantIn(t, "#31", itemOf(t, get(t, e.h, "/app/prs?fragment=list"), "example-user/ai-manager#31"), ">Waiting on you</span>")
 	// A PR that doesn't need you has no item to link.
 	wantNotIn(t, "#21", get(t, e.h, "/app/prs?pr="+url.QueryEscape("example-user/ai-manager#21")+"&fragment=detail"), "Open in Needs you")
 }

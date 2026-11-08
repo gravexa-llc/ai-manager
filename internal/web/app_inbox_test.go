@@ -155,6 +155,79 @@ func TestInboxPage(t *testing.T) {
 	}
 }
 
+// Group by: plan (the default), repo or session, within the tab showing,
+// oldest first in each section. Nothing starts collapsed, since all of it
+// needs you; the selected item's section opens whatever the browser
+// remembers.
+func TestInboxGroupBy(t *testing.T) {
+	e := newInboxEnv(t)
+	get(t, e.h, "/app/inbox") // a pass opens the items
+	j1, pr7, pr8, pid11 := e.id("job:j1"), e.id("o/app#7"), e.id("o/app#8"), e.id("pid:11")
+	j1Ref, pid11Ref := e.item("job:j1").Ref, e.item("pid:11").Ref
+	rows := func(list, key string) string {
+		t.Helper()
+		_, body := sectionOf(t, list, key)
+		return strings.Join(rowKeys(body), " ")
+	}
+	for _, c := range []struct {
+		group, summary string
+		sections       []string
+		rows           map[string]string
+		heads          []string
+	}{
+		{"plan", "grouped by plan", []string{"plan:sharing", "plan:-none"},
+			map[string]string{"plan:sharing": pr7, "plan:-none": j1 + " " + pr8 + " " + pid11},
+			[]string{`<span>Pivot share links</span><span>1</span>`, `<span>No plan</span><span>3</span>`}},
+		{"repo", "grouped by repo", []string{"repo:o/app", "repo:o/web"},
+			map[string]string{"repo:o/app": pr7 + " " + pr8 + " " + pid11, "repo:o/web": j1},
+			[]string{`<span>o/app</span><span>3</span>`, `<span>o/web</span><span>1</span>`}},
+		// One section per session, named as the Sessions page names it, by
+		// name; then the PRs, which come from no session.
+		{"session", "grouped by session", []string{"session:" + strings.TrimPrefix(pid11Ref, "session:"), "session:" + strings.TrimPrefix(j1Ref, "session:"), "session:-prs"},
+			map[string]string{"session:-prs": pr7 + " " + pr8},
+			[]string{`<span>routes agent</span><span>1</span>`, `<span>sharing copy</span><span>1</span>`, `<span>Pull requests</span><span>2</span>`}},
+	} {
+		list := get(t, e.h, "/app/inbox?group="+c.group+"&fragment=list")
+		if got := sectionKeys(list); strings.Join(got, " ") != strings.Join(c.sections, " ") {
+			t.Errorf("%s: sections %v, want %v", c.group, got, c.sections)
+		}
+		for _, k := range c.sections {
+			wantSection(t, list, k, true, false)
+		}
+		for k, want := range c.rows {
+			if got := rows(list, k); got != want {
+				t.Errorf("%s: %s rows %s, want %s", c.group, k, got, want)
+			}
+		}
+		wantIn(t, c.group, list, c.heads...)
+		wantIn(t, c.group, list, `data-group-by="`+c.group+`" class="on" aria-current="true">`,
+			"Grouped by "+c.group+", oldest first in each group.",
+			// The tabs and the rows keep the Group by.
+			`href="/app/inbox?group=`+c.group+`&amp;tab=done" data-pane="list detail">Done`,
+			`href="/app/inbox?group=`+c.group+`&amp;item=`+pid11+`&amp;tab=open"`)
+		wantIn(t, c.group, get(t, e.h, "/app/inbox?group="+c.group+"&fragment=summary"), "<p>4 open · "+c.summary+"</p>")
+	}
+	// The default is plan.
+	wantIn(t, "default", get(t, e.h, "/app/inbox?fragment=list"), `data-group-by="plan" class="on" aria-current="true">`)
+
+	// The selected item's section is forced open; the others aren't.
+	sel := get(t, e.h, "/app/inbox?group=session&item="+pr8+"&fragment=list")
+	wantSection(t, sel, "session:-prs", true, true)
+	wantSection(t, sel, "session:"+strings.TrimPrefix(j1Ref, "session:"), true, false)
+	// A search forces open every section it leaves.
+	found := get(t, e.h, "/app/inbox?group=repo&q=routes&fragment=list")
+	wantSection(t, found, "repo:o/app", true, true)
+	wantNotIn(t, "search", found, `data-group="repo:o/web"`)
+
+	// Another tab groups its own items: the dismissed job, its session
+	// ended.
+	done := get(t, e.h, "/app/inbox?group=session&tab=done&fragment=list")
+	wantIn(t, "done", done, `<span>dismissed job</span><span>1</span>`)
+	if got := len(sectionKeys(done)); got != 1 {
+		t.Errorf("done: %d sections", got)
+	}
+}
+
 // Every selection is in the URL, and renders the same alone as in the page.
 func TestInboxSelection(t *testing.T) {
 	e := newInboxEnv(t)
@@ -419,7 +492,7 @@ func TestInboxFollowsMonitoring(t *testing.T) {
 	list := get(t, e.h, "/app/inbox?fragment=list")
 	wantIn(t, "list", list, "watched one", "#30 ·", `<span>No plan</span>`)
 	wantNotIn(t, "list", list, "waiting stranger", "headless run")
-	wantIn(t, "menu", get(t, e.h, "/app/inbox?fragment=menu"), `data-needs-count="2"`)
+	wantIn(t, "menu", get(t, e.h, "/app/inbox?fragment=menu"), `data-needs-count="`+strconv.Itoa(2+aimSteps)+`"`)
 
 	// Unwatched, its item ends.
 	e.watchAPI("DELETE", "watch-1", http.StatusOK)

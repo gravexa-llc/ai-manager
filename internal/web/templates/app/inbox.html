@@ -1,11 +1,14 @@
 {{/* Needs you (GET /app/inbox; app_inbox.go). The list pane
-has the tabs and the items by plan; the detail pane the selected item, its
-actions (forms posting to /app/inbox/…, answered with the toast protocol)
-and its history. */}}
+has the tabs, the Group by and the items in sections that fold, by plan,
+repo or session (?group=); the detail pane the selected item, its actions
+(forms posting to /app/inbox/…, and your step's Mark done to the plan
+page's /app/plans/{slug}/done, answered with the toast protocol) and its
+history. */}}
 
 {{define "head" -}}
 <link rel="stylesheet" href="/static/app-inbox.css?v={{.AssetVersion}}">
 <script src="/static/app-inbox.js?v={{.AssetVersion}}" defer></script>
+<script src="/static/app-groups.js?v={{.AssetVersion}}" defer></script>
 {{- end}}
 
 {{define "list" -}}
@@ -15,6 +18,7 @@ and its history. */}}
 {{range .Tabs}}<a class="tab{{if .On}} on{{end}}"{{if .On}} aria-current="page"{{end}} href="{{.URL}}" data-pane="list detail">{{.Label}}<span class="tcount"><span class="vh">: </span>{{.Count}}</span></a>
 {{end -}}
 </nav>
+{{if .GroupBy.Choices}}<div class="end">{{template "group-by" .GroupBy}}</div>{{end}}
 </div>
 {{if .Unavailable -}}
 <p class="empty">{{.Unavailable}}</p>
@@ -22,7 +26,8 @@ and its history. */}}
 <p class="empty">{{.Empty}}</p>
 {{- else -}}
 {{range .Groups -}}
-<div class="ghead"><span>{{.Label}}</span><span>{{.Count}}</span></div>
+{{template "group-open" .}}
+<summary class="ghead"><span>{{.Label}}</span><span>{{.Count}}</span></summary>
 <ul class="rows">
 {{range .Items}}<li><a class="irow {{.KindClass}}{{if .Sel}} sel{{end}}{{if .New}} new{{end}}" href="{{.URL}}" data-pane="detail" data-item="{{.ID}}"{{if .Sel}} aria-current="true"{{end}}{{with .Chime}} data-chime="{{.}}"{{end}}{{with .Search}} data-search="{{.}}"{{end}}>
 <span class="kdot" aria-hidden="true"></span>
@@ -31,6 +36,7 @@ and its history. */}}
 </a></li>
 {{end -}}
 </ul>
+</details>
 {{end -}}
 {{- end}}
 {{with .Footer}}<p class="hint list-foot">{{.}}</p>{{end}}
@@ -74,6 +80,15 @@ and its history. */}}
 <div class="copyrow"><pre class="code" id="{{.ID}}">{{.Row}}</pre><button type="button" class="btn sm" data-copy="{{.ID}}" title="Copy the row, to paste into {{.File}}">Copy</button></div>
 <p class="hint">{{.Why}} Fill in the blank cells as the plan's other rows do. aimd never edits the plan file; <a href="{{.PkgURL}}">see it on the plan</a>.</p>
 {{- end}}
+{{with .Step -}}
+{{with .What}}<p class="label">What</p>
+<p class="istep-what">{{.}}</p>{{end}}
+{{with .Note}}<p class="label">Your part</p>
+<p class="iask">{{.}}</p>{{end}}
+{{with .Ready}}<p class="istep-ready" title="{{$.View.Item.Step.ReadyTitle}}">{{.}}</p>{{end}}
+{{with .Hint}}<p class="hint">{{.}}</p>{{end}}
+{{with .DoneHint}}<p class="hint">{{.}}</p>{{end}}
+{{- end}}
 
 <div class="actions">
 {{- if .Go.Show}}
@@ -84,6 +99,16 @@ and its history. */}}
 <input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="item" value="{{.ID}}"><input type="hidden" name="return" value="{{$.Return}}">
 <button type="submit" class="btn primary" data-key="g">{{.Go.Label}} <kbd>g</kbd></button>
 </form>
+{{- end}}
+{{- end}}
+{{- with .Step}}
+{{- if .MarkDone}}
+<form method="post" action="{{.MarkDone}}" data-pane="list detail">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="pkg" value="{{.Pkg}}"><input type="hidden" name="done" value="1"><input type="hidden" name="return" value="{{$.Return}}">
+<button type="submit" class="btn" title="Marks the package done on its plan, which closes this item; the plan file is unchanged">Mark done</button>
+</form>
+{{- else if .MarkOff}}
+<button type="button" class="btn" disabled aria-disabled="true" title="{{.MarkOff}}">Mark done</button>
 {{- end}}
 {{- end}}
 {{- if .Snooze}}

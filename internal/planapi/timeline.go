@@ -136,7 +136,7 @@ func (s *Service) Timeline(ctx context.Context, slug string, q api.TimelineQuery
 			if err != nil {
 				continue // linked by hand, not read from GitHub yet
 			}
-			lp := &api.LinkPR{Repo: pr.Repo, Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State,
+			lp := &api.LinkPR{Repo: pr.Repo, Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, Unread: pr.Unread(),
 				Draft: pr.Draft, HeadBranch: pr.HeadBranch, MergedAt: pr.MergedAt, ClosedAt: pr.ClosedAt}
 			e := api.TimelineEntry{Kind: api.TimelinePR, ID: int64(pr.Number), Packages: prPkgs[ref], PR: lp}
 			if at := pr.OpenedAt(); !at.IsZero() {

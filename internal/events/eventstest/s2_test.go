@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -139,9 +140,9 @@ func TestMinimalSession(t *testing.T) {
 	}
 }
 
-// A permission ask raises needs_you twice (tool.check, then
-// classic.PermissionRequest) for the same tool_use_id, and the tool event
-// with that id follows.
+// A permission ask raises needs_you once, from classic.PermissionRequest
+// (the dialog), under the tool_use_id tool.check saw; tool.check's own ask
+// raises none. The tool event with that id follows.
 func TestPermissionAskInSubagent(t *testing.T) {
 	evs := load(t, "permission-ask-subagent.jsonl")
 	var needs []events.Event
@@ -154,12 +155,12 @@ func TestPermissionAskInSubagent(t *testing.T) {
 			tool = &evs[i]
 		}
 	}
-	if len(needs) != 2 {
-		t.Fatalf("got %d needs_you, want 2", len(needs))
+	if len(needs) != 1 {
+		t.Fatalf("got %d needs_you, want 1", len(needs))
 	}
 	const sub = "ad042043bfa112bd0"
-	if needs[0].Source != events.SourceToolCheck || needs[1].Source != events.SourcePermissionRequest {
-		t.Errorf("sources %q, %q", needs[0].Source, needs[1].Source)
+	if needs[0].Source != events.SourcePermissionRequest {
+		t.Errorf("source %q, want %q", needs[0].Source, events.SourcePermissionRequest)
 	}
 	for _, n := range needs {
 		if n.AgentID != sub || n.ToolUseID == "" || n.ToolUseID != needs[0].ToolUseID || n.Reason != "Bash: Create directory s2-sub-dir" {
@@ -168,6 +169,34 @@ func TestPermissionAskInSubagent(t *testing.T) {
 	}
 	if tool == nil || tool.AgentID != sub || tool.ToolUseID != needs[0].ToolUseID {
 		t.Errorf("tool after the ask = %+v", tool)
+	}
+}
+
+// The older mod (Mod.ToolCheckAsks) sends a tool_check needs_you for the
+// same call before the dialog's permission_request, under the same
+// tool_use_id, with the call's label and wait. The rest of the stream is
+// the current mod's.
+func TestOlderModToolCheckAsks(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "testdata", "events", "permission-ask-main-loop.jsonl")
+	old, err := LoadS2Mod(path, Mod{ToolCheckAsks: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var needs []events.Event
+	for _, e := range old {
+		if e.Kind == events.NeedsYou {
+			needs = append(needs, e)
+		}
+	}
+	if len(needs) != 2 || needs[0].Source != events.SourceToolCheck || needs[1].Source != events.SourcePermissionRequest {
+		t.Fatalf("needs_you = %+v, want tool_check then permission_request", needs)
+	}
+	if needs[0].ToolUseID == "" || needs[0].ToolUseID != needs[1].ToolUseID || needs[0].Reason != needs[1].Reason || needs[0].Wait == nil {
+		t.Errorf("tool_check ask %+v, dialog %+v: want the same call, label and a wait", needs[0], needs[1])
+	}
+	cur := load(t, "permission-ask-main-loop.jsonl")
+	if len(old) != len(cur)+1 {
+		t.Errorf("older mod sent %d events, current %d: want one more", len(old), len(cur))
 	}
 }
 
@@ -238,5 +267,53 @@ func TestLabel(t *testing.T) {
 		if got := Label(c.tool, c.input, cwd); got != c.want {
 			t.Errorf("Label(%s, %v) = %q, want %q", c.tool, c.input, got, c.want)
 		}
+	}
+}
+
+// A subagent's turn.step results set its token count on the next
+// agent_list: the latest step's usage added up, not a running total. The
+// main loop's steps, and a step with no usage, change nothing.
+func TestStepTokens(t *testing.T) {
+	const sid, sub, other = "lead-session", "a1b2c3d4e5f6a7b8c", "a0000000000000000"
+	rec := func(seq int, event, phase, agent, data string) string {
+		line := `{"seq": ` + strconv.Itoa(seq) + `, "t": "2026-11-06T09:00:0` + strconv.Itoa(seq) + `.000Z", "sessionId": "` + sid +
+			`", "event": "` + event + `", "phase": "` + phase + `"`
+		if agent != "" {
+			line += `, "agentId": "` + agent + `"`
+		}
+		return line + `, "data": ` + data + `}`
+	}
+	list := `{"agents": [{"id": "` + sub + `", "status": "running", "type": "general-purpose"}]}`
+	log := strings.Join([]string{
+		rec(1, "session.start", "in", "", `{"cwd": "/tmp/probe"}`),
+		rec(2, "turn.step", "out", sub, `{"usage": {"input_tokens": 2, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 3800, "output_tokens": 700, "model": "m"}}`),
+		rec(3, "agent.list", "out", "", list),
+		rec(4, "turn.step", "out", sub, `{"usage": {"input_tokens": 2, "cache_read_input_tokens": 3800, "cache_creation_input_tokens": 21000, "output_tokens": 1500, "model": "m"}}`),
+		rec(5, "turn.step", "out", sub, `{"usage": null}`),
+		rec(6, "turn.step", "out", "", `{"usage": {"input_tokens": 9, "cache_read_input_tokens": 90000, "output_tokens": 900}}`),
+		rec(7, "agent.list", "out", "", `{"agents": [{"id": "`+sub+`", "status": "running", "type": "general-purpose"}, {"id": "`+other+`", "status": "pending", "type": "Explore"}]}`),
+		rec(8, "session.end", "in", "", `{"reason": "other"}`),
+	}, "\n")
+	evs, err := ReadS2(strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range evs {
+		if err := e.Normalize(); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range e.Agents {
+			got = append(got, a.ID+"="+strconv.FormatInt(a.Tokens, 10))
+		}
+	}
+	if want := []string{sub + "=4502", sub + "=26302", other + "=0"}; !slices.Equal(got, want) {
+		t.Errorf("agent_list tokens = %v, want %v", got, want)
+	}
+	if n := StepTokens(map[string]any{"input_tokens": "9", "output_tokens": -4.0, "cache_read_input_tokens": 10.0}); n != 10 {
+		t.Errorf("StepTokens of odd counts = %d, want 10", n)
+	}
+	if n := StepTokens(nil); n != 0 {
+		t.Errorf("StepTokens(nil) = %d, want 0", n)
 	}
 }

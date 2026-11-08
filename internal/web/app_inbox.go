@@ -1,9 +1,20 @@
 package web
 
 // The Needs you page (GET /app/inbox): one item per waiting episode of
-// a monitored session or a PR that needs you (internal/inbox), with Open,
-// In progress, Snoozed and Done tabs, grouped by plan, oldest first.
+// a monitored session or a PR that needs you, a plan's missing row, or
+// your step that is ready (internal/inbox), with Open, In progress,
+// Snoozed and Done tabs, in sections that fold (groups.go), oldest first
+// in each.
 //
+//   - ?group= is the Group by (remembered as the page's default): plan
+//     (the default; the plans in the order they were registered, then the
+//     items on no plan), repo (by name; then "Plans" for your steps whose
+//     row names no repo, then "No repo"), or session (one section per
+//     session, named as the Sessions page names it, by name; then "Pull
+//     requests" for the PRs, which come from no session, and "Plan files"
+//     for the plans' missing rows and your steps). Every section starts open,
+//     since everything here needs you; the one holding the selected item,
+//     or every one under a search, opens whatever the browser remembers.
 //   - ?tab=open|progress|snoozed|done picks the tab; without it, the
 //     selected item's state's tab, else Open.
 //   - ?item=<id> selects an item: the detail pane shows it, and opening it
@@ -14,7 +25,9 @@ package web
 //
 // The actions (Go, Snooze, Done, back to Open, Undo) are forms posting to
 // /app/inbox/… (app_inbox_actions.go), answered with the toast protocol.
-// The sync that keeps the items is app_inbox_sync.go.
+// Your step's Go is Open in plan, and its Mark done is the plan page's
+// own form (POST /app/plans/{slug}/done), which comes back here. The sync
+// that keeps the items is app_inbox_sync.go.
 
 import (
 	"cmp"
@@ -24,6 +37,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +47,11 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
 
+// inboxPath is the Needs you page.
+const inboxPath = "/app/inbox"
+
 var appInbox = &appPage{
-	pattern:     "/app/inbox",
+	pattern:     inboxPath,
 	name:        "inbox",
 	title:       "Needs you",
 	panes:       2,
@@ -45,7 +62,7 @@ var appInbox = &appPage{
 	fill:        fillInbox,
 	routes:      inboxRoutes,
 	keys: []appKey{
-		{"g", "Go: switch to its terminal tab, or open the PR on GitHub"},
+		{"g", "Go: switch to its terminal tab, open the PR on GitHub, or open your step in its plan"},
 		{"s", "Snooze"},
 		{"d", "Done"},
 		{"u", "Undo, or move a Done item back to Open"},
@@ -76,8 +93,10 @@ func (s *Server) inboxCount(ctx context.Context, sn *snapshot) int {
 type inboxView struct {
 	Tab  string
 	Tabs []inboxTab
-	// Groups are the tab's items by plan; Empty is said when there are
-	// none, Footer under the list.
+	// GroupBy is the list's Group by control.
+	GroupBy groupControl
+	// Groups are the tab's items by the Group by; Empty is said when there
+	// are none, Footer under the list.
 	Groups []inboxGroupView
 	Empty  string
 	Footer string
@@ -95,10 +114,21 @@ type inboxTab struct {
 }
 
 type inboxGroupView struct {
+	listGroup
 	Label string
 	Count int
 	Items []inboxRow
 }
+
+// inboxGroupChoices are the page's Group by choices, the default first.
+var inboxGroupChoices = []groupChoice{
+	{Value: groupPlan, Label: "Plan"},
+	{Value: groupRepo, Label: "Repo"},
+	{Value: groupSession, Label: "Session"},
+}
+
+// inboxGroupNames say the Group by in the summary and the footer.
+var inboxGroupNames = map[string]string{groupPlan: "plan", groupRepo: "repo", groupSession: "session"}
 
 type inboxRow struct {
 	ID, URL              string
@@ -119,12 +149,13 @@ type inboxDetail struct {
 	Term                 *termTag
 	Status               string
 	Title, Sub           string
-	// What it waits on: a session's (Waits, Reply), a PR's (PR), or a
-	// provisional package's missing row (PlanRow).
+	// What it waits on: a session's (Waits, Reply), a PR's (PR), a
+	// provisional package's missing row (PlanRow), or your step (Step).
 	Waits   *inboxWaits
 	Reply   *inboxReply
 	PR      *inboxPRView
 	PlanRow *inboxPlanRow
+	Step    *inboxStep
 	// The actions.
 	Go       inboxGo
 	Snooze   bool
@@ -183,6 +214,23 @@ type inboxPlanRow struct {
 	ID, Row, File, Why, PkgURL string
 }
 
+// inboxStep is your step's package: its What cell (plain text, as a graph
+// box's tooltip has it), its "you:" step (Note), how long it has been
+// ready, what to do (Hint), and the plan page's Mark done for it.
+type inboxStep struct {
+	What, Note        string
+	Ready, ReadyTitle string
+	Hint              string
+	// MarkDone is the plan page's Mark done form's action
+	// (/app/plans/<slug>/done) and Pkg its package, while the item waits
+	// and the plan offers it, on your own step only; MarkOff says why it
+	// is off instead. DoneHint, on a "you:" step, says to dismiss it with
+	// Done instead.
+	MarkDone, Pkg string
+	MarkOff       string
+	DoneHint      string
+}
+
 type inboxWhere struct {
 	Key, Value, URL string
 	Code            bool
@@ -192,15 +240,16 @@ type inboxHistory struct {
 	When, Stamp, Text string
 }
 
-// inboxFooter is a tab's footer, which says the Settings page's highlight
-// and Done history.
-func inboxFooter(tab string, set inbox.Settings, highlight bool) string {
+// inboxFooter is a tab's footer, which says the Group by, the Settings
+// page's highlight and the Done history.
+func inboxFooter(tab, group string, set inbox.Settings, highlight bool) string {
 	switch tab {
 	case inbox.Open:
+		by := "Grouped by " + inboxGroupNames[group] + ", oldest first in each group."
 		if !highlight {
-			return "Grouped by plan, oldest first in each group."
+			return by
 		}
-		return "Grouped by plan, oldest first in each group. New items stay highlighted until you open them."
+		return by + " New items stay highlighted until you open them."
 	case inbox.InProgress:
 		return "You clicked Go on these. Each returns to Open if it is still waiting after the delay."
 	case inbox.Snoozed:
@@ -211,8 +260,9 @@ func inboxFooter(tab string, set inbox.Settings, highlight bool) string {
 	return ""
 }
 
-// inboxURL is the page's URL for a tab, an item and a search.
-func inboxURL(tab string, item int64, q string) string {
+// inboxURL is the page's URL for a tab, an item, a search and the Group
+// by the URL has (group, or "").
+func inboxURL(tab string, item int64, q, group string) string {
 	v := url.Values{}
 	if tab != "" {
 		v.Set("tab", tab)
@@ -222,6 +272,9 @@ func inboxURL(tab string, item int64, q string) string {
 	}
 	if q != "" {
 		v.Set("q", q)
+	}
+	if group != "" {
+		v.Set("group", group)
 	}
 	if len(v) == 0 {
 		return "/app/inbox"
@@ -260,7 +313,7 @@ func fillInbox(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	q := r.URL.Query()
 	search := strings.TrimSpace(q.Get("q"))
 	prefs := s.settings(ctx) // the highlight and the chime
-	set := inboxSettingsOf(prefs)
+	set := s.inboxSettingsOf(prefs)
 
 	var sel *store.InboxItem
 	if id, _ := strconv.ParseInt(q.Get("item"), 10, 64); id > 0 {
@@ -287,7 +340,9 @@ func fillInbox(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 			v.Tab = sel.State
 		}
 	}
-	d.Summary = strconv.Itoa(counts[inbox.Open]) + " open · grouped by plan"
+	group, kept, ctl := groupBy(r, d, "inbox", inboxGroupChoices)
+	v.GroupBy = ctl
+	d.Summary = strconv.Itoa(counts[inbox.Open]) + " open · grouped by " + inboxGroupNames[group]
 	plans := s.inboxPlans(ctx)
 
 	selID := int64(0)
@@ -295,7 +350,7 @@ func fillInbox(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 		selID = sel.ID
 	}
 	for _, t := range inbox.States {
-		v.Tabs = append(v.Tabs, inboxTab{Key: t, Label: inbox.StateLabel(t), URL: inboxURL(t, 0, search), Count: counts[t], On: t == v.Tab})
+		v.Tabs = append(v.Tabs, inboxTab{Key: t, Label: inbox.StateLabel(t), URL: inboxURL(t, 0, search, kept), Count: counts[t], On: t == v.Tab})
 	}
 	if d.Fragment == "" || d.Fragment == "list" {
 		items, err := st.ListInbox(ctx, store.InboxFilter{State: v.Tab})
@@ -303,14 +358,15 @@ func fillInbox(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 			return err
 		}
 		items = filterInbox(items, search)
-		for _, g := range inbox.Groups(items, plans.order) {
-			gv := inboxGroupView{Label: plans.groupLabel(g), Count: len(g.Items)}
-			for _, it := range g.Items {
-				gv.Items = append(gv.Items, inboxRowOf(sn.now, it, v.Tab, search, it.ID == selID, prefs))
+		for _, g := range s.inboxSections(ctx, sn, items, group, plans) {
+			gv := inboxGroupView{listGroup: listGroup{Key: g.key, Open: true, Force: search != ""}, Label: g.label, Count: len(g.items)}
+			for _, it := range g.items {
+				gv.Items = append(gv.Items, inboxRowOf(sn.now, it, v.Tab, search, kept, it.ID == selID, prefs))
+				gv.Force = gv.Force || it.ID == selID
 			}
 			v.Groups = append(v.Groups, gv)
 		}
-		v.Footer = inboxFooter(v.Tab, set, prefs.Highlight)
+		v.Footer = inboxFooter(v.Tab, group, set, prefs.Highlight)
 		v.Empty = "Nothing here."
 		if search != "" {
 			v.Empty = "Nothing here matches “" + search + "”."
@@ -349,6 +405,8 @@ func inboxKindClass(kind string) string {
 		return "kind-permission"
 	case inbox.KindPlanRow:
 		return "kind-reply" // the shell's neutral palette: a chore, not a wait
+	case inbox.KindYourStep:
+		return "kind-plan" // a plan's step, in the plan approval's palette
 	}
 	return "kind-" + kind
 }
@@ -356,11 +414,11 @@ func inboxKindClass(kind string) string {
 // inboxRowOf is an item's row. An unseen Open item is new: highlighted
 // while the Settings page's highlight is on, and, for a permission prompt
 // or a question, marked to chime while the chime is on.
-func inboxRowOf(now time.Time, it store.InboxItem, tab, q string, sel bool, prefs store.Settings) inboxRow {
+func inboxRowOf(now time.Time, it store.InboxItem, tab, q, group string, sel bool, prefs store.Settings) inboxRow {
 	unseen := it.State == inbox.Open && it.SeenAt.IsZero() && !sel
 	r := inboxRow{
 		ID:        strconv.FormatInt(it.ID, 10),
-		URL:       inboxURL(tab, it.ID, q),
+		URL:       inboxURL(tab, it.ID, q, group),
 		KindClass: inboxKindClass(it.Kind),
 		KindLabel: inbox.KindLabel(it.Kind),
 		Title:     it.Title,
@@ -385,18 +443,21 @@ func waitText(now time.Time, it store.InboxItem) (text, title string) {
 	switch it.State {
 	case inbox.Open:
 		if !it.Waiting() {
-			return "stopped", "stopped waiting " + stamp(it.EndedAt)
+			return "stopped", "stopped waiting " + stamp(now, it.EndedAt)
 		}
-		return ago(now, it.Since), "waiting since " + stamp(it.Since)
+		if it.Kind == inbox.KindYourStep {
+			return ago(now, it.Since), "ready since " + stamp(now, it.Since)
+		}
+		return ago(now, it.Since), "waiting since " + stamp(now, it.Since)
 	case inbox.InProgress:
-		return "back at " + dueText(now, it.DueAt), "back to Open at " + stamp(it.DueAt) + " if still waiting"
+		return "back at " + dueText(now, it.DueAt), "back to Open at " + stamp(now, it.DueAt) + " if still waiting"
 	case inbox.Snoozed:
 		if it.DueAt.IsZero() {
 			return "until it changes", "snoozed until it changes"
 		}
-		return "until " + dueText(now, it.DueAt), "snoozed until " + stamp(it.DueAt)
+		return "until " + dueText(now, it.DueAt), "snoozed until " + stamp(now, it.DueAt)
 	}
-	return "done", "done " + stamp(it.StateAt)
+	return "done", "done " + stamp(now, it.StateAt)
 }
 
 // dueText writes a coming time: "11:15", "tomorrow 09:00", "Nov 9 09:00".
@@ -419,6 +480,9 @@ func statusLine(now time.Time, it store.InboxItem) string {
 	}
 	switch it.State {
 	case inbox.Open:
+		if it.Kind == inbox.KindYourStep {
+			return "Ready for " + ago(now, it.Since)
+		}
 		return "Waiting " + ago(now, it.Since)
 	case inbox.InProgress:
 		return "In progress · back to Open at " + dueText(now, it.DueAt) + " if still waiting"
@@ -435,16 +499,16 @@ func statusLine(now time.Time, it store.InboxItem) string {
 }
 
 // inboxPlans are the registered plans, for the groups' order and names
-// and the packages' titles.
+// and the packages' titles (and, for your steps, the packages).
 type inboxPlans struct {
 	order  []string
-	titles map[string]string // lower-case slug → title
-	files  map[string]string // lower-case slug → the plan file's name
-	pkgs   map[string]string // lower-case slug + "\x00" + package ID → title
+	titles map[string]string      // lower-case slug → title
+	files  map[string]string      // lower-case slug → the plan file's name
+	pkgs   map[string]api.Package // lower-case slug + "\x00" + package ID → the package
 }
 
 func (s *Server) inboxPlans(ctx context.Context) inboxPlans {
-	p := inboxPlans{titles: map[string]string{}, files: map[string]string{}, pkgs: map[string]string{}}
+	p := inboxPlans{titles: map[string]string{}, files: map[string]string{}, pkgs: map[string]api.Package{}}
 	if s.opts.Plans == nil {
 		return p
 	}
@@ -459,10 +523,19 @@ func (s *Server) inboxPlans(ctx context.Context) inboxPlans {
 			p.files[strings.ToLower(b.Slug)] = filepath.Base(b.Path)
 		}
 		for _, k := range b.Packages {
-			p.pkgs[strings.ToLower(b.Slug)+"\x00"+k.ID] = k.Title
+			key := strings.ToLower(b.Slug) + "\x00" + k.ID
+			if _, dup := p.pkgs[key]; !dup {
+				p.pkgs[key] = k // the first of two rows with one ID is the package
+			}
 		}
 	}
 	return p
+}
+
+// pkgOf is package id of plan slug, if the plan has it.
+func (p inboxPlans) pkgOf(slug, id string) (api.Package, bool) {
+	k, ok := p.pkgs[strings.ToLower(slug)+"\x00"+id]
+	return k, ok
 }
 
 // title is a plan's title, else its slug, or "—" for none.
@@ -488,9 +561,129 @@ func (p inboxPlans) groupLabel(g inbox.Group) string {
 	return "No plan · watched"
 }
 
+// inboxSection is one section of a tab's items.
+type inboxSection struct {
+	key, label string
+	items      []store.InboxItem
+}
+
+// The Needs you sections that hold no session's or no repo's items, under
+// Session and Repo grouping.
+const (
+	inboxPRsLabel   = "Pull requests"
+	inboxPlansLabel = "Plan files"
+	inboxNoRepo     = "No repo"
+	// inboxStepsNoRepo holds, by repo, your steps whose plan row names no
+	// repo.
+	inboxStepsNoRepo = "Plans"
+)
+
+// inboxSections groups a tab's items under the Group by (see the file
+// comment), oldest first in each section.
+func (s *Server) inboxSections(ctx context.Context, sn *snapshot, items []store.InboxItem, group string, plans inboxPlans) []inboxSection {
+	if group != groupRepo && group != groupSession {
+		var out []inboxSection
+		for _, g := range inbox.Groups(items, plans.order) {
+			key := notOnPlanKey
+			if g.Plan != "" {
+				key = planKey(g.Plan)
+			}
+			out = append(out, inboxSection{key: key, label: plans.groupLabel(g), items: g.Items})
+		}
+		return out
+	}
+	// rank puts the sections of no repo or no session last, in this order.
+	type section struct {
+		inboxSection
+		rank int
+	}
+	by := map[string]*section{}
+	var order []*section
+	names := inboxSessionNames{s: s, ctx: ctx, sn: sn}
+	for _, it := range items {
+		sec := section{}
+		switch {
+		case group == groupRepo && it.Repo == "" && it.Kind == inbox.KindYourStep:
+			sec = section{inboxSection{key: "repo:-plans", label: inboxStepsNoRepo}, 1}
+		case group == groupRepo && it.Repo == "":
+			sec = section{inboxSection{key: "repo:-none", label: inboxNoRepo}, 2}
+		case group == groupRepo:
+			// A repo with no GitHub name is stored by its main checkout's path.
+			label := it.Repo
+			if strings.HasPrefix(label, "/") {
+				label = filepath.Base(label)
+			}
+			sec = section{inboxSection{key: repoKey(it.Repo), label: label}, 0}
+		case it.Source == inbox.SourceSession:
+			sec = section{inboxSection{key: "session:" + strings.TrimPrefix(it.Ref, "session:"), label: names.of(it)}, 0}
+		case it.Source == inbox.SourcePR:
+			sec = section{inboxSection{key: "session:-prs", label: inboxPRsLabel}, 1}
+		default:
+			sec = section{inboxSection{key: "session:-plans", label: inboxPlansLabel}, 2}
+		}
+		have := by[sec.key]
+		if have == nil {
+			have = &sec
+			by[sec.key] = have
+			order = append(order, have)
+		}
+		have.items = append(have.items, it)
+	}
+	slices.SortStableFunc(order, func(a, c *section) int {
+		return cmp.Or(cmp.Compare(a.rank, c.rank), cmp.Compare(strings.ToLower(a.label), strings.ToLower(c.label)), cmp.Compare(a.key, c.key))
+	})
+	out := make([]inboxSection, 0, len(order))
+	for _, sec := range order {
+		slices.SortStableFunc(sec.items, func(a, c store.InboxItem) int {
+			return cmp.Or(a.Since.Compare(c.Since), cmp.Compare(a.ID, c.ID))
+		})
+		out = append(out, sec.inboxSection)
+	}
+	return out
+}
+
+// inboxSessionNames names the sessions of items as the Sessions page does
+// (sessionTitle): from the live sessions, else, once, from the store's
+// ended ones too.
+type inboxSessionNames struct {
+	s     *Server
+	ctx   context.Context
+	sn    *snapshot
+	names map[string]string // inbox.SessionRef → title
+	ended bool
+}
+
+func (n *inboxSessionNames) of(it store.InboxItem) string {
+	if n.names == nil {
+		n.names = map[string]string{}
+		for _, row := range n.sn.sessions {
+			n.names[inbox.SessionRef(row.ID)] = sessionTitle(row)
+		}
+	}
+	if name, ok := n.names[it.Ref]; ok {
+		return name
+	}
+	if !n.ended {
+		n.ended = true
+		rows, err := n.s.opts.Store.ListSessions(n.ctx, store.SessionFilter{IncludeEnded: true})
+		if err != nil {
+			n.s.log.Error("needs you: list ended sessions", "err", err)
+		}
+		for _, row := range rows {
+			if ref := inbox.SessionRef(row.ID); n.names[ref] == "" {
+				n.names[ref] = sessionTitle(row)
+			}
+		}
+		if name, ok := n.names[it.Ref]; ok {
+			return name
+		}
+	}
+	return cmp.Or(it.SessionKey, "A session that has ended")
+}
+
 func (p inboxPlans) pkg(slug, id string) string {
-	if t := p.pkgs[strings.ToLower(slug)+"\x00"+id]; t != "" {
-		return id + " " + t
+	if k, ok := p.pkgOf(slug, id); ok && k.Title != "" {
+		return id + " " + k.Title
 	}
 	return id
 }
@@ -557,10 +750,19 @@ func (s *Server) inboxDetailOf(sn *snapshot, it store.InboxItem, moves []store.I
 			d.Go = inboxGo{Show: true, Label: "Open on GitHub", OpenURL: it.PRURL}
 		}
 	case inbox.SourcePlan:
+		if it.Kind == inbox.KindYourStep {
+			// Your step: Go is Open in plan, which shows the package on its
+			// plan's page (and moves the item to In progress, as Go does).
+			d.Step = yourStepOf(now, it, plans)
+			if active && it.Waiting() {
+				d.Go = inboxGo{Show: true, Label: "Open in plan"}
+			}
+			break
+		}
 		// A missing plan row: no Go, the row to paste instead.
 		d.PlanRow = &inboxPlanRow{ID: "planrow-" + strconv.FormatInt(it.ID, 10), Row: it.Detail,
 			File: cmp.Or(plans.files[strings.ToLower(it.PlanSlug)], "the plan file"), Why: upperFirst(it.Why) + ".",
-			PkgURL: appPlanURL(it.PlanSlug) + "?pkg=" + url.QueryEscape(it.Pkg)}
+			PkgURL: itemPkgURL(it)}
 	}
 	if it.Waiting() && active {
 		d.Snooze, d.Snoozes = true, set.Snoozes()
@@ -577,7 +779,7 @@ func (s *Server) inboxDetailOf(sn *snapshot, it store.InboxItem, moves []store.I
 	if it.Pkg != "" {
 		w := inboxWhere{Key: "Package", Value: plans.pkg(it.PlanSlug, it.Pkg)}
 		if it.Source == inbox.SourcePlan {
-			w.URL = d.PlanRow.PkgURL
+			w.URL = itemPkgURL(it)
 		}
 		d.Where = append(d.Where, w)
 	}
@@ -597,6 +799,55 @@ func (s *Server) inboxDetailOf(sn *snapshot, it store.InboxItem, moves []store.I
 		d.History = append(d.History, inboxHistory{When: clock(now, m.At), Stamp: m.At.UTC().Format(time.RFC3339), Text: m.Text})
 	}
 	return d
+}
+
+// itemPkgURL is a plan item's package on its plan's page: where Open in
+// plan goes.
+func itemPkgURL(it store.InboxItem) string {
+	return appPlanURL(it.PlanSlug) + "?pkg=" + url.QueryEscape(it.Pkg)
+}
+
+// yourStepOf is your step's part of the detail pane: its package's What
+// and "you:" step, how long it has been ready, what to do, and, for your
+// own step (Owner you), Mark done, the plan page's (planDoneOf), from its
+// package on the board now. A package that is your step only by its
+// "you:" step is an agent's: its PR merging or its ✅ finishes it, so it
+// gets no Mark done at all, and a click meant as "I did my part" can't
+// close the agent's work. Done dismisses the item instead.
+func yourStepOf(now time.Time, it store.InboxItem, plans inboxPlans) *inboxStep {
+	v := &inboxStep{Note: it.Detail}
+	p, ok := plans.pkgOf(it.PlanSlug, it.Pkg)
+	if ok {
+		v.What = whatTip(p.What)
+	}
+	if !it.Waiting() {
+		return v
+	}
+	if !it.Since.IsZero() {
+		v.Ready, v.ReadyTitle = "Ready since "+clock(now, it.Since)+" ("+ago(now, it.Since)+")", "ready since "+stamp(now, it.Since)
+	}
+	file := cmp.Or(plans.files[strings.ToLower(it.PlanSlug)], "the plan file")
+	// Off the board (a race with the next sync pass), a step with no
+	// "you:" note can only be yours by its Owner.
+	yours := p.Yours || (!ok && it.Detail == "")
+	if !yours {
+		v.Hint = "Everything it needs is done, and its Needs cell has a step for you. Take it, then dispatch the package: " +
+			"this item closes by itself when work on it begins."
+		v.DoneHint = "Your part is done? Dismiss this with Done; the package finishes when its PR merges."
+		return v
+	}
+	v.Hint = "It's yours (Owner: you), and everything it needs is done. When you've done it, press Mark done, " +
+		"or put a ✅ in its row in " + file + ": this item closes by itself. Done only takes it out of Needs you."
+	if !ok {
+		return v
+	}
+	switch pd := planDoneOf(p); {
+	case pd.Can:
+		v.MarkDone, v.Pkg = appPlanURL(it.PlanSlug)+"/done", p.ID
+	case !pd.Undo:
+		v.MarkOff = pd.Off
+	}
+	return v
 }
 
 // githubURL reports whether u is a GitHub page: the only kind of link Go

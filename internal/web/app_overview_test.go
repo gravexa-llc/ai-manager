@@ -709,6 +709,14 @@ func TestOverviewHealthChips(t *testing.T) {
 			Sources: []api.Source{{Name: api.SourceGitHub, FailingSince: t0.Add(-time.Hour), Error: "401"}},
 			GitHub:  api.GitHubStatus{Budget: api.Budget{Known: true, Verdict: "normal", Remaining: 5000, Limit: 5000}}},
 			githubChip, ovChip{Text: "GitHub 5,000 / 5,000 points · failing since 11:00", Tone: "warn", Title: "401"}},
+		{"a repo unreadable", api.Status{GitHub: api.GitHubStatus{Budget: api.Budget{Known: true, Verdict: "normal", Remaining: 4900, Limit: 5000},
+			Unreadable: []api.RepoError{{Repo: "acme/app", Error: "github: not found"}}}},
+			githubChip, ovChip{Text: "GitHub 4,900 / 5,000 points · 1 repo unreadable", Tone: "warn", Title: "acme/app: github: not found"}},
+		{"repos unreadable, and the budget's reset", api.Status{GitHub: api.GitHubStatus{
+			Budget:     api.Budget{Known: true, Verdict: "normal", Remaining: 4900, Limit: 5000, ResetAt: t0.Add(20 * time.Minute)},
+			Unreadable: []api.RepoError{{Repo: "acme/app", Error: "github: not found"}, {Repo: "example-org/web", Error: "github: auth"}}}},
+			githubChip, ovChip{Text: "GitHub 4,900 / 5,000 points · 2 repos unreadable", Tone: "warn",
+				Title: "resets at 12:20; acme/app: github: not found; example-org/web: github: auth"}},
 		// The latest of the last batch's arrival and the last event's time.
 		{"plugin live", api.Status{Events: &api.EventStats{ModLive: true, Events: 1234, LastBatchAt: t0.Add(-4 * time.Second), LastEventAt: t0.Add(-5 * time.Second)}}, pluginChip,
 			ovChip{Text: "Plugin reporting · live · last event 4s ago", Tone: "ok", Title: "1234 events since aimd started · last 2026-11-05T11:59:56Z"}},

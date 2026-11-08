@@ -5,16 +5,19 @@
 // An item is one waiting episode: a monitored session that starts waiting
 // on you (a permission prompt, a question, a plan approval, a background
 // job waiting for a reply), or a PR that starts needing you, or a plan's
-// provisional package whose row is still missing from the plan file.
-// It starts when
-// the thing starts waiting and ends when it stops; a new episode is a new
-// item. Items are rows of the store's inbox_items (migration 0008), so
-// their ids are stable across aimd restarts and a notification or a link
-// can name one (/app/inbox?item=<id>).
+// provisional package whose row is still missing from the plan file, or a
+// registered plan's package that is your step and ready: yours (its Owner
+// cell says you, or its Needs cell has a "you:" step) and everything it
+// needs is done. It starts when the thing starts waiting and ends when it
+// stops; a new episode is a new item. Items are rows of the store's
+// inbox_items (migration 0008), so their ids are stable across aimd
+// restarts and a notification or a link can name one
+// (/app/inbox?item=<id>).
 //
 // An episode is named by what waits (its ref: a session row,
-// "session:<sessions.id>", a PR, "owner/repo#123", or a provisional
-// package, PlanRowRef's "planrow:<slug>/<ID>") and, for a session,
+// "session:<sessions.id>", a PR, "owner/repo#123", a provisional
+// package, PlanRowRef's "planrow:<slug>/<ID>", or your step,
+// YourStepRef's "step:<slug>/<ID>") and, for a session,
 // by when the wait began (sessions.needs_you_since). A sync pass matches
 // what waits now (a Snapshot) to the items still waiting:
 //
@@ -96,8 +99,9 @@ func StateLabel(state string) string {
 const (
 	SourceSession = "session"
 	SourcePR      = "pr"
-	// SourcePlan is a plan's provisional package whose row
-	// is still missing from the plan file.
+	// SourcePlan is a registered plan's package: a provisional one whose
+	// row is still missing from the plan file (KindPlanRow), or your step,
+	// ready (KindYourStep).
 	SourcePlan = "plan"
 )
 
@@ -116,6 +120,10 @@ const (
 	// From plans: a provisional package's row is still
 	// missing from the plan file a while after its work began.
 	KindPlanRow = "plan_row"
+	// From plans: a package that is yours (Owner "you", or a "you:" step
+	// in its Needs cell) is ready, as the plan page's "needs you" badge
+	// says.
+	KindYourStep = "your_step"
 )
 
 // KindLabel names a kind as the inbox shows it.
@@ -137,6 +145,8 @@ func KindLabel(kind string) string {
 		return "Ready to merge"
 	case KindPlanRow:
 		return "Plan row missing"
+	case KindYourStep:
+		return "Your step"
 	}
 	return kind
 }
@@ -163,6 +173,12 @@ const PlanRowAfter = 10 * time.Minute
 // "planrow:<slug>/<ID>", the slug in lower case and the ID in upper case.
 func PlanRowRef(slug, id string) string {
 	return "planrow:" + strings.ToLower(slug) + "/" + strings.ToUpper(id)
+}
+
+// YourStepRef is the ref of a package's your-step episodes:
+// "step:<slug>/<ID>", cased as PlanRowRef cases it.
+func YourStepRef(slug, id string) string {
+	return "step:" + strings.ToLower(slug) + "/" + strings.ToUpper(id)
 }
 
 // ItemURL is an item's page on aimd's dashboard: where a notification or a
@@ -312,16 +328,18 @@ func (s Settings) SnoozeUntil(key string, now time.Time) (time.Time, error) {
 // ---- Episodes and sync ----
 
 // Episode is something waiting on you now, as the caller (the web
-// layer) works it out from the sessions, the PRs and the monitoring.
+// layer) works it out from the sessions, the PRs, the plans and the
+// monitoring.
 type Episode struct {
-	Source string // SourceSession or SourcePR
-	Ref    string // SessionRef or store.PRRef
+	Source string // SourceSession, SourcePR or SourcePlan
+	Ref    string // SessionRef, store.PRRef, PlanRowRef or YourStepRef
 	Kind   string
 	// Since is when the wait began: the session's needs_you_since; for a
 	// PR, what the caller counts from.
 	Since time.Time
 	// Detail is what it waits on, as shown; Sig is what "it changed"
-	// compares (a session's Core reason; a PR's head, CI and review).
+	// compares (a session's Core reason; a PR's head, CI and review; your
+	// step's "you:" note).
 	Detail, Sig string
 	// DismissedAt is the old dashboard's Dismiss of this wait, if any.
 	DismissedAt time.Time
@@ -346,12 +364,14 @@ type Snapshot struct {
 	Stopped map[string]string
 }
 
-// goneReason is why an episode ended when its ref is gone.
-func goneReason(source string) string {
-	switch source {
-	case SourcePR:
+// goneReason is why an item's episode ended when its ref is gone.
+func goneReason(it store.InboxItem) string {
+	switch {
+	case it.Source == SourcePR:
 		return "the PR is gone"
-	case SourcePlan:
+	case it.Kind == KindYourStep:
+		return "the package is gone: its plan was unregistered, or its row left the plan file"
+	case it.Source == SourcePlan:
 		return "the provisional package is gone"
 	}
 	return "the session ended"
@@ -484,7 +504,7 @@ func reconcile(waiting []store.InboxItem, snap Snapshot, now time.Time) plan {
 		}
 		reason := snap.Stopped[it.Ref]
 		if reason == "" {
-			reason = goneReason(it.Source)
+			reason = goneReason(it)
 		}
 		p.saves = append(p.saves, end(it, reason, now))
 	}

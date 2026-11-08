@@ -16,7 +16,10 @@ import (
 const statusUsage = `usage: aim status
 
 Prints one line from aimd's /api/status: sessions and PRs that need you,
-stale sources and the GitHub budget. Exits 1 when aimd isn't running.
+stale sources, GitHub repos aimd can't read, the GitHub budget, and the
+version of the aimd that is running, with a note when it isn't this aim's
+(aim up restarts it on the aimd beside aim). Exits 1 when aimd isn't
+running.
 `
 
 // statusTimeout bounds one status request.
@@ -57,7 +60,7 @@ func status(s sys, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "aim status: unreadable answer from aimd: %v\n", err)
 		return 1
 	}
-	fmt.Fprintln(stdout, statusLine(st))
+	fmt.Fprintln(stdout, statusLine(st, version))
 	return 0
 }
 
@@ -67,10 +70,11 @@ func statusURL(port int) string {
 }
 
 // statusLine summarizes a status in one line, short enough for an iTerm2
-// status bar:
+// status bar, ending with the running aimd's version (versionPart; aim is
+// this aim's own):
 //
-//	2 sessions need you (oldest 12m) · 1 PR needs you · stale: none · GitHub 4890/5000
-func statusLine(st api.Status) string {
+//	2 sessions need you (oldest 12m) · 1 PR needs you · stale: none · GitHub 4890/5000 · aimd v1.0.0-14-gabc1234
+func statusLine(st api.Status, aim string) string {
 	c := st.Counts
 	var parts []string
 
@@ -85,6 +89,15 @@ func statusLine(st api.Status) string {
 		parts = append(parts, "stale: none")
 	} else {
 		parts = append(parts, "stale: "+strings.Join(c.StaleSources, ", "))
+	}
+	// Repos GitHub didn't answer for, while the source as a whole works:
+	// their PRs stay as aimd last read them.
+	switch un := st.GitHub.Unreadable; len(un) {
+	case 0:
+	case 1:
+		parts = append(parts, "GitHub can't read "+un[0].Repo)
+	default:
+		parts = append(parts, fmt.Sprintf("GitHub can't read %d repos", len(un)))
 	}
 
 	b := st.GitHub.Budget
@@ -102,8 +115,27 @@ func statusLine(st api.Status) string {
 	default:
 		parts = append(parts, fmt.Sprintf("GitHub %d/%d", b.Remaining, b.Limit))
 	}
+	parts = append(parts, versionPart(st.Version, aim))
 	return strings.Join(parts, " · ")
 }
+
+// versionPart names the aimd that answered: "aimd v1.0.0-14-gabc1234".
+// `aim --version` is the aim binary on disk, which an update replaces
+// while the old aimd keeps running, so when the two differ it says how to
+// switch: "aimd v1.0.0-12-g… is running; aim is v1.0.0-14-g…; run aim up
+// to restart it". A dev build (go run, go test) is never compared.
+func versionPart(running, aim string) string {
+	switch {
+	case running == "":
+		return "aimd version unknown"
+	case knownVersion(running) && knownVersion(aim) && running != aim:
+		return "aimd " + running + " is running; aim is " + aim + "; run aim up to restart it"
+	}
+	return "aimd " + running
+}
+
+// knownVersion reports whether v names a build: not empty, not "dev".
+func knownVersion(v string) bool { return v != "" && v != "dev" }
 
 // plural writes "1 PR needs you" or "3 PRs need you".
 func plural(n int, one, many string) string {

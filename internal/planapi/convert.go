@@ -39,6 +39,7 @@ func planJSON(p store.Plan, st state.PlanState, pkgs []store.Package, derived ti
 		Packages:            make([]api.Package, 0, len(st.Packages)),
 		Lanes:               make([]api.Lane, 0, len(st.Lanes)),
 		Unmatched:           []api.Unmatched{},
+		HiddenUnmatched:     []api.Unmatched{},
 		Warnings:            []api.Warning{},
 		Alerts:              []api.Alert{},
 		DerivedAt:           derived,
@@ -61,10 +62,10 @@ func planJSON(p store.Plan, st state.PlanState, pkgs []store.Package, derived ti
 		b.Lanes = append(b.Lanes, api.Lane{Name: l.Name, Packages: nonNil(l.Packages), Rule: l.Rule, SingleWriter: l.SingleWriter})
 	}
 	for _, u := range st.Unmatched {
-		b.Unmatched = append(b.Unmatched, api.Unmatched{
-			Target: target(u.Target), Repo: u.Repo, Branch: u.Branch, Number: u.Number,
-			Title: u.Title, State: u.State, Note: u.Note,
-		})
+		b.Unmatched = append(b.Unmatched, unmatchedJSON(u))
+	}
+	for _, u := range st.Hidden {
+		b.HiddenUnmatched = append(b.HiddenUnmatched, unmatchedJSON(u))
 	}
 	for _, w := range st.Warnings {
 		b.Warnings = append(b.Warnings, api.Warning{Kind: w.Kind, Line: w.Line, ID: w.ID, Message: w.Message})
@@ -75,9 +76,16 @@ func planJSON(p store.Plan, st state.PlanState, pkgs []store.Package, derived ti
 	return b
 }
 
+func unmatchedJSON(u state.Unmatched) api.Unmatched {
+	return api.Unmatched{
+		Target: target(u.Target), Repo: u.Repo, Branch: u.Branch, Number: u.Number,
+		Title: u.Title, State: u.State, Note: u.Note, Since: u.Since, New: u.New, HiddenAt: u.HiddenAt,
+	}
+}
+
 func packageJSON(slug string, p state.PackageState) api.Package {
 	jp := api.Package{
-		ID: p.ID, Title: p.Title, Repo: p.Repo, Size: p.Size, Owner: p.Owner, Lane: p.Lane,
+		ID: p.ID, Title: p.Title, What: p.What, Repo: p.Repo, Size: p.Size, Owner: p.Owner, Lane: p.Lane,
 		Needs: nonNil(p.Needs), NeedsNote: p.NeedsNote, NeedsYou: p.NeedsYou, Yours: p.Yours,
 		Lifecycle: string(p.Lifecycle), PrevLifecycle: string(p.PrevLifecycle), Since: p.Since,
 		BlockedBy: p.BlockedBy, Cycle: p.Cycle,
@@ -112,7 +120,7 @@ func linkJSON(l state.Link) api.Link {
 	}
 	if pr := l.PR; pr != nil {
 		jl.PR = &api.LinkPR{
-			Repo: pr.Repo, Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, Draft: pr.Draft,
+			Repo: pr.Repo, Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, Unread: pr.Unread(), Draft: pr.Draft,
 			HeadBranch: pr.HeadBranch, ChecksState: pr.ChecksState, Mergeable: pr.Mergeable,
 			MergeStateStatus: pr.MergeStateStatus, ReviewDecision: pr.ReviewDecision,
 			MergedAt: pr.MergedAt, ClosedAt: pr.ClosedAt,
@@ -129,6 +137,7 @@ func linkJSON(l state.Link) api.Link {
 			SessionID: a.SessionID, JobID: a.JobID, AgentID: a.AgentID, Kind: a.Kind, Name: a.Name,
 			State: a.State, Live: a.Live, NeedsYou: a.NeedsYou, NeedsYouSince: a.NeedsYouSince,
 			Reason: a.Reason, LastAction: a.LastAction, LastEventAt: a.LastEventAt, WorktreePath: a.WorktreePath,
+			StartedAt: a.StartedAt, Tokens: a.Tokens,
 		}
 	}
 	return jl
@@ -250,8 +259,9 @@ func summaryItem(it store.InboxItem) api.SummaryItem {
 
 // itemReason says what an item waits on in a few words: a session's wait
 // as the inbox tells it ("permission prompt: Bash: make check", "waiting
-// for your reply"), a PR's kind and number ("review requested on #12"), or
-// a provisional package's missing row.
+// for your reply"), a PR's kind and number ("review requested on #12"), a
+// provisional package's missing row, or your step ("your step is ready:
+// sign off the rollout").
 func itemReason(it store.InboxItem) string {
 	what := strings.ToLower(inbox.KindLabel(it.Kind))
 	if it.Source == inbox.SourcePR {
@@ -259,6 +269,9 @@ func itemReason(it store.InboxItem) string {
 			return what + " on " + it.PR[i:]
 		}
 		return what
+	}
+	if it.Kind == inbox.KindYourStep {
+		return cmp.Or(it.Why, "your step is ready")
 	}
 	if it.Source == inbox.SourcePlan {
 		return what + ": " + cmp.Or(it.Title, it.Pkg) // "plan row missing: W12 isn't in ROADMAP.md"

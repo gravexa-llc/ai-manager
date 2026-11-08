@@ -19,11 +19,16 @@
 //   - GitHub: one tick every poll.github_active (60s). Each tick sends one
 //     BranchPRs call for the active repos, and every Nth tick (N =
 //     poll.github_idle / poll.github_active, 5 by default) for the idle ones
-//     too. The open-PR search, and right after it the review-request
-//     search, run every poll.github_active while a dashboard is connected and
-//     every poll.github_idle otherwise. The
+//     too, with one PRsByNumber call for the PRs stored by URL only and
+//     never read (store.PR.Unread). The open-PR search, and right after
+//     it the review-request search, run every poll.github_active while a
+//     dashboard is connected and every poll.github_idle otherwise. The
 //     budget is obeyed: "idle-only" runs only the idle ticks, "stop" runs
-//     nothing until it lifts.
+//     nothing until it lifts. A repo GitHub doesn't answer for is listed
+//     in Status (GitHub.Unreadable) until a read of it works.
+//   - PRs on request: RefreshPRs (the plugin saw a tool call create,
+//     merge or close a PR) reads them by number between ticks, at most
+//     one read every refreshMinGap (10s), none while the budget says stop.
 //   - Retention: PurgeEvents once a day.
 //
 // # Load
@@ -91,6 +96,7 @@ var _ Scanner = (*worktrees.Scanner)(nil)
 // GitHub is the part of *github.Client the daemon uses.
 type GitHub interface {
 	BranchPRs(ctx context.Context, repos []github.RepoBranches) github.BranchPRsResult
+	PRsByNumber(ctx context.Context, repos []github.RepoNumbers) github.NumberPRsResult
 	OpenPRs(ctx context.Context, owners []string) github.OpenPRsResult
 	ReviewRequests(ctx context.Context, owners []string) github.OpenPRsResult
 	Budget() github.Budget
@@ -201,6 +207,7 @@ type Daemon struct {
 
 	scanKick      chan struct{} // a full worktree scan, soon
 	searchKick    chan struct{} // the open-PR search, if it is due
+	refreshKick   chan struct{} // a read of the PRs RefreshPRs queued
 	firstSessions chan struct{} // closed after the first session poll
 	firstScan     chan struct{} // closed after the first worktree scan
 	firstSessOnce sync.Once
@@ -231,12 +238,16 @@ type Daemon struct {
 	ghTick        int
 	ghStatus      api.GitHubStatus
 	lastSearch    time.Time
-	searchOpen    map[string]bool   // PR keys the last good search found open
-	defaultBranch map[string]string // lower-case owner/name → default branch
-	storedDefault map[string]string // lower-case nameWithOwner → name + "\x00" + default branch, as last stored
-	prFP          map[string]string // PR key → fingerprint
-	repoErrs      map[string]string // GitHub repo → last error logged
-	canonical     map[string]string // lower-case owner/name a remote names → the name GitHub answered with (plans.go)
+	searchOpen    map[string]bool    // PR keys the last good search found open
+	defaultBranch map[string]string  // lower-case owner/name → default branch
+	storedDefault map[string]string  // lower-case nameWithOwner → name + "\x00" + default branch, as last stored
+	prFP          map[string]string  // PR key → fingerprint
+	repoErrs      map[string]repoErr // read kind + ":" + lower-case owner/name → why the last read of that kind failed
+	canonical     map[string]string  // lower-case owner/name a remote names → the name GitHub answered with (plans.go)
+
+	// Reads on request (RefreshPRs).
+	refreshWant map[string]store.PRKey // PR key → a PR queued for the next read
+	lastRefresh time.Time              // when the last such read ran
 }
 
 // streak is a source's current run of failed runs, which a success ends.
@@ -273,6 +284,7 @@ func New(opts Options) *Daemon {
 
 		scanKick:      make(chan struct{}, 1),
 		searchKick:    make(chan struct{}, 1),
+		refreshKick:   make(chan struct{}, 1),
 		firstSessions: make(chan struct{}),
 		firstScan:     make(chan struct{}),
 
@@ -288,8 +300,9 @@ func New(opts Options) *Daemon {
 		defaultBranch: map[string]string{},
 		storedDefault: map[string]string{},
 		prFP:          map[string]string{},
-		repoErrs:      map[string]string{},
+		repoErrs:      map[string]repoErr{},
 		canonical:     map[string]string{},
+		refreshWant:   map[string]store.PRKey{},
 	}
 	if d.scanner == nil {
 		d.scanner = worktrees.New(worktrees.OptionsFromConfig(d.cfg))
@@ -452,6 +465,7 @@ func (d *Daemon) Status() api.Status {
 		ModLive:   d.modLive,
 		GitHub:    d.ghStatus,
 	}
+	st.GitHub.Unreadable = d.unreadableLocked()
 	for _, name := range []string{api.SourceSessions, api.SourceWorktrees, api.SourceGitHub, api.SourceGitHubSearch, api.SourceRetention} {
 		s := *d.sources[name]
 		s.IntervalSeconds = int64(d.intervalLocked(name) / time.Second)

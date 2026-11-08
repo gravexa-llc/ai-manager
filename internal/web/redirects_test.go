@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -132,11 +133,12 @@ func TestNoOldTemplatesLeft(t *testing.T) {
 	if _, err := fs.Stat(assets, "templates"); err == nil {
 		t.Error("the static files embed templates")
 	}
-	// Every app page's template parses with the shell alone.
+	// Every app page's template parses with the shell and the shared
+	// partials alone.
 	files, err := fs.Glob(appTemplates, "templates/app/*.html")
 	must(t, err)
 	for _, f := range files {
-		if strings.HasSuffix(f, "/shell.html") {
+		if slices.Contains(appShared, f) {
 			continue
 		}
 		parseApp(filepath.Base(f))

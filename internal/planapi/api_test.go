@@ -442,19 +442,30 @@ func TestSpawnAndPRLinks(t *testing.T) {
 	}), http.StatusCreated)
 	v1 := pr.Packages[0]
 	l, found := findLink(v1, "pr", "acme/pivot#214")
-	if !found || l.Method != "spawn" || l.Confidence != "exact" || l.PR == nil || l.PR.State != "OPEN" || l.PR.URL != "https://github.com/acme/pivot/pull/214" {
+	if !found || l.Method != "spawn" || l.Confidence != "exact" || l.PR == nil || l.PR.State != "OPEN" || l.PR.URL != "https://github.com/acme/pivot/pull/214" || !l.PR.Unread {
 		t.Errorf("V1's PR link = %+v (found %v)", l, found)
 	}
 	if v1.Lifecycle != "in_review" {
 		t.Errorf("V1 = %s, want in_review", v1.Lifecycle)
+	}
+	// The placeholder is asked for at once, not left for the next poll.
+	if got := e.refresh.take(); !slices.Equal(got, []string{"acme/pivot#214"}) {
+		t.Errorf("refreshes after the PR link = %q, want acme/pivot#214", got)
 	}
 	// The poll's real row replaces the placeholder and keeps the link.
 	must(t, e.st.UpsertPRs(context.Background(), store.PR{Repo: "acme/pivot", Number: 214, HeadBranch: "share/v1-email-reports",
 		State: store.PROpen, Title: "Weekly email reports (V1)", MergeStateStatus: "CLEAN", URL: "https://github.com/acme/pivot/pull/214"}))
 	ok[api.DoneResult](t, e.req("POST", "/api/plans/sharing/packages/G1/done", nil), http.StatusOK) // runs a pass
 	v1 = pkgOf(t, e.board("sharing"), "V1")
-	if l, _ := findLink(v1, "pr", "acme/pivot#214"); l.Method != "spawn" || l.PR == nil || l.PR.Title != "Weekly email reports (V1)" {
+	if l, _ := findLink(v1, "pr", "acme/pivot#214"); l.Method != "spawn" || l.PR == nil || l.PR.Title != "Weekly email reports (V1)" || l.PR.Unread {
 		t.Errorf("V1's PR link after the poll = %+v", l)
+	}
+	// Linked again once read, it isn't asked for again.
+	ok[api.LinkResult](t, e.req("POST", "/api/links/pr", api.PRLinkRequest{
+		SessionID: "lead-1", AgentID: "agent-v1", URL: "https://github.com/acme/pivot/pull/214",
+	}), http.StatusCreated)
+	if got := e.refresh.take(); len(got) != 0 {
+		t.Errorf("refreshes after linking a read PR = %q, want none", got)
 	}
 	if !slices.ContainsFunc(v1.Badges, func(b api.Badge) bool { return b.Kind == "waiting_on_you" }) {
 		t.Errorf("V1 badges = %+v, want waiting_on_you", v1.Badges)

@@ -55,6 +55,9 @@ func (s *stubPlans) LinkSpawn(_ context.Context, req api.SpawnLinkRequest) (api.
 func (s *stubPlans) LinkPR(_ context.Context, req api.PRLinkRequest) (api.LinkResult, error) {
 	return api.LinkResult{}, s.note("LinkPR " + req.URL)
 }
+func (s *stubPlans) RefreshPRs(_ context.Context, req api.PRRefreshRequest) (api.PRRefreshResult, error) {
+	return api.PRRefreshResult{}, s.note("RefreshPRs " + req.Ref)
+}
 func (s *stubPlans) LinkManual(_ context.Context, req api.LinkRequest) (api.LinkResult, error) {
 	return api.LinkResult{}, s.note("LinkManual " + req.Ref)
 }
@@ -63,6 +66,9 @@ func (s *stubPlans) Unlink(_ context.Context, req api.LinkRequest) (api.LinkResu
 }
 func (s *stubPlans) UnlinkID(_ context.Context, id int64) (api.LinkResult, error) {
 	return api.LinkResult{}, s.note("UnlinkID")
+}
+func (s *stubPlans) HideUnmatched(context.Context, api.HideRequest) (api.HideResult, error) {
+	return api.HideResult{}, s.note("HideUnmatched")
 }
 func (s *stubPlans) SetDone(_ context.Context, slug, id string, done bool) (api.DoneResult, error) {
 	if done {
@@ -102,6 +108,7 @@ func TestPlanRoutes(t *testing.T) {
 		{"DELETE", "/api/plans/aim/packages/C3/done", "", 200, "Undone aim C3"},
 		{"POST", "/api/links/spawn", `{"pkg":"C3"}`, 201, "LinkSpawn C3"},
 		{"POST", "/api/links/pr", `{"url":"u"}`, 201, "LinkPR u"},
+		{"POST", "/api/prs/refresh", `{"ref":"12"}`, 202, "RefreshPRs 12"},
 		{"POST", "/api/links/manual", `{"ref":"r"}`, 201, "LinkManual r"},
 		{"DELETE", "/api/links", `{"ref":"r"}`, 200, "Unlink r"},
 		{"DELETE", "/api/links/7", "", 200, "UnlinkID"},

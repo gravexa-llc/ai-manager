@@ -62,6 +62,18 @@ func newHarness(t *testing.T, mod func(*Options)) *harness {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	return newHarnessOpts(t, st, mod)
+}
+
+// newHarnessOn is a harness on another harness's store: aimd after a
+// restart.
+func newHarnessOn(t *testing.T, st *store.Store) *harness {
+	t.Helper()
+	return newHarnessOpts(t, st, nil)
+}
+
+func newHarnessOpts(t *testing.T, st *store.Store, mod func(*Options)) *harness {
+	t.Helper()
 	h := &harness{t: t, st: st, clock: &clock{t: time.Date(2026, 11, 6, 5, 0, 0, 0, time.UTC)}}
 	opts := Options{
 		Store:     st,

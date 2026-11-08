@@ -11,17 +11,17 @@ The dashboard is the app under `/app/`: a shared shell, and one page per set of 
   - optionally `static/app-<page>.css` and `static/app-<page>.js`;
   - its tests, in `app_<page>_test.go`.
 - If your page needs a shell change (a new component class, a key, a menu change), make it as a change of its own, separate from the page's.
-- What the pages share besides the shell: the snapshot and formatting helpers (`dashboard.go`), a plan's board facts (`board.go`), the graph layout (`graph.go`), Go's rules and terminal tags (`golink.go`), the watch API (`monitor.go`) and fresh card facts (`fresh.go`).
+- What the pages share besides the shell: the snapshot and formatting helpers (`dashboard.go`), a plan's board facts (`board.go`), the graph layout (`graph.go`), Go's rules and terminal tags (`golink.go`), the watch API (`monitor.go`), fresh card facts (`fresh.go`), an agent's line (`agent_line.go`, `templates/app/agent.html`; see *Shared partials*), sections that fold with Group by (`groups.go`, `static/app-groups.js`; see *Sections and Group by*), and the rule for your step that is ready (`yourstep.go`), which the plan page's "needs you" badge and the inbox's Your step items both follow.
 
 | Page | Route | Files |
 |---|---|---|
 | Overview | `/app/` | `app_overview.go`, `overview.html` |
 | Needs you | `/app/inbox` | `app_inbox.go`, `inbox.html` |
-| A plan | `/app/plans/{slug}` | `app_plans.go`, `plan.html` |
-| Sessions | `/app/sessions` | `app_sessions.go`, `sessions.html` |
+| A plan | `/app/plans/{slug}` | `app_plans.go`, `plan.html` (the What cell: `app_plans_what.go`; the Unmatched lane: `app_plans_unmatched.go`) |
+| Sessions | `/app/sessions` | `app_sessions.go`, `sessions.html` (plugin builds: `app_plugin.go`) |
 | Pull requests | `/app/prs` | `app_prs.go`, `prs.html` |
 | Worktrees & cleanup | `/app/worktrees` | `app_worktrees.go`, `worktrees.html` |
-| Settings | `/app/settings` | `app_settings.go`, `settings.html` |
+| Settings | `/app/settings` | `app_settings.go`, `settings.html` (Versions: `app_plugin.go`) |
 
 ## A page
 
@@ -46,19 +46,20 @@ var appInbox = &appPage{
 - **The `?` sheet** lists the shell's keys (`j`/`k`, `Enter` and `/` on a page with a list; `1`–`6`, `?`, `Esc` everywhere) and the page's `keys`, in the page's words: `g` is Go on the inbox and Open on GitHub on the PRs page. Declare every key your page binds with `data-key`. Without a `u` of its own, the sheet lists the toast's Undo.
 
 - **The fill function** gets the request, the snapshot (`*snapshot`: sessions, worktrees, PRs, status) and `*appData`.
-  - Set `d.View` to your own view type. Templates read it as `.View`. Give it display strings: the shell's template functions are only `stamp`.
+  - Set `d.View` to your own view type. Templates read it as `.View`. Give it display strings: templates have no functions of their own.
+  - **Times.** `sn.now` is in the Time zone setting's zone (`sn.zone`; System is the Mac's, from `/etc/localtime`). Write a clock time with `clock(sn.now, t)`, a tooltip's full time with `stamp(sn.now, t)`, an age with `ago(sn.now, t)`, so every page shows the same zone and its days. A `datetime=` attribute stays UTC: `t.UTC().Format(time.RFC3339)`.
   - `d.Fragment` names the region asked for (`""` for the whole page), so you can skip work it doesn't show.
   - Return `errNoPage{"…"}` for a 404 (an unknown plan, say).
 - **Monitoring (`internal/monitor`).** `sn.mon` says which sessions are monitored (`sn.mon.Monitored(row)`, `sn.mon.Why(row)`) and which PRs count for Needs you (`sn.mon.PR(p)`). A nil set monitors everything. Follow it wherever a page counts or lists what needs you. What a PR waits on is `sn.mon.PRWait(p)` (`internal/prwait`): `NeedsYou` is `review_requested`, `ready_to_merge` or empty, `WaitingOn` is you, lead, agent or none, and `Merges` and `Reason` go with them. Don't rebuild that rule in a page.
 - **The menu badges** come from functions in the page files, so each page owns its own:
   - `inboxCount` (`app_inbox.go`) is the Needs you badge and the tab title's count: the inbox's Open items (`internal/inbox`), after a sync pass; without an inbox store, `needsYouTotal` (`dashboard.go`).
   - `planMenu` (`app_plans.go`) lists the plans and their needs-you counts: each plan summary's `NeedsYou`, which is the plan's Open inbox items, so the plan badges add up with the Needs you badge (items on no plan aside).
-- **What needs you on a plan** is its summary (`s.opts.Plans.Summary`): `NeedsYou` and `NeedsYouItems` (its Open inbox items), `NeedsYouPackages` (their packages and reasons), and `ToMerge` / `ToMergePRs` (ready PRs waiting for a lead-merged plan's lead). Count from it rather than from badges, and expired background jobs never need you (`sn.expired`).
+- **What needs you on a plan** is its summary (`s.opts.Plans.Summary`): `NeedsYou` and `NeedsYouItems` (its Open inbox items), `NeedsYouPackages` (their packages and reasons), and `ToMerge` / `ToMergePRs` (ready PRs waiting for a lead-merged plan's lead). Count from it rather than from badges, and expired background jobs never need you (`sn.expired`). A package that is your step and ready (`yourStep`) is one of those items: don't count it again from its badge.
   - `sessionCounts` (`app_sessions.go`): the monitored live sessions, headless runs aside.
   - `safeToRemoveCount` (`app_worktrees.go`).
   - `openPRCount` (`app_prs.go`): the open PRs.
   - `appSettingsFlags` (`app_settings.go`) holds the shell's settings: the tab title count, the chime, the keys and the theme, read from the Settings page's settings in the store. The shell draws them on `<html>` when a page loads, and the menu carries them (`data-flags`): a change in Settings publishes `inbox`, every open tab's menu refreshes, and the script copies the flags onto `<html>`. `s.settings(ctx)` gives every stored setting, defaults included.
-- **Every selection is in the URL**: `?item=<id>`, `?tab=open`, `?view=graph&pkg=T1`, `?s=<key>`. Read them in fill, and render the selected row with `class="… sel" aria-current="true"`. A reload or a deep link must land on the same view.
+- **Every selection is in the URL**: `?item=<id>`, `?tab=open`, `?view=graph&pkg=T1`, `?s=<key>`, `?group=plan`. Read them in fill, and render the selected row with `class="… sel" aria-current="true"`. A reload or a deep link must land on the same view.
 - `q` (the header's filter, as a server-side search when the user presses Enter), `fragment` and `toast` are reserved query parameters.
 
 ## Template blocks
@@ -74,6 +75,24 @@ The shell (`templates/app/shell.html`) draws the menu, the header and the panes.
 | `head` | optional | Extra `<head>` tags: your stylesheet or script, e.g. `<link rel="stylesheet" href="/static/app-inbox.css?v={{.AssetVersion}}">`. |
 
 Any other `{{define}}` in your file is a partial, or one of the page's own fragments if it is listed in `fragments`.
+
+**Shared partials.** A partial more than one page draws goes in a shared template file that `parseApp` gives every page (`appShared` in `app.go`), not in one page's file. `templates/app/agent.html` holds `agent-now`, an agent's line as Claude Code's agent list has it (who, what it did last or how it ended, how long it has run, its tokens). Build its data with `agentLine` or `endedLine` (`agent_line.go`); app-shell.css styles it (`.agent-now`). A package's pane and the Sessions page's detail both draw it, so the two can't drift.
+
+## Sections and Group by
+
+A grouped list (Needs you, Sessions, Worktrees & cleanup, Pull requests) draws each group as a section that folds:
+
+```
+{{template "group-open" .}}
+<summary class="ghead"><span>{{.Label}}</span><span>{{len .Rows}}</span></summary>
+<ul class="rows">…</ul>
+</details>
+```
+
+- **The group** embeds a `listGroup` (`groups.go`): `Key`, unique on the page (`repo:acme/app`, `plan:search-v2`, `plan:-none`), and how it starts. `Open` is false when nothing in it is on a plan or a monitored session's ("Not on a plan", "Not monitored", a repo of strays). `Force` is true when it holds the selected row or `?q=` matched it. The shell's `group-open` partial draws `<details class="group" data-group="…">`, `open` when either holds, and `data-group-force` for Force. Without the script the browser folds it.
+- **`static/app-groups.js`** (load it in your `head` block) remembers each section the user folds or opens, per browser: `localStorage`, under `aim-groups:<path>`, by key, the latest 200. It puts them back on load and after each swap. A forced section opens once for each URL; folded again, it stays folded until the URL changes. While the header's filter hides rows, the sections with rows left open.
+- **Group by** is `?group=`. Call `groupBy(r, d, "<page>", choices)` in your fill, the default choice first. It returns the choice, the `?group=` your own links should carry on (`""` when the URL has none), and the control for the shell's `group-by` partial: links with `data-pane=""` and `data-group-by`. The choice is also the page's default next time, in the cookie `aim_group_<page>`. The script sets it when a Group by link is clicked; without the script, a whole page loaded with `?group=` sets it (`d.cookies`). A fragment never does, so one tab's live refresh doesn't change another's default.
+- **The shell's `busy`** ignores an open `.group`: focus in a section doesn't hold the list's refresh, as it does in a menu.
 
 ## Fragments
 
@@ -98,7 +117,6 @@ The answer is the region's inner HTML, with a fresh CSRF token in the `X-AIM-CSR
 | `data-open="<dialog id>"` / `data-close` | a button | Opens the `<dialog>` with `showModal()` / closes the dialog it is in. Esc and a click on the backdrop close it too. |
 | `data-chime="<key>"` | anything | After a refresh, a key not seen since the page loaded rings the chime, if `<html data-chime="on">` (the Settings page's chime; on by default). Put it on the rows that should ring, such as new Open permission prompts and questions. |
 | `data-search="<text>"` | a list row | More text the header's filter matches, such as a branch the row doesn't show. |
-| `data-scroll-start="end"` | a scrolling box with an `id` | The box opens scrolled to its far right: on a page load, and when a swap shows it new (the plan graph). After that its scroll is the user's. |
 | `data-needs-count` | the menu (shell) | The tab title's count. The script keeps the title at "(N) aim". |
 | `data-flags` | the menu (shell) | The shell's settings (`data-tab-count`, `data-chime`, `data-keys`, each `on` or `off`, and `data-theme`: `system`, `dark` or `light`). After each swap the script copies them onto `<html>` (`data-theme="dark"` or `"light"`, none for System), shows or hides the tab-title preview and the `?` sheet's hint, and redraws the title. |
 
@@ -176,9 +194,9 @@ Templates never mark text safe: titles, branches and prompts are untrusted.
 |---|---|
 | Layout | `.toolbar` (`.end` pushes right), `.content > .card` (cards wrap at 460px), `.actions` (a button row; forms inside lay out inline) |
 | Buttons | `.btn`, `.btn.primary`, `.btn.sm`, `:disabled` / `aria-disabled`; `kbd` for hints (`Go <kbd>g</kbd>`) |
-| Tabs and controls | `.tabs > .tab` (`.on`, `aria-current="page"` or `aria-pressed="true"`) with `.tcount`; `.seg` (segmented; `.on` or `aria-pressed`); `.switch[role=switch][aria-checked] > .knob`; `.trow` with `.trow-title` and `.trow-desc` (a settings row) |
-| Lists | `.ghead` (group header; also a `<button>` or `<summary>`); `.irow` (inbox row: `.kdot`, `.ibody > .ikind, .ititle, .isub`, `.iwait`); `.srow` (simple row); `.sel`, `.new`, `.cursor`, hover; `.rows` (a bare `<ul>`); `.empty` |
-| Detail | `.pill`, `.tag`, `.badge` (`.needs`); `h2` and `.subtitle`; `.label` (section head); `dl.ctx`; `.code` (`.tool`); `.hint`; `.history` |
+| Tabs and controls | `.tabs > .tab` (`.on`, `aria-current="page"` or `aria-pressed="true"`) with `.tcount`; `.seg` (segmented; `.on` or `aria-pressed`); `.gby` (Group by: a label and a small `.seg`); `.switch[role=switch][aria-checked] > .knob`; `.trow` with `.trow-title` and `.trow-desc` (a settings row) |
+| Lists | `.ghead` (group header; also a `<button>` or `<summary>`); `details.group` (a section that folds, its `summary.ghead` with a chevron; it hides when the filter hid its rows); `.irow` (inbox row: `.kdot`, `.ibody > .ikind, .ititle, .isub`, `.iwait`); `.srow` (simple row); `.sel`, `.new`, `.cursor`, hover; `.rows` (a bare `<ul>`); `.empty` |
+| Detail | `.pill`, `.tag`, `.badge` (`.needs`); `h2` and `.subtitle`; `.label` (section head); `dl.ctx`; `.code` (`.tool`); `.hint`; `.history`; `.agent-now` (an agent's line, the `agent-now` partial: `.agent-now-who`, `.agent-now-doing`, `.agent-now-quiet`, `.agent-now-stat`) |
 | Overview | `.card`, `.bar`, `.legend > .sw`, `.dot`, `.feed > .when`, `.stats > .stat > strong + span` |
 | Plans | `.node` (`.ntitle`, `.nid`, `.sel`), `.kcard`, `.khead` |
 | Overlays | `<dialog class="dialog"><div class="dialog-body">` with `.dialog-head`, `.dialog-actions`; `.dropdown`; toasts are the shell's |

@@ -5,7 +5,11 @@
 import type { On } from 'claude-code'
 import { mock } from 'claude-code/testing'
 
+import { BUILD_LOG, BUILD_STATUS, buildDescribe } from './build'
 import { REPO, SESSION_ID } from './fixtures'
+
+/** The commit the plugin folder's last change is, in the fake git. */
+export const BUILD_COMMIT = 'abc1234'.padEnd(40, '0')
 
 /** One request the mod made to aimd. */
 export type Request = {
@@ -51,6 +55,24 @@ export function world(
   const opened: string[] = []
   /** How opening the dashboard goes: `ok` (exit 0), `fail` (exit 1) or `throw`. */
   const browser: { opens: 'ok' | 'fail' | 'throw' } = { opens: 'ok' }
+  /**
+   * The plugin folder's git, for the build session_start reports
+   * (build.ts): what describe says, whether the folder has changes, or
+   * that git fails there (`fail`: not a checkout) or rejects (`reject`: a
+   * timeout). `calls` are the build's git calls: the folder each ran in
+   * and its timeout.
+   */
+  const build: {
+    describe: string
+    dirty: boolean
+    git: 'ok' | 'fail' | 'reject'
+    calls: { cwd: string | undefined; timeoutMs: number | undefined }[]
+  } = { describe: 'v1.0.0-3-gabc1234', dirty: false, git: 'ok', calls: [] }
+  const buildCalls = (): Record<string, string> => ({
+    [['git', ...BUILD_LOG].join(' ')]: `${BUILD_COMMIT}\n`,
+    [['git', ...BUILD_STATUS].join(' ')]: build.dirty ? ' M mod/register.tsx\n' : '',
+    [['git', ...buildDescribe(BUILD_COMMIT)].join(' ')]: `${build.describe}\n`,
+  })
 
   on('session.id', () => {
     if (sessionId instanceof Error) throw sessionId
@@ -78,10 +100,25 @@ export function world(
   })
   on('session.repo', () => ({ value: { root: REPO, remote: null, internal: false, name: null } }))
   on('process.run', (_, e) => {
-    // The reporter's facts at session start (git's branch, the hostname);
-    // anything else is the dashboard being opened.
+    // The reporter's facts at session start (git's branch, the hostname,
+    // the plugin's build); anything else is the dashboard being opened.
     const facts: Record<string, string> = { 'git rev-parse --abbrev-ref HEAD': 'main\n', hostname: 'laptop\n' }
     const line = e.argv.join(' ')
+    const built = buildCalls()[line]
+    if (built !== undefined) {
+      build.calls.push({ cwd: e.init?.cwd, timeoutMs: e.init?.timeoutMs })
+      if (build.git === 'reject') return { deny: 'git: timed out' }
+      const failed = build.git === 'fail'
+      return {
+        value: {
+          exitCode: failed ? 128 : 0,
+          stdout: failed ? '' : built,
+          stderr: failed ? 'fatal: not a git repository' : '',
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      }
+    }
     const stdout = facts[line]
     if (stdout === undefined) {
       if (browser.opens === 'throw') throw new Error(`${e.argv[0]}: not found`)
@@ -121,7 +158,7 @@ export function world(
   /** The requests made to one route. */
   const sent = (route: string) => requests.filter(r => `${r.method} ${r.path}` === route)
 
-  return { clock, requests, sent, toasts, registered, files, opened, browser }
+  return { clock, requests, sent, toasts, registered, files, opened, browser, build }
 }
 
 /** Starts the session as the engine does. */

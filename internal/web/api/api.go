@@ -77,6 +77,22 @@ type Session struct {
 	LastAction string `json:"last_action,omitempty"`
 	LastSaid   string `json:"last_said,omitempty"`
 
+	// PluginBuild is the plugin build the session loaded when it started,
+	// as the plugin reported it, e.g. "v1.0.0-12-gabc1234" (`git describe`
+	// of the last commit that changed the plugin's folder, "-dirty" when
+	// its files differ). A session keeps that build until it restarts.
+	// PluginRoot is the folder it loaded the plugin from. Both are left out
+	// when not reported: a plugin older than the field, or a folder that
+	// isn't a git checkout.
+	PluginBuild string `json:"plugin_build,omitempty"`
+	PluginRoot  string `json:"plugin_root,omitempty"`
+	// PluginOnDisk is the build in PluginRoot now, as aimd works it out
+	// (the same way, cached for a minute), and PluginOutdated is true when
+	// both are known and differ: the session runs an older plugin, and a
+	// restart loads the one on disk.
+	PluginOnDisk   string `json:"plugin_on_disk,omitempty"`
+	PluginOutdated bool   `json:"plugin_outdated,omitempty"`
+
 	StartedAt   time.Time `json:"started_at,omitzero"`
 	FirstSeenAt time.Time `json:"first_seen_at,omitzero"`
 	LastSeenAt  time.Time `json:"last_seen_at,omitzero"`
@@ -223,6 +239,37 @@ type PRs struct {
 	PRs []PR `json:"prs"`
 }
 
+// PRRefreshRequest is the body of POST /api/prs/refresh: the plugin saw a
+// tool call create, merge or close a PR, so aimd reads that PR from
+// GitHub now rather than at its next poll. It only says "look now": what
+// aimd stores is what GitHub answers.
+type PRRefreshRequest struct {
+	// Ref names the PR as the command did: a pull request URL,
+	// "owner/repo#123", a number ("123" or "#123") or a head branch.
+	// Empty means the PR of the branch checked out at Cwd, as gh takes
+	// a command with no PR argument.
+	Ref string `json:"ref"`
+	// Repo is the repo a number or a branch is in when the command named
+	// one (gh's -R/--repo): "owner/repo", or its GitHub URL. Without it,
+	// the repo at Cwd.
+	Repo string `json:"repo,omitempty"`
+	// Cwd is the absolute directory the command ran in, as the plugin
+	// knows it.
+	Cwd string `json:"cwd,omitempty"`
+	// Action is what the call did, "create", "merge" or "close". It is
+	// logged and changes nothing.
+	Action string `json:"action,omitempty"`
+}
+
+// PRRefreshResult is the answer to POST /api/prs/refresh.
+type PRRefreshResult struct {
+	// PRs are the PRs aimd will read, "owner/repo#123": none when the
+	// request names a branch aimd has no open PR for.
+	PRs []string `json:"prs"`
+	// Queued counts those that weren't waiting for a read already.
+	Queued int `json:"queued"`
+}
+
 // PR is one pull request. Enum fields are as GitHub sends them.
 type PR struct {
 	// Repo is GitHub's nameWithOwner.
@@ -246,6 +293,12 @@ type PR struct {
 	// PlanSlug and PlanPkg come from the body's `Plan: <slug> · <ID>` line.
 	PlanSlug string `json:"plan_slug,omitempty"`
 	PlanPkg  string `json:"plan_pkg,omitempty"`
+
+	// Unread is true while aimd has never read the PR from GitHub: an
+	// agent reported it by URL (POST /api/links/pr) and no poll has
+	// read it yet, so only Repo, Number and URL are known and State's
+	// OPEN is a guess. Reason then says "not read from GitHub yet".
+	Unread bool `json:"unread,omitempty"`
 
 	// ReviewRequested is set while your review is requested on the PR, as
 	// the last review-request search found, and ReviewRequestedSince
@@ -308,6 +361,11 @@ type EventStats struct {
 	// dropped as repeats (same session, agent, kind, within a second).
 	Applied int64 `json:"applied"`
 	Deduped int64 `json:"deduped"`
+	// Ignored counts the needs_you events aimd drops without applying or
+	// storing them: older plugins' tool_check asks, sent for every call
+	// the mode's decider (auto mode's classifier) answers without asking
+	// anyone.
+	Ignored int64 `json:"ignored"`
 	// UnknownKinds counts events dropped for a kind aimd doesn't know,
 	// UnknownByKind the same by kind (32 kinds at most; the rest are
 	// "(other)").
@@ -381,6 +439,20 @@ type GitHubStatus struct {
 	// LastQueries and LastCost are what the last tick sent and was charged.
 	LastQueries int `json:"last_queries"`
 	LastCost    int `json:"last_cost"`
+	// Unreadable are the repos GitHub didn't answer for on their last read,
+	// sorted by repo: one GitHub can't find or the token can't see, a
+	// token that failed, or a PR number it has no PR for. The GitHub
+	// source still counts them in PartialErrors.
+	Unreadable []RepoError `json:"unreadable,omitempty"`
+}
+
+// RepoError is a GitHub repo aimd couldn't read.
+type RepoError struct {
+	// Repo is "owner/name" as aimd asked for it.
+	Repo  string `json:"repo"`
+	Error string `json:"error"`
+	// Since is when its reads started failing.
+	Since time.Time `json:"since,omitzero"`
 }
 
 // Budget is GitHub's rate-limit verdict (internal/github Budget).

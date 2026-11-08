@@ -12,7 +12,9 @@
 // order they came, each sorted by time. Events are deduplicated by
 // session, agent, kind and time within a second (plus the tool call, label
 // or origin for the kinds where two can come that close), in case a
-// settings-hook fallback ever sends the same thing as the mod.
+// settings-hook fallback ever sends the same thing as the mod. Older
+// mods' tool_check needs_you events are dropped before that, and only
+// counted (oldModAsk).
 //
 // # State
 //
@@ -29,6 +31,20 @@
 // needs-you is pending, the mod's wait detail (what it asks) is kept with
 // it in memory, for GET /api/sessions ([Receiver.WaitingOn]). Agent rows take their status from agent_list
 // snapshots and turn events, with "waiting" while the agent waits on you.
+//
+// # Which loops are agents
+//
+// A subagent loop is an agent only once something that names the
+// session's agents names it: a turn_start or agent_start (Claude Code's
+// SubagentStart) in its loop, an agent_list that lists it, or a
+// worktree_create of agent-<id>. Each run of an agent, a SendMessage
+// resume's included, starts with turn_start and agent_start under its one
+// id and ends with turn_complete. A loop seen only through its tool calls
+// is one of Claude Code's own forks of an agent (compaction, memory): it
+// carries an id no agent list names and the agent's cwd, its tools are
+// refused, and nothing ever ends it. It is never live or working and gets
+// no agent row, so it can't keep a finished package "working" through the
+// agent's worktree.
 //
 // # The session poller
 //
@@ -373,10 +389,14 @@ func (r *Receiver) process(ctx context.Context, b *events.Batch) {
 			touched = append(touched, s)
 		}
 	}
-	var applied, deduped int64
+	var applied, deduped, ignored int64
 	resolve := r.resolver(ctx)
 	for _, e := range evs {
 		e.SessionID = r.aliasOf(e.SessionID)
+		if oldModAsk(e) {
+			ignored++
+			continue
+		}
 		if r.dup(e, now) {
 			deduped++
 			continue
@@ -423,12 +443,26 @@ func (r *Receiver) process(ctx context.Context, b *events.Batch) {
 	r.smu.Lock()
 	r.stats.Applied += applied
 	r.stats.Deduped += deduped
+	r.stats.Ignored += ignored
 	r.stats.LastEventAt = maxTime(r.stats.LastEventAt, lastAt(evs))
 	r.stats.LiveSessions = r.liveCountLocked()
 	r.smu.Unlock()
 	if changed {
 		r.notify(api.TopicSessions)
 	}
+}
+
+// oldModAsk reports whether e is an older mod's tool_check needs_you, which
+// aimd drops whole: no state, no timeline row, no dedupe entry. Mods from
+// before the needs-you fix sent one for every call tool.check answered
+// "ask", and in auto mode the classifier answers nearly all of those
+// itself, a moment later, with no dialog, so "Needs you" flipped on and off
+// with every command. Those mods report a dialog that does open as
+// permission_request too, and that one still counts. It is dropped before
+// the dedupe pass, which would otherwise take the dialog's needs_you (same
+// call, a few milliseconds later) for a repeat of it.
+func oldModAsk(e events.Event) bool {
+	return e.Kind == events.NeedsYou && e.Source == events.SourceToolCheck
 }
 
 func lastAt(evs []events.Event) time.Time {
@@ -557,6 +591,7 @@ func (r *Receiver) seed(ctx context.Context, s *session, row store.Session) {
 	s.key = row.Key
 	s.prevID = row.PrevSessionID
 	s.host, s.repo, s.iterm, s.kind = row.Host, row.Repo, row.ItermSessionID, row.Kind
+	s.pluginBuild, s.pluginRoot = row.PluginBuild, row.PluginRoot
 	s.cwd, s.worktree, s.branch = row.Cwd, row.WorktreePath, row.Branch
 	s.lastAction, s.lastSaid = row.LastAction, row.LastSaid
 	s.startedAt, s.lastEventAt = row.StartedAt, row.LastEventAt
@@ -567,6 +602,9 @@ func (r *Receiver) seed(ctx context.Context, s *session, row store.Session) {
 	}
 	for _, a := range agents {
 		l := s.loop(a.AgentID)
+		// Only named loops get a row (and migration 0013 ended the rows an
+		// older aimd wrote for forks), so a stored row is an agent.
+		l.named = true
 		if a.Kind != "" {
 			l.kind = a.Kind
 		}
@@ -577,7 +615,7 @@ func (r *Receiver) seed(ctx context.Context, s *session, row store.Session) {
 		if l.status == events.AgentWaiting {
 			l.status = events.AgentRunning // the ask itself isn't stored
 		}
-		l.lastAction, l.startedAt, l.endedAt = a.LastAction, a.StartedAt, a.EndedAt
+		l.lastAction, l.tokens, l.startedAt, l.endedAt = a.LastAction, a.Tokens, a.StartedAt, a.EndedAt
 		l.dirty = false
 	}
 }
@@ -638,6 +676,7 @@ func (r *Receiver) persist(ctx context.Context, s *session, now time.Time) bool 
 			LastAction: s.lastAction, LastSaid: s.lastSaid, LastEventAt: s.lastEventAt,
 			Cwd: s.cwd, WorktreePath: s.worktree, Repo: s.repo, Branch: s.branch,
 			Host: s.host, ItermSessionID: s.iterm, Kind: s.kindGuess(),
+			PluginBuild: s.pluginBuild, PluginRoot: s.pluginRoot,
 		}
 		if s.interactive != nil && *s.interactive {
 			f := false
@@ -682,22 +721,25 @@ func (r *Receiver) persist(ctx context.Context, s *session, now time.Time) bool 
 	return changed
 }
 
-// persistAgents writes a session's changed agent rows. It reports whether
-// it wrote any.
+// persistAgents writes a session's changed agent rows. A loop nothing
+// named yet (loop.named) gets none, and stays dirty for when it is. It
+// reports whether it wrote any.
 func (r *Receiver) persistAgents(ctx context.Context, s *session) bool {
 	var agents []store.Agent
+	var written []*loop
 	for _, id := range s.order {
 		l := s.loops[id]
-		if !l.dirty {
+		if !l.dirty || !l.named {
 			continue
 		}
+		written = append(written, l)
 		if l.id == "" && s.worktree != "" {
 			l.worktree = s.worktree
 		}
 		agents = append(agents, store.Agent{
 			SessionID: s.id, AgentID: l.id, Kind: l.kind, AgentType: l.agentType, Background: l.background,
 			Model: l.model, ParentAgentID: l.parent, WorktreePath: l.worktree, State: l.rowState(),
-			LastAction: l.lastAction, StartedAt: l.startedAt, EndedAt: l.endedAt,
+			LastAction: l.lastAction, Tokens: l.tokens, StartedAt: l.startedAt, EndedAt: l.endedAt,
 		})
 	}
 	if len(agents) == 0 {
@@ -707,8 +749,8 @@ func (r *Receiver) persistAgents(ctx context.Context, s *session) bool {
 		r.storeError("upsert agents", err)
 		return false
 	}
-	for _, id := range s.order {
-		s.loops[id].dirty = false
+	for _, l := range written {
+		l.dirty = false
 	}
 	return true
 }
@@ -1027,6 +1069,8 @@ func eventRow(e events.Event) store.Event {
 		row.Summary = e.Reason
 	case events.WorktreeCreate:
 		row.Summary = e.Name
+	case events.AgentStart:
+		row.Summary = e.AgentType
 	case events.SessionEnd:
 		row.Summary = e.Reason
 		if e.NewSessionID != "" {

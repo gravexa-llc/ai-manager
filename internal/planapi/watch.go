@@ -141,6 +141,20 @@ func (s *Service) resyncPath(ctx context.Context, key string) bool {
 	return changed
 }
 
+// reparseStored re-parses the copy of a plan stored at its last read and
+// syncs its packages with it, as a changed file would be (links, Mark done
+// and the lifecycles are kept). The copy is the same, but the parser and
+// the store can read more of it than when it was stored: the What column,
+// say, which an aimd before migration 0015 parsed but didn't keep. A copy
+// that parses to no packages is left alone.
+func (s *Service) reparseStored(ctx context.Context, p store.Plan) error {
+	parsed := plans.Parse([]byte(p.SourceMD))
+	if len(parsed.Packages) == 0 {
+		return nil
+	}
+	return s.st.SyncPackages(ctx, p.ID, state.StorePackages(parsed))
+}
+
 // resyncPlan re-reads a registered plan's file and, if it changed, stores
 // the new copy, title and packages (links and Mark done are kept for the
 // packages still there). A file that now has no packages at all is left

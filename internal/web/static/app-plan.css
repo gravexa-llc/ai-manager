@@ -122,6 +122,18 @@
 .pd-head { display: flex; align-items: center; gap: 8px; }
 .pd-id { font-size: 13px; }
 .pd-close { margin-left: auto; }
+
+/* The package's What, under its title. A long one is a <details> whose
+   summary holds the text: closed, it is clamped to four lines with
+   "more"; open, it shows whole with "less". */
+.pd-what { margin: 2px 0 8px; font-size: 13px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+details.pd-what > summary { display: block; list-style: none; cursor: pointer; }
+details.pd-what > summary::-webkit-details-marker { display: none; }
+details.pd-what:not([open]) .pd-what-text {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden;
+}
+.pd-what-toggle { display: block; margin-top: 2px; font-size: 12px; color: var(--link); }
+details.pd-what[open] .more, details.pd-what:not([open]) .less { display: none; }
 .pd-badges { margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; }
 .pd-badges li { padding: 3px 0; }
 .pd-signals { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0 0; }
@@ -152,6 +164,11 @@ a.dep:hover { background: var(--hover-strong); color: var(--ink-2); }
 .dep-why { display: block; margin: 0 10px 6px; }
 
 .pd-link + .pd-link::before { content: "; "; }
+/* A live agent: its line (app-shell.css's .agent-now, shared with the
+   Sessions page), its other facts under. */
+.pd-agent { display: block; margin-bottom: 6px; }
+.pd-link + .pd-agent::before, .pd-agent + .pd-link::before { content: none; }
+.pd-now-facts { display: block; }
 .fact { color: var(--muted); font-size: 12px; }
 .fact-need, .fact-bad { color: var(--need-ink); }
 .fact-ok { color: var(--ok-ink); }
@@ -185,3 +202,5 @@ a.dep:hover { background: var(--hover-strong); color: var(--ink-2); }
 .um-title { font-weight: 600; }
 .um-where { flex: 1 1 100%; margin: 0; }
 .um-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.um-group { margin-top: 10px; }
+.um-group > summary { cursor: pointer; }

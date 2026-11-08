@@ -1,8 +1,10 @@
 package web
 
 // The Needs you inbox's sync: what waits now, worked out from the store's
-// sessions and PRs with internal/monitor's monitoring, handed to
-// internal/inbox, which keeps the items. See internal/inbox for the rules.
+// sessions and PRs with internal/monitor's monitoring, and from the
+// registered plans' boards (their provisional packages' missing rows, and
+// your steps that are ready: yourstep.go), handed to internal/inbox,
+// which keeps the items. See internal/inbox for the rules.
 //
 // SyncInbox runs a pass. It is called:
 //   - before the inbox page, its fragments, GET /api/inbox and the menu's
@@ -65,7 +67,7 @@ func (s *Server) inboxStore() (InboxStore, bool) {
 // long Done items are kept, from the Settings page (app_settings.go),
 // and the snooze choices.
 func (s *Server) inboxSettings(ctx context.Context) inbox.Settings {
-	return inboxSettingsOf(s.settings(ctx))
+	return s.inboxSettingsOf(s.settings(ctx))
 }
 
 // inboxReady reports whether the session list is fresh enough to sync
@@ -178,8 +180,8 @@ type inboxInput struct {
 	mon       *monitor.Set
 	repoNames map[string]string // worktrees.PathKey(main checkout) → nameWithOwner
 	// boards are the registered plans' boards, for their provisional
-	// packages; rowWaiting the refs of the missing-row items still
-	// waiting.
+	// packages and your steps; rowWaiting the refs of the plans' items
+	// still waiting.
 	boards     []api.Plan
 	rowWaiting map[string]bool
 }
@@ -207,7 +209,8 @@ func (s *Server) inboxInput(ctx context.Context) (inboxInput, error) {
 	}
 	in.now = s.now()
 	// The boards as the monitoring reads them (the plan service's, in
-	// aimd); without monitoring wired there are no plan-row items.
+	// aimd); without monitoring wired there are no plan-row or your-step
+	// items.
 	if src := s.opts.Monitor; src != nil && src.Plans != nil {
 		if in.boards, err = src.Plans(ctx); err != nil {
 			return in, err
@@ -261,7 +264,96 @@ func (s *Server) inboxSnapshot(in inboxInput) inbox.Snapshot {
 		snap.Episodes = append(snap.Episodes, prEpisode(p, kind, v))
 	}
 	planRowEpisodes(in, &snap)
+	yourStepEpisodes(in, &snap)
 	return snap
+}
+
+// yourStepEpisodes adds the registered plans' packages that are your step
+// and ready (yourStep, the rule of the plan page's "needs you" badge): one
+// item each, from when the package became ready. Its episode ends when the
+// package stops meeting the rule: it is done (✅, a merged PR or Mark
+// done), blocked again, worked on, or no longer yours; or when it goes
+// (its plan unregistered, its row taken out of the file). A provisional
+// package never is one: it has no row to make it yours, and its missing
+// row is a plan_row item.
+func yourStepEpisodes(in inboxInput, snap *inbox.Snapshot) {
+	for _, b := range in.boards {
+		seen := map[string]bool{}
+		for _, p := range b.Packages {
+			ref := inbox.YourStepRef(b.Slug, p.ID)
+			if seen[ref] {
+				continue // a second row with the ID: the first is the package
+			}
+			seen[ref] = true
+			if why, ok := yourStep(p); ok {
+				ep := yourStepEpisode(b, p, why)
+				if ep.Since.IsZero() {
+					// Not known: from now, never from the zero time (a
+					// pass keeps the earlier of two starts).
+					ep.Since = in.now
+				}
+				snap.Episodes = append(snap.Episodes, ep)
+				continue
+			}
+			snap.Stopped[ref] = yourStepStopped(p, planFile(b))
+		}
+	}
+}
+
+// yourStepEpisode is a package that is your step and ready: titled by its
+// ID and title, with its "you:" step as its detail and its signature, so a
+// snooze "until it changes" wakes when the step's text changes.
+func yourStepEpisode(b api.Plan, p api.Package, why string) inbox.Episode {
+	note := strings.TrimSpace(p.NeedsYou)
+	sub := "Ready in " + cmp.Or(b.Title, b.Slug)
+	if note != "" {
+		sub += " · you: " + note
+	}
+	return inbox.Episode{
+		Source: inbox.SourcePlan,
+		Ref:    inbox.YourStepRef(b.Slug, p.ID),
+		Kind:   inbox.KindYourStep,
+		Since:  p.Since,
+		Detail: note,
+		// The note is closed off, so a longer note is never taken for the
+		// same one told better (inbox's refines).
+		Sig:      inbox.KindYourStep + "|" + strings.ToUpper(p.ID) + "|" + note + "|",
+		Title:    strings.TrimSpace(p.ID + " " + p.Title),
+		Subtitle: sub,
+		PlanSlug: b.Slug,
+		Pkg:      p.ID,
+		Repo:     planRepo(b, p.Repo),
+		Why:      why,
+	}
+}
+
+// planFile is a plan file's name, or "the plan file".
+func planFile(b api.Plan) string {
+	if b.Path == "" {
+		return "the plan file"
+	}
+	return filepath.Base(b.Path)
+}
+
+// planRepo is the repo a plan row's Repo cell names, as the inbox files
+// items by repo: the plan's registered repo whose nameWithOwner or name
+// it is, else the cell as written; "" for an empty cell or a dash.
+func planRepo(b api.Plan, cell string) string {
+	cell = strings.TrimSpace(strings.Trim(strings.TrimSpace(cell), "`"))
+	switch cell {
+	case "", "-", "–", "—":
+		return ""
+	}
+	for _, r := range b.Repos {
+		name := repoTail(r)
+		if strings.HasPrefix(r, "/") {
+			name = filepath.Base(r) // a repo with no GitHub remote: its main checkout
+		}
+		if strings.EqualFold(r, cell) || strings.EqualFold(name, cell) {
+			return r
+		}
+	}
+	return cell
 }
 
 // planRowEpisodes adds the provisional packages whose row is still

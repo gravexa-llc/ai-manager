@@ -17,8 +17,8 @@ import (
 //   - Observed (the session poller, through UpsertSessions): Key, SessionID,
 //     JobID, Kind, Headless, Name, Host, Cwd, WorktreePath, Repo, Branch,
 //     PID, State, StateReason, NeedsYouSince, StartedAt, LastSeenAt.
-//   - Activity (the mod, through UpdateSessionActivity): ItermSessionID,
-//     LastAction, LastSaid, LastEventAt. DismissNeedsYou sets
+//   - Activity (the mod, through UpdateSessionLive): ItermSessionID,
+//     LastAction, LastSaid, LastEventAt, PluginBuild, PluginRoot. DismissNeedsYou sets
 //     NeedsYouDismissedAt and EndSession sets EndedAt.
 //   - Kept by the store: ID, PrevSessionID, FirstSeenAt.
 //
@@ -71,6 +71,12 @@ type Session struct {
 	LastAction string // a short label, never a prompt or tool output
 	LastSaid   string // a short summary, never the text itself
 
+	// PluginBuild is the plugin build the session loaded at its start, as
+	// the mod reported it on session_start (internal/events PluginBuild),
+	// and PluginRoot the plugin's folder. Both are "" until reported.
+	PluginBuild string
+	PluginRoot  string
+
 	StartedAt time.Time // `startedAt`
 	// FirstSeenAt and LastSeenAt are the first and latest poll that listed
 	// the session. Pass the poll time as LastSeenAt; zero means now.
@@ -99,6 +105,7 @@ func SessionKey(jobID string, pid int, sessionID string) string {
 const sessionColumns = `id, key, session_id, job_id, prev_session_id, kind, headless,
 	name, host, cwd, worktree_path, repo, branch, iterm_session_id, pid, state,
 	state_reason, needs_you_since, needs_you_dismissed_at, last_action, last_said,
+	plugin_build, plugin_root,
 	started_at, first_seen_at, last_seen_at, last_event_at, ended_at`
 
 func scanSession(sc scanner) (Session, error) {
@@ -106,6 +113,7 @@ func scanSession(sc scanner) (Session, error) {
 	err := sc.Scan(&s.ID, &s.Key, &s.SessionID, &s.JobID, &s.PrevSessionID, &s.Kind, &s.Headless,
 		&s.Name, &s.Host, &s.Cwd, &s.WorktreePath, &s.Repo, &s.Branch, &s.ItermSessionID, &s.PID, &s.State,
 		&s.StateReason, msTime{&s.NeedsYouSince}, msTime{&s.NeedsYouDismissedAt}, &s.LastAction, &s.LastSaid,
+		&s.PluginBuild, &s.PluginRoot,
 		msTime{&s.StartedAt}, msTime{&s.FirstSeenAt}, msTime{&s.LastSeenAt}, msTime{&s.LastEventAt}, msTime{&s.EndedAt})
 	return s, err
 }

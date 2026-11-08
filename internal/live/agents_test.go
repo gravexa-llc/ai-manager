@@ -31,6 +31,105 @@ func TestLineage(t *testing.T) {
 	}
 }
 
+// A subagent's token count comes from agent_list: the latest stands, up
+// or down, and a snapshot without one keeps it. It outlives the agent's
+// turn and an aimd restart.
+func TestAgentTokens(t *testing.T) {
+	h := newHarness(t, nil)
+	snap := func(at time.Duration, tokens int64, status string) events.Event {
+		l := ev(events.AgentList, "s1", t0.Add(at))
+		l.Agents = []events.Agent{{ID: "a1", Status: status, Type: "general-purpose", Tokens: tokens}}
+		return l
+	}
+	h.post(start("s1", t0), snap(time.Second, 41_200, events.AgentRunning))
+	if a := h.agents("s1")["a1"]; a.Tokens != 41_200 {
+		t.Fatalf("a1 tokens = %d, want 41200", a.Tokens)
+	}
+	// Compaction shrinks the context: the count goes down with it.
+	h.post(snap(30*time.Second, 286_000, events.AgentRunning), snap(60*time.Second, 52_000, events.AgentRunning))
+	if a := h.agents("s1")["a1"]; a.Tokens != 52_000 {
+		t.Errorf("a1 tokens after compaction = %d, want 52000", a.Tokens)
+	}
+	// An older mod's snapshot carries none; the agent ends.
+	h.post(snap(90*time.Second, 0, events.AgentCompleted))
+	if a := h.agents("s1")["a1"]; a.Tokens != 52_000 || a.State != events.AgentCompleted {
+		t.Errorf("a1 after a snapshot without tokens = %+v", a)
+	}
+	// agent_list never gives the main loop one (TestMainLoopTokens).
+	if a := h.agents("s1")[""]; a.Tokens != 0 {
+		t.Errorf("lead tokens = %d, want 0", a.Tokens)
+	}
+
+	// After a restart the count is seeded from the row, and kept by an event
+	// that says nothing of it.
+	ctx := context.Background()
+	if err := h.st.UpsertSessions(ctx, store.Session{Key: "pid:8", SessionID: "s2", PID: 8, Kind: "interactive", Cwd: "/r/app", State: "working"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.UpsertAgents(ctx, store.Agent{SessionID: "s2", AgentID: "b1", Kind: store.AgentSubagent, State: events.AgentRunning, Tokens: 9_900, StartedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	h.post(tool("s2", "b1", "Bash: x", "1", t0.Add(time.Minute)))
+	if a := h.agents("s2")["b1"]; a.Tokens != 9_900 || a.LastAction != "Bash: x" {
+		t.Errorf("b1 after a tool event = %+v", a)
+	}
+}
+
+// The main loop's token count comes on its own tool and turn_complete
+// events, onto its agent row: the latest stands, up or down; an older
+// event's is ignored, a subagent's event gives it none, and one without a
+// count keeps it. It outlives an aimd restart, and /clear forgets it.
+func TestMainLoopTokens(t *testing.T) {
+	h := newHarness(t, nil)
+	sized := func(e events.Event, n int64) events.Event {
+		e.Tokens = n
+		return e
+	}
+	lead := func(h *harness) int64 { return h.agents("lead-session")[""].Tokens }
+	sub := ev(events.AgentStart, "lead-session", t0.Add(time.Second))
+	sub.AgentID, sub.AgentType = "a1111111111111111", "general-purpose"
+	h.post(start("lead-session", t0), sub, tool("lead-session", "", "Bash: Run the tests", "1", t0.Add(2*time.Second)))
+	if n := lead(h); n != 0 {
+		t.Fatalf("lead tokens before a count = %d", n)
+	}
+	h.post(sized(tool("lead-session", "", "Bash: Run the tests", "2", t0.Add(3*time.Second)), 61_200))
+	if n := lead(h); n != 61_200 {
+		t.Fatalf("lead tokens = %d, want 61200", n)
+	}
+	done := sized(ev(events.TurnComplete, "lead-session", t0.Add(4*time.Second)), 62_000)
+	done.Reason = events.ReasonAnswer
+	h.post(done)
+	if n := lead(h); n != 62_000 {
+		t.Errorf("lead tokens after its turn = %d, want 62000", n)
+	}
+	// Compaction: down. Then an event sent before that one, and a
+	// subagent's: neither changes it, and the subagent gets none from it.
+	h.post(sized(tool("lead-session", "", "Bash: ls", "3", t0.Add(6*time.Second)), 20_000))
+	h.post(sized(tool("lead-session", "", "Bash: old", "4", t0.Add(5*time.Second)), 99_000),
+		sized(tool("lead-session", "a1111111111111111", "Bash: ls", "5", t0.Add(7*time.Second)), 77_000))
+	if n, a := lead(h), h.agents("lead-session")["a1111111111111111"]; n != 20_000 || a.Tokens != 0 {
+		t.Errorf("lead tokens = %d (want 20000), subagent's = %d (want 0)", n, a.Tokens)
+	}
+	// No count keeps it, across an aimd restart too.
+	h2 := newHarnessOn(t, h.st)
+	h2.post(tool("lead-session", "", "Read: README.md", "6", t0.Add(8*time.Second)))
+	if n := lead(h2); n != 20_000 {
+		t.Errorf("lead tokens after a restart = %d, want 20000", n)
+	}
+	// /clear: a new conversation, with no count until its first response;
+	// a late event of the old one doesn't bring it back.
+	end := ev(events.SessionEnd, "lead-session", t0.Add(9*time.Second))
+	end.Reason = events.ReasonClear
+	h2.post(end, sized(tool("lead-session", "", "Bash: late", "7", t0.Add(8500*time.Millisecond)), 21_000))
+	if n := lead(h2); n != 0 {
+		t.Errorf("lead tokens after /clear = %d, want 0", n)
+	}
+	h2.post(sized(tool("lead-session", "", "Bash: ls", "8", t0.Add(10*time.Second)), 4_100))
+	if n := lead(h2); n != 4_100 {
+		t.Errorf("lead tokens after /clear's first response = %d, want 4100", n)
+	}
+}
+
 // The agent ↔ worktree join, in this order: worktree_create's
 // name first, then the cwd in the agent's own events, resolved against the
 // worktrees the scanner found.

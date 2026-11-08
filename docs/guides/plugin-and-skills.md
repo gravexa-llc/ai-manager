@@ -44,8 +44,10 @@ The mod is one hooks module, `plugin/mod/register.tsx`, that Claude Code loads i
 | `agent.spawn` | When the lead spawns an agent: finds its package from the brief's `Package:` line (or a package ID in the description or brief), appends the convention block to the brief, and links the agent (`POST /api/links/spawn`). For a package the plan file lacks, it tells the lead to add the row, or refuses the spawn when `requirePlanRow` is on. For a brief that could mean several packages, it offers a choice above the prompt. |
 | `tool.call` on `Agent` | Links a remote agent once its cloud session URL comes back. |
 | `prompt.compose` | Adds the convention block to the system prompt of a session whose worktree or branch is already linked to a package. |
-| `tool.call` on `Bash` | Before `gh pr create` by a linked agent: refuses it if the PR body lacks the package's `Plan:` line (when `prCheck` is on). After it: tells aimd the PR exists (`POST /api/links/pr`), so the card moves to "in review" before GitHub's next poll. |
+| `tool.call` on `Bash` | Before `gh pr create` by a linked agent: refuses it if the PR body lacks the package's `Plan:` line (when `prCheck` is on). After it: tells aimd the PR exists (`POST /api/links/pr`), so the card moves to "in review" and aimd reads the PR from GitHub within seconds. A PR from an agent no package claims is only read (`POST /api/prs/refresh`). |
 | `tool.call` on `mcp__…create_pull_request` | The same, for GitHub's MCP tool. |
+| `tool.call` on `Bash`, after `gh pr merge` or `gh pr close` | When the command worked: tells aimd which PR (`POST /api/prs/refresh`: the number, URL or branch the command named, its `-R` repo, and the session's folder), and aimd reads that PR from GitHub within seconds instead of at its next poll. The command's own output is never taken as the PR's state. With no PR named, only the main loop reports it, as the current branch's. |
+| `tool.call` on `mcp__…merge_pull_request`, `mcp__…update_pull_request` | The same, for GitHub's MCP tools: a merge, or an update that closes the PR. |
 | `tool.call` on `Write`, `Edit` | When the main loop saves a `.md` file: asks aimd whether it looks like a plan (`POST /api/plans/detect`), for the Register offer. |
 
 **The band above the prompt**
@@ -269,7 +271,7 @@ claude plugin test plugin/       # the mod's *.test.ts files
 
 Rules for the mod:
 
-- **Every hook fails open.** End each `on(…)` with `.catch(($, e, next) => next(e))`, and keep any work that can fail away from the path that calls `next`.
+- **Every hook fails open.** End each `on(…)` with `.catch(($, e, next) => next(e))`, and keep any work that can fail away from the path that calls `next`. `turn.step` streams, so its hook and its handler are generators: the handler is `.catch(async function* ($, e, next) { return yield* next(e) })`.
 - **Never block a session on aimd.** Calls go through `call()` or `request()` in `aimd.ts`, which time out after 1 second and never throw. Reporting is unawaited.
 - **Keep the hot paths cheap.** `tool.call` runs on every tool call: test with a local regex or an in-memory map before doing anything else.
 - **Send summaries only** (below). A new kind of detail needs redaction on both sides: `plugin/mod/wait.ts` and `internal/events/redact.go` share the same patterns, tested on the same examples.
@@ -284,14 +286,31 @@ The mod POSTs events to aimd's `/events`, with the token:
 
 | Event | Carries |
 |---|---|
-| `session_start`, `session_end` | The session's folder, repo, worktree and branch; how it started or ended |
+| `session_start`, `session_end` | The session's folder, repo, worktree and branch; how it started or ended; at the start, the plugin build it loaded (below) |
 | `prompt` | Where the prompt came from (you, the SDK, …), never its text |
-| `turn_start`, `turn_complete` | The loop (main or which subagent); at the end of a turn, the first line of Claude's answer, at most 300 characters |
-| `tool` | A last-action label, such as `Bash: Run the tests`, `Edit src/search.ts` or `WebFetch example.com`, never the tool's input or output |
+| `turn_start`, `turn_complete` | The loop (main or which subagent); at the end of a turn, the first line of Claude's answer, at most 300 characters, and in the main loop its token count (below) |
+| `tool` | A last-action label, such as `Bash: Run the tests`, `Edit src/search.ts` or `WebFetch example.com`, never the tool's input or output; in the main loop, its token count |
 | `needs_you` | That the session waits on you, why, and what it waits on (below) |
 | `idle`, `error` | The loop and a short reason |
 | `worktree_create` | The new worktree's name |
-| `agent_list` | The session's agents and their state, every 30 seconds while it has any |
+| `agent_start` | A subagent's run began (Claude Code's `SubagentStart`): the agent, its type and its folder |
+| `agent_list` | The session's agents and their state, every 30 seconds while it has any, with each subagent's token count: its latest model response's input, cache and output tokens, as Claude Code's agent list counts them |
+
+**Which loops are agents.** Every run of a subagent starts with `turn_start` and `agent_start` under the agent's one id and ends with `turn_complete`. That includes a run that resumes a finished agent when the lead sends it a message. aimd counts a loop as an agent once one of these names it: `turn_start`, `agent_start`, `agent_list`, or a `worktree_create` of `agent-<id>`. Claude Code also runs forks of an agent for its own work, such as compaction or memory. A fork has an id no agent list names, works in the agent's folder, and its tools are refused. Its tool attempts still reach the mod as `tool` events. Such a loop is never an agent: it isn't live or working, it gets no row of its own, and its calls only go in the timeline.
+
+**Token counts.** After each model request the plugin keeps the loop's count: the response's input, cache and output tokens, as Claude Code's agent list counts them. It isn't a running total, so it goes down after a compaction. A subagent's goes out on `agent_list`. The main loop's goes out on the main loop's next `tool` or `turn_complete`, since every request either calls tools or ends the turn. After `/clear` the main loop has no count until its next response. The dashboard shows both in the agent's line.
+
+**When it says a session needs you.** Only when you're actually asked something:
+
+- a permission dialog opens (`classic.PermissionRequest`);
+- a question or a plan to approve (`AskUserQuestion`, `ExitPlanMode`);
+- Claude Code's own notification that a dialog is waiting.
+
+A call the mode decides by itself never counts. Claude Code's `tool.check` answers "ask" for any call no rule allows, but the mode's decider takes that ask first: in auto mode, its classifier approves or refuses most calls with no dialog at all. So `tool.check` only notes which call it is, for the dialog that follows if one does open. The need ends when the call finishes, the loop's turn moves on, or you send a prompt.
+
+Older builds of the plugin did send a `needs_you` for every `tool.check` ask, with source `tool_check`, and a session keeps the build it started with until it restarts. aimd ignores those: it drops them before they reach the session's state, the Needs you inbox, the chime or the timeline, and counts them in `GET /api/status` (`events.ignored`). The same builds report a dialog that really opens as `permission_request`, so real prompts from old sessions still need you.
+
+**Which build a session runs.** The mod is loaded once, when a session starts, from the plugin's folder (a checkout's `plugin/`). A `git pull` there doesn't reach sessions already running. So `session_start` carries `plugin_build`, the build the session loaded, and `plugin_root`, the folder. The build is `git describe --tags --always` of the last commit that changed the plugin's folder, with `-dirty` when its tracked files differ from that commit, such as `v1.0.0-12-gabc1234`. Nobody bumps a number for it: `plugin.json`'s version stays the same between releases, and commits that only touch aimd leave it alone. The mod works it out with three `git` calls in its own folder, each allowed a second, off the hook's path. If any of them fails, as in a folder that isn't a git checkout, `plugin_build` is left out. aimd works out the build in that folder now the same way, and the dashboard marks a session whose build differs **Older plugin**, as in [Using the dashboard](dashboard.md#sessions).
 
 **Summaries only.** The mod never sends a prompt, a file's contents, a whole command or a tool's output, with one exception: what a dialog waits on, so the dashboard can show it. That is:
 

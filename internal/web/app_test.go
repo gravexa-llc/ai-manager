@@ -189,8 +189,9 @@ func TestAppMenu(t *testing.T) {
 // TestAppMenuFollowsMonitoring checks the menu against the monitoring
 // rules (internal/monitor), in its monitored-sessions world
 // (newMonitorEnv): Needs you counts what waits on
-// you there (needsYouTotal agrees), and Sessions only the monitored
-// sessions.
+// you there (needsYouTotal agrees on the sessions and PRs; the plan's
+// your steps, aimSteps, are the inbox's alone), and Sessions only the
+// monitored sessions.
 func TestAppMenuFollowsMonitoring(t *testing.T) {
 	for _, c := range []struct {
 		mode               string
@@ -207,7 +208,7 @@ func TestAppMenuFollowsMonitoring(t *testing.T) {
 		e := newMonitorEnv(t, c.mode)
 		sn, err := e.srv.load(context.Background())
 		must(t, err)
-		n := strconv.Itoa(c.needs)
+		n := strconv.Itoa(c.needs + aimSteps)
 		if got := needsYouTotal(sn); got != c.needs {
 			t.Fatalf("%s: needsYouTotal = %d, want %d", c.mode, got, c.needs)
 		}
@@ -683,20 +684,9 @@ func TestAppShellFollowUps(t *testing.T) {
 	wantIn(t, "navigate", jsFunc(t, js, "navigate"), "p[0] === stay")
 	wantIn(t, "app-shell.js", js, `el.hasAttribute("data-item") && el.closest("#list, #detail, #content")`)
 
-	// The plan graph opens scrolled to its far right, on a page load and
-	// when a swap first shows it; after that a swap keeps the user's scroll,
-	// at the left end too (its id is kept even at 0).
-	wantIn(t, "scrollStart", jsFunc(t, js, "scrollStart"), `'[data-scroll-start="end"]'`, "!(x.id && kept[x.id])", "x.scrollLeft = x.scrollWidth - x.clientWidth")
-	wantIn(t, "swap", swap, `x.hasAttribute("data-scroll-start")`, "scrollStart(el, scrolled)")
-	wantIn(t, "app-shell.js", js, "scrollStart(doc.body, {});")
-	pe := newBoardEnv(t)
-	pe.registerSharing()
-	for _, p := range []string{"/app/plans/sharing", "/app/plans/sharing?view=graph&pkg=T1&fragment=list"} {
-		wantIn(t, p, get(t, pe.h, p), `<div id="plan-graph" class="pg-scroll" data-keep-scroll data-scroll-start="end">`)
-	}
-	for _, view := range []string{"kanban", "timeline"} {
-		wantNotIn(t, view, get(t, pe.h, "/app/plans/sharing?view="+view+"&fragment=list"), "data-scroll-start")
-	}
+	// The shell has no start position of its own any more: app-plan.js
+	// places a plan's views when they first show (TestPlanGraphOpensOnWork).
+	wantNotIn(t, "app-shell.js", js, "data-scroll-start", "scrollStart", "x.scrollWidth - x.clientWidth")
 
 	// The settings flags ride on the menu, which refreshes live: the script
 	// copies them onto <html> after every swap.
@@ -746,7 +736,7 @@ func TestAppHelpSheet(t *testing.T) {
 	for _, k := range []string{"j", "k", "Enter", "g", "s", "d", "u", "/", "1", "6", "?", "Esc"} {
 		wantIn(t, "inbox", inbox, "<kbd>"+k+"</kbd>")
 	}
-	wantIn(t, "inbox", inbox, key("g", "Go: switch to its terminal tab, or open the PR on GitHub"), key("s", "Snooze"), key("d", "Done"),
+	wantIn(t, "inbox", inbox, key("g", "Go: switch to its terminal tab, open the PR on GitHub, or open your step in its plan"), key("s", "Snooze"), key("d", "Done"),
 		key("u", "Undo, or move a Done item back to Open"), "<dd>Filter this list; <kbd>Esc</kbd> clears it</dd>")
 	if n := strings.Count(inbox, "<kbd>u</kbd>"); n != 1 {
 		t.Errorf("inbox lists u %d times", n)
@@ -756,7 +746,7 @@ func TestAppHelpSheet(t *testing.T) {
 	wantIn(t, "prs", prs, key("g", "Open the PR on GitHub"), key("u", "Undo the last change, while its toast shows"))
 	wantNotIn(t, "prs", prs, "Go: switch", "<kbd>s</kbd>", "<kbd>d</kbd>")
 	wantIn(t, "sessions", help("/app/sessions"), key("g", "Go: switch to its terminal tab"))
-	wantIn(t, "plan", help("/app/plans/sharing"), key("g", "Go to the package&#39;s agent"), key("d", "Mark done"))
+	wantIn(t, "plan", help("/app/plans/sharing"), key("g", "Go to the package&#39;s agent, or else the plan&#39;s lead"), key("d", "Mark done"))
 
 	for _, p := range []string{"/app/", "/app/settings"} {
 		one := help(p)

@@ -27,6 +27,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/github"
 	"github.com/gravexa-llc/ai-manager/internal/live"
 	"github.com/gravexa-llc/ai-manager/internal/planapi"
+	"github.com/gravexa-llc/ai-manager/internal/pluginbuild"
 	"github.com/gravexa-llc/ai-manager/internal/prune"
 	"github.com/gravexa-llc/ai-manager/internal/sessions"
 	"github.com/gravexa-llc/ai-manager/internal/store"
@@ -200,6 +201,7 @@ func serve(ctx context.Context, port int, debug, underLaunchd bool, stderr io.Wr
 		LastScan:  d.LastScan,
 		Canonical: d.CanonicalRepo,
 		Backfill:  d.BackfillPRs,
+		Refresh:   d.RefreshPRs,
 		Notify:    hub.Publish,
 		Logger:    log,
 	})
@@ -274,6 +276,9 @@ func serve(ctx context.Context, port int, debug, underLaunchd bool, stderr io.Wr
 		SafeToRemove: verdicts,
 		Cleanup:      cleanup,
 		Jobs:         jobs,
+		// The plugin build on disk in each folder sessions load the
+		// plugin from, so a session on an older one is flagged.
+		PluginBuilds: pluginbuild.New(scanner, nil),
 		// The Settings page says when config.toml turns notifications
 		// off.
 		NotifyDisabled: !cfg.Notify.Enabled,

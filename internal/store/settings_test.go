@@ -12,7 +12,7 @@ func TestSettingsDefaults(t *testing.T) {
 	got, err := s.Settings(context.Background())
 	must(t, err)
 	want := Settings{TabCount: true, Notifications: true, Chime: true, Highlight: true, Shortcuts: true,
-		BackToOpenMinutes: 10, KeepDoneDays: 30, Theme: ThemeSystem}
+		BackToOpenMinutes: 10, KeepDoneDays: 30, Theme: ThemeSystem, TimeZone: TimeZoneSystem}
 	equal(t, "defaults", got, want)
 	equal(t, "DefaultSettings", DefaultSettings(), want)
 	if got.BackToOpen() != 10*time.Minute || got.KeepDone() != 30*24*time.Hour {
@@ -23,8 +23,27 @@ func TestSettingsDefaults(t *testing.T) {
 			t.Errorf("Value(%q) is empty", k)
 		}
 	}
-	equal(t, "stored forms", []string{got.Value(SettingChime), got.Value(SettingTabCount), got.Value(SettingBackToOpen), got.Value(SettingKeepDone), got.Value(SettingTheme), got.Value("nope")},
-		[]string{"on", "on", "10", "30", "system", ""})
+	equal(t, "stored forms", []string{got.Value(SettingChime), got.Value(SettingTabCount), got.Value(SettingBackToOpen), got.Value(SettingKeepDone), got.Value(SettingTheme), got.Value(SettingTimeZone), got.Value("nope")},
+		[]string{"on", "on", "10", "30", "system", "system", ""})
+}
+
+// The time zone is "system" or an IANA name that loads.
+func TestSettingTimeZone(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	for _, zone := range []string{"America/New_York", "UTC", "Asia/Tokyo", TimeZoneSystem} {
+		got, err := s.SetSettings(ctx, map[string]string{SettingTimeZone: zone})
+		must(t, err)
+		if got.TimeZone != zone || got.Value(SettingTimeZone) != zone {
+			t.Errorf("after setting %q: %q", zone, got.TimeZone)
+		}
+	}
+	for _, bad := range []string{"", "Local", "Mars/Olympus_Mons", "../../etc/passwd", "EST5EDT/../UTC", "System"} {
+		_, err := s.SetSettings(ctx, map[string]string{SettingTimeZone: bad})
+		if !errors.Is(err, ErrBadSetting) {
+			t.Errorf("time zone %q: %v, want ErrBadSetting", bad, err)
+		}
+	}
 }
 
 func TestSetSettings(t *testing.T) {
@@ -78,6 +97,16 @@ func TestSettingsIgnoreWhatTheyCantRead(t *testing.T) {
 	want := DefaultSettings()
 	want.Chime = false
 	equal(t, "settings", got, want)
+
+	// A stored zone this machine can't load (the tz database dropped it,
+	// or the database came from another machine) is the system's.
+	_, err = s.w.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('time_zone', 'Mars/Olympus_Mons', 0)`)
+	must(t, err)
+	got, err = s.Settings(ctx)
+	must(t, err)
+	if got.TimeZone != TimeZoneSystem {
+		t.Errorf("an unloadable stored zone reads as %q, want system", got.TimeZone)
+	}
 }
 
 func TestSettingSetMessages(t *testing.T) {
@@ -87,6 +116,7 @@ func TestSettingSetMessages(t *testing.T) {
 		{SettingKeepDone, "x", "store: bad setting: keep_done_days is 7, 30 or 90 days"},
 		{SettingChime, "true", "store: bad setting: chime is on or off"},
 		{SettingTheme, "auto", "store: bad setting: theme is system, dark or light"},
+		{SettingTimeZone, "Mars/Olympus_Mons", "store: bad setting: time_zone is system or a time zone this machine knows, such as America/New_York"},
 		{"nope", "on", `store: bad setting: there is no setting "nope"`},
 	} {
 		if err := set.Set(c.key, c.value); err == nil || err.Error() != c.want {

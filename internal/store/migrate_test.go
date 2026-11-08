@@ -76,7 +76,7 @@ func TestMigrateFromEmpty(t *testing.T) {
 	if v != LatestVersion() || v < 1 {
 		t.Errorf("SchemaVersion() = %d, want LatestVersion() = %d", v, LatestVersion())
 	}
-	want := []string{"agents", "events", "inbox_items", "inbox_moves", "lifecycle_history", "link_tombstones", "links", "monitored_sessions", "packages", "plan_alerts", "plan_dismissals", "plan_merges", "plans", "provisional_packages", "provisional_sources", "prs", "removal_log", "repos", "schema_migrations", "sessions", "settings", "worktrees"}
+	want := []string{"agents", "events", "inbox_items", "inbox_moves", "lifecycle_history", "link_tombstones", "links", "monitored_sessions", "packages", "plan_alerts", "plan_dismissals", "plan_merges", "plans", "provisional_packages", "provisional_sources", "prs", "removal_log", "repos", "schema_migrations", "sessions", "settings", "unmatched_hidden", "worktrees"}
 	equal(t, "tables", tables(t, s.w), want)
 
 	var name string
