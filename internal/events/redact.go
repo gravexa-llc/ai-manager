@@ -38,8 +38,9 @@ var longRun = regexp.MustCompile(`([=:]\s*)([A-Za-z0-9+_-]{32,}={0,2})`)
 
 // Redact replaces the secrets it can spot in s with "[redacted]": a net
 // for the obvious cases, not a guarantee. The mod runs the same rules
-// before a wait leaves the session (plugin/mod/wait.ts), and aimd runs
-// them again on every wait it receives (Normalize), for older mods.
+// before an event's free text (its label, reason, last_said and wait)
+// leaves the session (plugin/mod/wait.ts), and aimd runs them again on
+// every event it receives (Normalize), for older mods.
 //
 //   - an env-style assignment whose name contains KEY, TOKEN, SECRET,
 //     PASSWORD, PASSWD, PWD, AUTH, CREDENTIAL or COOKIE (any case);

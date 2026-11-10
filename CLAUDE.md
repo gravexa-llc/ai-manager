@@ -3,7 +3,7 @@
 Notes for anyone changing this repo, human or Claude Code. `CONTRIBUTING.md` covers setup and running it locally; `docs/guides/` explains how it works.
 
 ## Layout
-- `cmd/aimd`: the daemon. `cmd/aim`: the CLI (`aim ls`, `aim prune`, `aim up`, `aim down`, `aim status`, `aim go`).
+- `cmd/aimd`: the daemon. `cmd/aim`: the CLI (`aim ls`, `aim prune`, `aim up`, `aim down`, `aim status`, `aim open`, `aim go`).
 - `internal/`: one package per job: `sessions`, `worktrees`, `github` (the sources), `store` (SQLite, migrations in `store/migrations/`), `plans` (the plan parser), `state` (matching work to packages), `planapi` and `web` (the HTTP API and the dashboard), `live` and `events` (what the mod reports), `config`.
 - `plugin/`: the Claude Code plugin. `plugin/mod/` is the mod (TypeScript), `plugin/skills/` the skills.
 - `deploy/`: the launchd plist template that `aim up` installs.
@@ -17,7 +17,9 @@ Notes for anyone changing this repo, human or Claude Code. `CONTRIBUTING.md` cov
 - **Every mod hook fails open:** on any error it calls `next(e)` with the event unchanged, so a broken mod never blocks a session.
 
 ## Checks
-- `make check` runs gofmt, `go vet`, the tests under the race detector, and `claude plugin validate` and `claude plugin test` when `claude` is on PATH. It must pass before you push. There is no hosted CI: `scripts/ci.sh <PR>` runs `make check` on a PR's merge result and posts a `local-ci` status.
+- `make check` runs the credential scan (`gitleaks` with `.gitleaks.toml`, when `gitleaks` is on PATH), gofmt, `go vet`, the tests under the race detector, and `claude plugin validate` and `claude plugin test` when `claude` is on PATH. It must pass before you push. There is no hosted CI: `scripts/ci.sh <PR>` runs `make check` on a PR's merge result and posts a `local-ci` status.
+
+- `make hooks` installs the pre-commit hook (`scripts/hooks/pre-commit`) that refuses a commit holding a credential, for every worktree of the clone. Never commit with `--no-verify`. A made-up credential a test needs goes in `.gitleaks.toml`.
 
 ## Tests
 - Tests use temp dirs, temp git repos and `AIM_HOME`. They never touch the real `~/.ai-manager`, `~/.claude`, launchd, aimd or your repos and worktrees. `aim up` and `aim down` are tested with a fake `launchctl` (`cmd/aim/up_test.go`).

@@ -90,7 +90,7 @@ func planServer(t *testing.T, p PlanService) *Server {
 
 func TestPlanRoutes(t *testing.T) {
 	stub := &stubPlans{}
-	h := planServer(t, stub).Handler()
+	h := planServer(t, stub).routes()
 	tok := map[string]string{TokenHeader: testToken}
 	for _, c := range []struct {
 		method, target, body string
@@ -142,7 +142,7 @@ func TestPlanRoutes(t *testing.T) {
 
 func TestPlanErrors(t *testing.T) {
 	stub := &stubPlans{err: refusal{http.StatusConflict}}
-	h := planServer(t, stub).Handler()
+	h := planServer(t, stub).routes()
 	rec := do(t, h, "POST", "/api/plans", strings.NewReader(`{"path":"/r/p.md"}`), map[string]string{TokenHeader: testToken})
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"error":"refused for a reason"`) {
 		t.Errorf("refusal: %d %s", rec.Code, rec.Body)
@@ -159,7 +159,7 @@ func TestPlanErrors(t *testing.T) {
 func TestPlanAuth(t *testing.T) {
 	stub := &stubPlans{}
 	srv := planServer(t, stub)
-	h := srv.Handler()
+	h := srv.routes()
 	body := func() *strings.Reader { return strings.NewReader(`{"path":"/r/p.md"}`) }
 	csrf := srv.CSRF().Token()
 	for _, c := range []struct {
@@ -184,7 +184,7 @@ func TestPlanAuth(t *testing.T) {
 	}
 
 	// Without a plan service the routes don't exist.
-	bare := New(Options{Port: testPort, Token: testToken, Store: newTestStore(t)}).Handler()
+	bare := New(Options{Port: testPort, Token: testToken, Store: newTestStore(t)}).routes()
 	if rec := do(t, bare, "GET", "/api/plans", nil, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("GET /api/plans without a service: %d, want 404", rec.Code)
 	}

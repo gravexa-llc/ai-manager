@@ -1,0 +1,32 @@
+# What `make secrets` (part of `make check`) and the pre-commit hook
+# (scripts/hooks/pre-commit, installed by `make hooks`) scan with: gitleaks'
+# own rules, less the made-up credentials the tests of the redaction and
+# config code need.
+#
+# gitleaks finds credentials. It doesn't know names, paths or project
+# names: keeping those out is the test-data rule in CLAUDE.md.
+
+[extend]
+useDefault = true
+
+# The made-up credentials in tests. Both must hold: the exact value, in a
+# test file. So the same value anywhere else, or any other credential in a
+# test, is still found. A new made-up value goes here, with the test that
+# needs it.
+[[allowlists]]
+description = "made-up credentials in the redaction and config tests"
+condition = "AND"
+regexTarget = "match"
+paths = ['''_test\.go$''', '''\.test\.tsx?$''']
+regexes = [
+  '''gh[po]_0123456789abcdefABCDEF0123456789abcd''',
+  '''AKIAABCDEFGHIJKLMNOP''',
+  '''abcdefghijklmnop1234''',
+]
+
+# Folders a scan of the working tree walks into that git doesn't track:
+# build output, and the worktrees Claude Code makes inside the repo (each a
+# copy of these same files).
+[[allowlists]]
+description = "untracked folders: build output and agent worktrees"
+paths = ['''(^|/)\.git/''', '''(^|/)\.claude/worktrees/''', '''^bin/''', '''^dist/''']

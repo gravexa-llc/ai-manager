@@ -108,7 +108,7 @@ func TestSettingsWithoutStore(t *testing.T) {
 	st := newTestStore(t)
 	seedDash(t, st)
 	srv := newDash(t, plainStore{st}, func(o *Options) { o.Plans = appPlans })
-	h := srv.Handler()
+	h := srv.routes()
 	wantIn(t, "page", get(t, h, "/app/settings"), "these are the defaults, and they can&#39;t be changed here", `aria-checked="true"`)
 	rec := do(t, h, "POST", "/app/settings/set", strings.NewReader(url.Values{"key": {"chime"}, "value": {"on"}, CSRFField: {srv.CSRF().Token()}}.Encode()),
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "Origin": "null", "Sec-Fetch-Site": "same-origin"})
@@ -368,7 +368,7 @@ func newMergesEnv(t *testing.T) *inboxEnv {
 		RepoNames: fakeRepos{appRepo: "o/app", webRepo: "o/web"}.RepoNames,
 		Merges:    e.st.PlanMerges,
 	}
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	// #7 is ready to merge on a branch no session works on.
 	must(t, e.st.UpsertPRs(context.Background(), store.PR{Repo: "o/app", Number: 7, Title: "Routes (V1)", URL: "https://github.com/o/app/pull/7",
 		State: "OPEN", HeadBranch: "share/v1", MergeStateStatus: "CLEAN", ChecksState: "SUCCESS", UpdatedAt: t0.Add(-2 * time.Hour)}))
@@ -573,5 +573,5 @@ func TestSettingsAPI(t *testing.T) {
 // The notifications switch says when config.toml turns them off.
 func TestSettingNotificationsConfigOff(t *testing.T) {
 	srv, _ := newApp(t, func(o *Options) { o.NotifyDisabled = true })
-	wantIn(t, "page", get(t, srv.Handler(), "/app/settings"), "config.toml turns them off (notify.enabled = false), whatever this says.")
+	wantIn(t, "page", get(t, srv.routes(), "/app/settings"), "config.toml turns them off (notify.enabled = false), whatever this says.")
 }

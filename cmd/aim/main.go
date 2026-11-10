@@ -1,5 +1,5 @@
 // Command aim is the ai-manager CLI: the worktree inventory and cleanup,
-// aimd's launchd agent, a one-line status and Go.
+// aimd's launchd agent, a one-line status, the dashboard's sign-in and Go.
 package main
 
 import (
@@ -21,6 +21,7 @@ Commands:
   up         install aimd as a launchd agent and start it (--print: show the plist)
   down       stop aimd and remove its launchd agent
   status     one line from aimd: what needs you, stale sources, GitHub budget
+  open       open the dashboard and sign this browser in (aim open [plan])
   go         bring a session to the front in iTerm2 or Terminal (aim go <session>)
   version    print the version
   help       print this help
@@ -35,6 +36,7 @@ var commands = map[string]func(args []string, stdout, stderr io.Writer) int{
 	"ls":     cmdLs,
 	"prune":  cmdPrune,
 	"go":     cmdGo,
+	"open":   cmdOpen,
 }
 
 func main() {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestHostCheck(t *testing.T) {
-	h := newTestServer(t, newTestStore(t), nil).Handler()
+	h := newTestServer(t, newTestStore(t), nil).routes()
 	for _, tc := range []struct {
 		host string
 		code int
@@ -36,7 +36,7 @@ func TestHostCheck(t *testing.T) {
 }
 
 func TestNoCORSHeaders(t *testing.T) {
-	h := newTestServer(t, newTestStore(t), nil).Handler()
+	h := newTestServer(t, newTestStore(t), nil).routes()
 	for _, method := range []string{"GET", "OPTIONS"} {
 		rec := do(t, h, method, "/api/sessions", nil, map[string]string{
 			"Origin":                        "https://evil.example",
@@ -58,7 +58,7 @@ func TestTokenRequiredForWrites(t *testing.T) {
 	s.mux.HandleFunc("POST /api/test-write", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	h := s.Handler()
+	h := s.routes()
 	for _, tc := range []struct {
 		desc, method, path, token string
 		code                      int
@@ -149,7 +149,7 @@ func TestCSRFProtect(t *testing.T) {
 	s.mux.HandleFunc("POST /test-form", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	h := s.Handler()
+	h := s.routes()
 	tok := s.CSRF().Token()
 	form := func(v string) string { return url.Values{CSRFField: {v}}.Encode() }
 	formHdr := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}

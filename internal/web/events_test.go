@@ -38,7 +38,7 @@ func (f *fakeSink) Stats() api.EventStats {
 func TestPostEvents(t *testing.T) {
 	sink := &fakeSink{}
 	srv := New(Options{Port: testPort, Token: testToken, Store: newTestStore(t), Events: sink})
-	h := srv.Handler()
+	h := srv.routes()
 	tok := map[string]string{TokenHeader: testToken}
 
 	body := `{"events": [{"kind": "idle", "session_id": "s1", "at": "2026-11-05T12:00:00Z"}, {"kind": "odd", "session_id": "s1", "at": "2026-11-05T12:00:00Z"}]}`
@@ -74,7 +74,7 @@ func TestPostEvents(t *testing.T) {
 // With no sink (a server without the receiver), batches are dropped and
 // still answered 200 {}, and /api/status has no events section.
 func TestPostEventsWithoutSink(t *testing.T) {
-	h := New(Options{Port: testPort, Token: testToken, Store: newTestStore(t)}).Handler()
+	h := New(Options{Port: testPort, Token: testToken, Store: newTestStore(t)}).routes()
 	rec := do(t, h, http.MethodPost, "/events", strings.NewReader(`{"events": []}`), map[string]string{TokenHeader: testToken})
 	if rec.Code != http.StatusOK {
 		t.Errorf("POST /events = %d", rec.Code)

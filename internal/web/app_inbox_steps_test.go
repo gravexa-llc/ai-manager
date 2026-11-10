@@ -57,7 +57,7 @@ func (e *stepsEnv) at(now time.Time) {
 	}}
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, Monitor: mon, HomeDir: e.tmp,
 		Now: func() time.Time { return now }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 }
 
 // edit rewrites the plan file, replacing old with new, and registers it

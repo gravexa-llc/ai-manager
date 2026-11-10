@@ -9,8 +9,13 @@
 // that, but it enforces the length caps the store has (store.MaxSummaryLen
 // and friends) by truncating, so an oversized field is shortened, never
 // refused. The one place a needs_you goes past a label is its Wait:
-// what the person is asked, redacted (Redact, here as well as in the
-// mod) and cut to its caps, which aimd keeps in memory only.
+// what the person is asked, cut to its caps, which aimd keeps in memory
+// only.
+//
+// Every free-text field is redacted (Redact) twice: by the mod before the
+// event leaves the session, and by Normalize when it arrives, so an older
+// mod is covered too. That is the label, the reason, last_said and the
+// Wait. The other fields are names, ids, enums and paths.
 //
 // # Wire format
 //
@@ -182,14 +187,15 @@ type Event struct {
 	// Reason: on turn_complete, turn.complete's reason (Reason*); on
 	// needs_you, what is being asked (e.g. the label of the tool waiting
 	// for approval, or the notification type); on error, the error (e.g.
-	// "rate_limit"); on session_end, session.end's reason.
+	// "rate_limit"); on session_end, session.end's reason. Redacted
+	// (Redact: by the mod, and again by Normalize).
 	Reason string `json:"reason,omitempty"`
 	// LastSaid, on turn_complete: the first line of turn.complete's
-	// answer, at most 300 characters.
+	// answer, at most 300 characters, redacted as Reason is.
 	LastSaid string `json:"last_said,omitempty"`
 
 	// tool: the tool's name and the last-action label ("Bash: run the
-	// tests", "Edit internal/x.go").
+	// tests", "Edit internal/x.go"), the label redacted as Reason is.
 	Tool  string `json:"tool,omitempty"`
 	Label string `json:"label,omitempty"`
 	// Tokens, on tool and turn_complete in the main loop: the main loop's
@@ -328,8 +334,23 @@ func (w *Wait) normalize() bool {
 
 // RedactLine is s on one line, redacted and cut to n characters. It is cut
 // to 1000 first, so a huge value costs little to redact.
+//
+// Redact comes before the cut to n: cut first, and a secret straddling the
+// cut could lose the part its pattern needs (a ghp_ token left with 15 of
+// its characters matches nothing) and stay, half of it visible. Redacted
+// first, the cut can only land in ordinary text or inside "[redacted]".
+// The cut at 1000 can still split a secret; its half is at the end of
+// those 1000 characters, and shows only if redaction shrank them to under
+// n.
 func RedactLine(s string, n int) string {
 	return Truncate(OneLine(Redact(OneLine(Truncate(s, 1000)))), n)
+}
+
+// RedactFirstLine is s up to its first line break, redacted and cut to n
+// characters: a turn_complete's last_said. Redacted before the cut, as
+// RedactLine is and for the same reason; its spacing is kept.
+func RedactFirstLine(s string, n int) string {
+	return Truncate(Redact(Truncate(FirstLine(s), 1000)), n)
 }
 
 // PlanLines cuts a plan to what a wait keeps: its first MaxPlanLines
@@ -374,6 +395,13 @@ var (
 // It returns ErrUnknownKind (wrapped) for a kind it doesn't know and
 // ErrInvalid (wrapped) for an event without a session id or time. LastSaid
 // is also cut at its first line break.
+//
+// The free text (Label, Reason, LastSaid and the Wait) is redacted too
+// (Redact), before it is cut: the mod did both already, but an older mod
+// or another sender may not have, and aimd stores these and serves them
+// from GET /api/sessions. What an older mod cut itself (its last_said, at
+// 300) can only be redacted as it arrives. The enum values a Reason
+// usually holds ("answer", "clear", "rate_limit") pass unchanged.
 func (e *Event) Normalize() error {
 	e.Kind = Kind(strings.TrimSpace(string(e.Kind)))
 	if !e.Kind.Known() {
@@ -398,10 +426,10 @@ func (e *Event) Normalize() error {
 	e.PluginRoot = Truncate(strings.TrimSpace(e.PluginRoot), MaxPathLen)
 	e.Source = Truncate(e.Source, MaxKindLen)
 	e.OriginKind = Truncate(e.OriginKind, MaxKindLen)
-	e.Reason = Truncate(OneLine(e.Reason), MaxSummaryLen)
-	e.LastSaid = Truncate(FirstLine(e.LastSaid), MaxSummaryLen)
+	e.Reason = RedactLine(e.Reason, MaxSummaryLen)
+	e.LastSaid = RedactFirstLine(e.LastSaid, MaxSummaryLen)
 	e.Tool = Truncate(e.Tool, MaxToolLen)
-	e.Label = Truncate(OneLine(e.Label), MaxSummaryLen)
+	e.Label = RedactLine(e.Label, MaxSummaryLen)
 	e.Tokens = min(max(e.Tokens, 0), MaxTokens)
 	e.ToolUseID = Truncate(strings.TrimSpace(e.ToolUseID), MaxToolLen)
 	e.Name = Truncate(e.Name, MaxToolLen)

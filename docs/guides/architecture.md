@@ -3,7 +3,7 @@
 ai-manager runs entirely on your Mac. It has three parts:
 
 - **aimd**, a daemon written in Go. It watches your Claude Code sessions, git worktrees and GitHub PRs, keeps what it finds in SQLite, works out each plan's board, and serves the dashboard and an HTTP API on `127.0.0.1:7777`. It runs as the launchd agent `com.gravexa.aimd`, so it starts at login and restarts if it crashes.
-- **aim**, a command-line tool. It installs and stops aimd (`aim up`, `aim down`), prints a status line (`aim status`), lists and prunes worktrees (`aim ls`, `aim prune`), and brings a session to the front (`aim go`).
+- **aim**, a command-line tool. It installs and stops aimd (`aim up`, `aim down`), prints a status line (`aim status`), lists and prunes worktrees (`aim ls`, `aim prune`), opens the dashboard and signs your browser in (`aim open`), and brings a session to the front (`aim go`).
 - **The plugin**, which loads in every Claude Code session. Its mod reports what the session does, links agents to plan packages, draws the progress line above the prompt, and adds `/aim`, `/plan-register` and the `plan_status` tool. Its skills teach Claude the plan format and how to dispatch. See [The plugin and its skills](plugin-and-skills.md).
 
 aimd works without the plugin: it still sees every session through `claude agents --json`, and matches PRs and branches to plans by their names. The plugin adds what only a session knows: which package an agent was spawned for, and exactly what a session is waiting on.
@@ -112,8 +112,8 @@ aimd is built for a Mac with one user account.
   - Programs send aimd's token in `X-AIM-Token`. The plugin has a copy in its settings.
   - The dashboard's own pages send a per-page CSRF token instead, and must be same-origin.
   - A wrong or missing token gets `401`; a bad CSRF token or another origin gets `403`.
-- **Reads are open to local processes, by design.** Any program running on your Mac can read the dashboard and `GET /api/…`. That adds little on a one-account Mac: those programs run as you, and can already read the token file and Claude Code's own transcripts. The one exception is what a session is waiting on: `/api/` answers include it only for callers with the token. The dashboard's pages show it, since they're your UI.
-- **Summaries only.** The plugin sends labels and short reasons, never prompts, file contents or tool output. The one exception is what a dialog waits on. That is redacted twice:
+- **Reads need a credential too.** aimd answers nothing but its static files without the token or a signed-in browser. `aim open` (or `/aim` in a session) signs a browser in for 30 days, with a link that works once and that only someone who can read the token file can get. So another account on the Mac, a browser extension or a sandboxed process gets nothing. Programs that run as you can read the token file, and Claude Code's own transcripts, anyway. What a session is waiting on is held back one step further: `/api/` answers include it only for callers with the token, not for a browser. The dashboard's pages show it, since they're your UI.
+- **Summaries only.** The plugin sends labels, short reasons and the first line of an answer, never prompts, file contents or tool output. The one exception is what a dialog waits on. All of that text is redacted twice:
   - the plugin replaces tokens, passwords, auth headers, credentials in URLs and well-known key shapes with `[redacted]` before sending;
   - aimd applies the same rules again when it arrives.
 

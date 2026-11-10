@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gravexa-llc/ai-manager/internal/events"
 	"github.com/gravexa-llc/ai-manager/internal/state"
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
@@ -66,8 +67,11 @@ func (s *Service) seeSpawn(ctx context.Context, req api.SpawnLinkRequest, l stor
 	case err != nil && !errors.Is(err, store.ErrNotFound):
 		return err
 	}
+	// The title is the spawn's description, which aimd stores and serves:
+	// redacted here as an event's text is (events.RedactLine), whatever
+	// the mod that sent it did.
 	made, err := s.st.SeeProvisional(ctx, []store.Sighting{{PlanID: p.ID, PkgID: id, Kind: store.ProvisionalSpawn,
-		Ref: refOf(l), Title: state.ProvisionalTitle(id, req.Title), At: s.now()}})
+		Ref: refOf(l), Title: state.ProvisionalTitle(id, events.RedactLine(req.Title, events.MaxSummaryLen)), At: s.now()}})
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@
 import type { PlanProgress } from '../types'
 
 import type { Summary } from './aimd'
+import { MAX_SLUG, clean } from './text'
 
 const count = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined
@@ -48,7 +49,7 @@ export function moreText(more: number): string {
 /** The whole line: `sharing · 3/15 done · 1 ready · 2 need you · 7 to merge · +1 plan`. */
 export function progressLine(p: PlanProgress): string {
   const more = moreText(p.more)
-  return [p.slug, ...progressParts(p), ...(more === '' ? [] : [more])].join(' · ')
+  return [clean(p.slug, MAX_SLUG), ...progressParts(p), ...(more === '' ? [] : [more])].join(' · ')
 }
 
 /**

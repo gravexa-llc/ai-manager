@@ -82,6 +82,14 @@ test('an unknown ID: the spawn goes ahead, linked as provisional, and the lead g
   expect(w.notes().length).toBe(1)
 })
 
+test("a provisional package's title is redacted before it goes to aimd", { options: OPTIONS }, async ($, on) => {
+  const w = lead(on, { ...ROUTES, 'GET /api/context': { status: 200, body: WITH_W12 } })
+  await $.session.start(START)
+  await $.agent.spawn({ ...SPAWN, prompt: BRIEF, description: 'W12 sync with GITHUB_TOKEN=ghp_0123456789abcdefABCDEF0123456789abcd' })
+  await w.clock.settle()
+  expect(w.sent('POST /api/links/spawn')[0]?.body).toMatchObject({ pkg: 'W12', provisional: true, title: 'W12 sync with GITHUB_TOKEN=[redacted]' })
+})
+
 test('a provisional package aimd has: linked to it, and the lead still told', { options: OPTIONS }, async ($, on) => {
   const w = lead(on, { ...ROUTES, 'GET /api/context': { status: 200, body: WITH_W12 } })
   await $.session.start(START)

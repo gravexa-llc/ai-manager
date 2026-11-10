@@ -92,7 +92,7 @@ func TestAppSessionsAgentLines(t *testing.T) {
 		store.Agent{SessionID: "lead-session", AgentID: "a3333333333333333", Kind: store.AgentSubagent, AgentType: "general-purpose",
 			State: "completed", LastAction: "Edit docs/guide.md", Tokens: 52_000, StartedAt: t0.Add(-time.Hour), EndedAt: t0.Add(-40 * time.Minute)},
 	))
-	h := newDash(t, st, nil).Handler()
+	h := newDash(t, st, nil).routes()
 
 	// A subagent: its line under its title; Started is the clock time, as
 	// the line says how long it has run.
@@ -144,7 +144,7 @@ func TestAppSessionsFinishedCap(t *testing.T) {
 			AgentType: "Explore", State: "completed", StartedAt: at.Add(-30 * time.Second), EndedAt: at})
 	}
 	must(t, st.UpsertAgents(ctx, rows...))
-	lead := get(t, newDash(t, st, nil).Handler(), "/app/sessions?s=pid%3A21&fragment=detail")
+	lead := get(t, newDash(t, st, nil).routes(), "/app/sessions?s=pid%3A21&fragment=detail")
 	wantIn(t, "lead", lead, "Finished (23)", `<p class="hint">And 3 earlier.</p>`, `title="ran from 2026-11-05T11:58:30Z to 2026-11-05T11:59:00Z">30s</span>`)
 	wantNotIn(t, "lead", lead, `<div class="label">Agents</div>`)
 	if n := strings.Count(lead, `<li class="sd-agent">`); n != maxFinished {

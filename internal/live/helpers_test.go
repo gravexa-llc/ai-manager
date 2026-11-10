@@ -17,6 +17,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/web"
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
+	"github.com/gravexa-llc/ai-manager/internal/web/webtest"
 )
 
 const (
@@ -44,11 +45,13 @@ func (c *clock) set(t time.Time) {
 
 // harness is a receiver behind aimd's real HTTP handler, on a temp store.
 type harness struct {
-	t     *testing.T
-	st    *store.Store
-	recv  *Receiver
-	h     http.Handler
-	clock *clock
+	t    *testing.T
+	st   *store.Store
+	recv *Receiver
+	h    http.Handler
+	// signedIn is a signed-in browser's cookie, on every request.
+	signedIn *http.Cookie
+	clock    *clock
 
 	mu      sync.Mutex
 	modLive []bool
@@ -95,6 +98,7 @@ func newHarnessOpts(t *testing.T, st *store.Store, mod func(*Options)) *harness 
 	}
 	h.recv = New(opts)
 	h.h = web.New(web.Options{Port: testPort, Token: testToken, Store: st, Events: h.recv, Waits: h.recv}).Handler()
+	h.signedIn = webtest.SignIn(t, h.h, "127.0.0.1:7777", testToken)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -119,6 +123,7 @@ func (h *harness) request(method, target string, body []byte, hdr map[string]str
 		}
 		req.Header.Set(k, v)
 	}
+	req.AddCookie(h.signedIn)
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, req)
 	return rec

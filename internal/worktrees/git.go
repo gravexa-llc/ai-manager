@@ -64,6 +64,13 @@ func (s *Scanner) git(ctx context.Context, dir string, env []string, args ...str
 //     GIT_ALLOW_PROTOCOL, which outranks all protocol config;
 //   - credential.helper= (empty): clears the helper list, so no credential
 //     helper runs;
+//   - log.showSignature=false: log, show and the other commands that print
+//     commits never check a signature. With the repo's own
+//     log.showSignature=true they would run its gpg.program,
+//     gpg.ssh.program or gpg.x509.program on every signed commit they
+//     show, whatever the format asked for. Nothing here may ask for a
+//     check either: no --show-signature, no %G format placeholder, no
+//     verify-commit, verify-tag or tag -v;
 //   - --no-optional-locks: status never rewrites the index (as does
 //     GIT_OPTIONAL_LOCKS=0 in baseEnv).
 //
@@ -75,6 +82,7 @@ var hardening = []string{
 	"-c", "core.pager=cat",
 	"-c", "protocol.allow=never",
 	"-c", "credential.helper=",
+	"-c", "log.showSignature=false",
 	"--no-optional-locks",
 }
 

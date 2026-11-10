@@ -35,7 +35,7 @@ func unreadEnv(t *testing.T, readErr string) *boardEnv {
 		}}
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, Monitor: mon, Repos: repos,
 		Status: fakeStatus{st}, HomeDir: e.tmp, Now: func() time.Time { return t0 }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	return e
 }
 

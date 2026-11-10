@@ -22,7 +22,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { request, type Settings } from './aimd'
 import { pluginBuild } from './build'
-import { firstLine, label, truncate, waitFor, MAX_SUMMARY, type Wait } from './wait'
+import { label, lastSaid, reason, waitFor, type Wait } from './wait'
 
 /** One event as aimd's internal/events defines it. */
 export type AimEvent = {
@@ -160,6 +160,11 @@ function take(): AimEvent[] {
 export async function flush($: EngineInterface): Promise<void> {
   if (inflight || settings === null) return
   const s = settings
+  if (!s.local) {
+    // Not a local aimd (aimd.ts): nothing goes to it, and nothing waits for it.
+    queue = []
+    return
+  }
   inflight = true
   try {
     while (queue.length > 0) {
@@ -285,7 +290,7 @@ async function startFacts($: EngineInterface, e: { cwd: string; isInteractive?: 
 
 /** session.end: session_end, sent at once (the process may be about to exit). */
 export function onSessionEnd($: EngineInterface, e: { reason?: unknown }): void {
-  emit($, { kind: 'session_end', reason: str(e.reason) }, true)
+  emit($, { kind: 'session_end', reason: reason(str(e.reason)) }, true)
   asks.clear()
   lastAsk.clear()
   stopTicker()
@@ -314,15 +319,15 @@ export function onTurnStart($: EngineInterface, e: { agentId?: string }): void {
   })
 }
 
-/** turn.complete: the reason, the first line of the answer and, in the main loop, its token count; then an agent_list snapshot. */
+/** turn.complete: the reason, the first line of the answer (redacted) and, in the main loop, its token count; then an agent_list snapshot. */
 export function onTurnComplete($: EngineInterface, e: { agentId?: string; reason?: unknown; answer?: unknown }): void {
   const loop = e.agentId ?? MAIN
   loopMovedOn(loop)
-  const said = truncate(firstLine(str(e.answer)), MAX_SUMMARY)
+  const said = lastSaid(str(e.answer))
   emit($, {
     kind: 'turn_complete',
     ...withAgent(e.agentId),
-    reason: str(e.reason),
+    reason: reason(str(e.reason)),
     ...(said !== '' ? { last_said: said } : {}),
     ...mainCount(loop),
   })
@@ -423,13 +428,13 @@ export function onNotification($: EngineInterface, e: { notification_type?: unkn
     return
   }
   if ((type === 'permission_prompt' || type === 'agent_needs_input' || type === 'elicitation_dialog') && asks.size === 0) {
-    emit($, { kind: 'needs_you', ...withAgent(e.agent_id), source: 'notification', reason: type }, true)
+    emit($, { kind: 'needs_you', ...withAgent(e.agent_id), source: 'notification', reason: reason(type) }, true)
   }
 }
 
 /** classic.StopFailure: the API turn failed; sent at once. */
 export function onStopFailure($: EngineInterface, e: { error?: unknown; agent_id?: unknown }): void {
-  emit($, { kind: 'error', ...withAgent(e.agent_id), reason: str(e.error) }, true)
+  emit($, { kind: 'error', ...withAgent(e.agent_id), reason: reason(str(e.error)) }, true)
 }
 
 /** classic.WorktreeCreate: the isolated agent's worktree name. */

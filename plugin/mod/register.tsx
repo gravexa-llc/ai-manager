@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { LinkCandidate, PlanOffer, PlanProgress, UnlinkedSpawn } from '../types'
 import {
+  NOT_LOCAL,
   call,
   reachable,
   resetHealth,
@@ -40,8 +41,14 @@ import {
 } from './report'
 import {
   MARK,
+  MAX_FIELD,
+  MAX_FILE,
+  MAX_SLUG,
   absolute,
   baseName,
+  clean,
+  cleanData,
+  cleanId,
   conventionBlock,
   findRefLine,
   hasPlanLine,
@@ -64,6 +71,7 @@ import {
   type Ref,
   type Unknown,
 } from './text'
+import { MAX_SUMMARY, redactLine } from './wait'
 
 // The ai-manager mod. Acting: links spawned agents to plan packages,
 // appends the plan conventions to their briefs, checks the Plan: line on
@@ -167,6 +175,8 @@ function toast($: EngineInterface, text: string): void {
 // state is in $.state). The validator wants every function $ is passed to
 // declared at the top of the file, so the state lives here too.
 let s: Settings = settings({})
+/** The user was told aimdUrl isn't a local address: once a session. */
+let warned = false
 let ctx: Context | null = null
 let ctxCwd = ''
 let ctxTriedAt = Number.NEGATIVE_INFINITY
@@ -352,8 +362,9 @@ async function postSpawn(
   pkg: Pick<Pkg, 'plan' | 'id'>,
   provisional?: { title: string },
 ): Promise<{ ok: boolean; error?: string }> {
-  // A package the plan file lacks: aimd makes it provisional, titled from the spawn's description.
-  const extra = provisional === undefined ? {} : { provisional: true, title: provisional.title }
+  // A package the plan file lacks: aimd makes it provisional, titled from the spawn's description
+  // (redacted, as an event's text is: aimd stores it and serves it).
+  const extra = provisional === undefined ? {} : { provisional: true, title: redactLine(provisional.title, MAX_SUMMARY) }
   const got = await call($, s, 'POST', '/api/links/spawn', { session_id: sessionId, ...target, plan: pkg.plan, pkg: pkg.id, ...extra })
   return got.ok ? { ok: true } : { ok: false, error: got.error }
 }
@@ -407,7 +418,7 @@ async function registerPlan($: EngineInterface, path: string): Promise<string> {
   if (typeof got.data.slug === 'string' && got.data.slug !== '') await rememberPlan($, got.data.slug)
   kick($)
   const verb = got.data.created ? 'Registered' : 'Updated'
-  return `${verb} plan ${got.data.slug} (${got.data.packages} packages) from ${baseName(got.data.path)}.`
+  return `${verb} plan ${clean(got.data.slug, MAX_SLUG)} (${got.data.packages} packages) from ${clean(baseName(got.data.path), MAX_FILE)}.`
 }
 
 /**
@@ -421,9 +432,10 @@ async function setWatch($: EngineInterface, on: boolean): Promise<string> {
   if (typeof sessionId !== 'string' || sessionId === '') {
     return `ai-manager couldn't tell this session's id, so it can't ${verb} it.`
   }
+  if (!s.local) return NOT_LOCAL
   const got = await call<Watched>($, s, on ? 'POST' : 'DELETE', '/api/sessions/watch', { session_id: sessionId })
   if (got.ok) {
-    const message = typeof got.data?.message === 'string' ? got.data.message.trim() : ''
+    const message = clean(got.data?.message, MAX_FIELD)
     return `ai-manager: ${message !== '' ? message : on ? 'watching this session.' : 'stopped watching this session.'}`
   }
   if (got.status === 0) {
@@ -496,7 +508,7 @@ async function linkFromBand($: EngineInterface, entry: UnlinkedSpawn, c: LinkCan
       )
     }
   }
-  toast($, `Linked ${entry.description} to ${c.plan} · ${c.id}`)
+  toast($, `Linked ${entry.description} to ${clean(c.plan, MAX_SLUG)} · ${cleanId(c.id)}`)
 }
 
 async function readText($: EngineInterface, path: string): Promise<string | undefined> {
@@ -643,10 +655,27 @@ async function openUrl($: EngineInterface, url: string): Promise<boolean> {
   return false
 }
 
+/**
+ * Opens a dashboard page (a plan's, or the Overview) in the browser;
+ * whether it opened. aimd serves its pages only to a signed-in browser, so
+ * the mod asks it (with the token) for a link that signs the browser in
+ * and goes on to the page: it works once, within a minute. An aimd from
+ * before sign-in has no such link and serves the page as is. The link is a
+ * credential until it is used, so it is opened and never shown. Never throws.
+ */
+async function openApp($: EngineInterface, slug?: string): Promise<boolean> {
+  // An aimdUrl that isn't this machine is never opened (aimd.ts, localBase).
+  if (!s.local) return false
+  const page = appUrl(s.url, slug)
+  const link = await call<{ path?: unknown }>($, s, 'POST', '/api/sign-in', { return: page.slice(s.url.length) })
+  const path = link.ok && typeof link.data?.path === 'string' && link.data.path.startsWith('/app/') ? link.data.path : undefined
+  return openUrl($, path === undefined ? page : s.url + path)
+}
+
 /** The band's press: the plan's page in the dashboard, or a toast saying where it is. */
 async function openPlan($: EngineInterface, slug: string): Promise<void> {
-  const url = appUrl(s.url, slug)
-  if (!(await openUrl($, url))) toast($, `ai-manager: plan ${slug}'s page is at ${url}`)
+  if (!s.local) return
+  if (!(await openApp($, slug))) toast($, `ai-manager: plan ${clean(slug, MAX_SLUG)}'s page is at ${appUrl(s.url, slug)}`)
 }
 
 /** /aim's plan: the one the band shows (or would), undefined when the repo has none or aimd is down. */
@@ -664,13 +693,14 @@ async function bodyVerdict($: EngineInterface, body: PrBody, pkg: Pkg): Promise<
   if (body.kind === 'file') {
     const text = await readText($, body.path)
     if (text === undefined || hasPlanLine(text, pkg)) return undefined
-    return `Add '${pkg.planLine}' to the PR body (${body.path}) and run it again.`
+    return planLineDeny(pkg, body.path)
   }
   return undefined
 }
 
 export const register: Register = (on, options) => {
   s = settings(options)
+  warned = false
   ctx = null
   ctxCwd = ''
   ctxTriedAt = Number.NEGATIVE_INFINITY
@@ -795,6 +825,10 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     // Reporting first: it gathers the session's facts unawaited.
     safely(() => onSessionStart($, e))
+    if (!s.local && !warned) {
+      warned = true
+      toast($, NOT_LOCAL)
+    }
     ctxCwd = (await quietly($.session.root())) || e.cwd
     ctx = null
     ctxTriedAt = Number.NEGATIVE_INFINITY
@@ -1061,7 +1095,7 @@ export const register: Register = (on, options) => {
         {progress !== null && (
           // One press (a click, or Enter once the band has the focus) opens the plan's page.
           <Button key="progress" plain label={progressLine(progress)} onPress={() => void openPlan($, progress.slug).catch(() => undefined)}>
-            <Text bold>{progress.slug}</Text>
+            <Text bold>{clean(progress.slug, MAX_SLUG)}</Text>
             {` · ${progress.done}/${progress.total} done · ${progress.ready} ready · `}
             <Text {...(progress.needsYou > 0 ? { color: 'warning' } : {})}>
               {needYouText(progress.needsYou)}
@@ -1073,7 +1107,7 @@ export const register: Register = (on, options) => {
         {offer !== null && (
           <Box key="offer" flexDirection="row">
             <Text>
-              {offer.file} looks like a dispatch plan: {offer.packages} packages, {offer.lanes} lanes.{' '}
+              {clean(offer.file, MAX_FILE)} looks like a dispatch plan: {offer.packages} packages, {offer.lanes} lanes.{' '}
             </Text>
             <Button
               key="register"
@@ -1094,7 +1128,7 @@ export const register: Register = (on, options) => {
               {entry.candidates.map(c => (
                 <Button
                   key={`link-${entry.key}-${c.plan}-${c.id}`}
-                  label={manyPlans ? `${c.plan} · ${c.id}` : c.id}
+                  label={manyPlans ? `${clean(c.plan, MAX_SLUG)} · ${cleanId(c.id)}` : cleanId(c.id)}
                   onPress={() => void linkFromBand($, entry, c)}
                 />
               ))}
@@ -1128,18 +1162,22 @@ export const register: Register = (on, options) => {
         text: 'Usage: /aim opens the ai-manager dashboard; /aim watch monitors this session (Needs you, notifications); /aim unwatch stops.',
       }
     }
+    if (!s.local) return { text: NOT_LOCAL }
     // The new app: this session's plan (the one the band shows), else its home.
     const slug = await sessionPlan($)
     const url = appUrl(s.url, slug)
-    if (await openUrl($, url)) {
-      return { text: slug === undefined ? `Opened the ai-manager dashboard: ${url}` : `Opened plan ${slug} in the ai-manager dashboard: ${url}` }
+    // The slug is a plan's own text: shown cleaned (text.ts). The URL holds it percent-encoded.
+    const shown = slug === undefined ? '' : clean(slug, MAX_SLUG)
+    if (await openApp($, slug)) {
+      return { text: slug === undefined ? `Opened the ai-manager dashboard: ${url}` : `Opened plan ${shown} in the ai-manager dashboard: ${url}` }
     }
-    return { text: slug === undefined ? `The ai-manager dashboard is at ${url}` : `Plan ${slug}'s page in the ai-manager dashboard is at ${url}` }
+    return { text: slug === undefined ? `The ai-manager dashboard is at ${url}` : `Plan ${shown}'s page in the ai-manager dashboard is at ${url}` }
   }).catch(($, e, next) => next(e))
 
   // --- the plan_status tool -----------------------------------------------------
 
   on('tool.call', { tool: TOOL_NAME }, async ($, e) => {
+    if (!s.local) return { deny: NOT_LOCAL }
     const input = e as { plan?: unknown; since?: unknown }
     // Asked again at once if the last try failed: aimd may be back.
     const c = await context($, ctx === null || !ctxOk)
@@ -1149,11 +1187,13 @@ export const register: Register = (on, options) => {
     if (slugs.length === 0) {
       const where = c?.repo?.name ?? c?.repo?.path ?? ctxCwd
       return {
-        result: JSON.stringify({
-          repo: c?.repo ?? null,
-          plans: [],
-          note: `No plan is registered for ${where}. Register one with /plan-register <path to the plan .md>.`,
-        }),
+        result: JSON.stringify(
+          cleanData({
+            repo: c?.repo ?? null,
+            plans: [],
+            note: `No plan is registered for ${where}. Register one with /plan-register <path to the plan .md>.`,
+          }),
+        ),
       }
     }
     const since = typeof input.since === 'string' && input.since.trim() !== '' ? `?since=${encodeURIComponent(input.since.trim())}` : ''
@@ -1171,7 +1211,8 @@ export const register: Register = (on, options) => {
     if (plans.every(p => 'status' in p && p.status === 0)) {
       return { deny: `ai-manager's plan_status couldn't reach aimd at ${s.url}. Is aimd running?` }
     }
-    return { result: JSON.stringify({ repo: c?.repo ?? null, plans }) }
+    // Every string in it is a plan's, GitHub's or a session's: each stays on one line, and short.
+    return { result: JSON.stringify(cleanData({ repo: c?.repo ?? null, plans })) }
   }).catch(($, e, next) => next(e))
 }
 

@@ -95,7 +95,7 @@ func sameList(t *testing.T, where string, got, want []string) {
 
 func TestOverviewPage(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	page := get(t, h, "/app/")
 	wantIn(t, "overview", page,
 		`<link rel="stylesheet" href="/static/app-overview.css?v=`+assetVersion+`">`,
@@ -164,7 +164,7 @@ func TestOverviewPlanProgress(t *testing.T) {
 	must(t, err)
 	must(t, st.UpsertSessions(ctx, store.Session{Key: "pid:9", Kind: "interactive", Name: "asks", State: needsYou,
 		StateReason: "permission prompt", NeedsYouSince: t0.Add(-time.Minute), LastSeenAt: t0}))
-	h := newDash(t, st, func(o *Options) { o.Plans = ovBoards }).Handler()
+	h := newDash(t, st, func(o *Options) { o.Plans = ovBoards }).routes()
 	card := get(t, h, "/app/?fragment=ov-plans")
 
 	plans := strings.Split(card, `<li><a class="ovplan"`)
@@ -196,7 +196,7 @@ func TestOverviewPlanProgress(t *testing.T) {
 	wantNotIn(t, "sharing", sharing, `class="legend lc-`)
 
 	// Without an inbox, the count is the plan summary's, as in the menu.
-	bare := newDash(t, plainStore{st}, func(o *Options) { o.Plans = ovBoards }).Handler()
+	bare := newDash(t, plainStore{st}, func(o *Options) { o.Plans = ovBoards }).routes()
 	wantIn(t, "no inbox", get(t, bare, "/app/?fragment=ov-plans"), `<span class="legend ovneeds">3 need you</span>`)
 
 	// The empty states.
@@ -208,7 +208,7 @@ func TestOverviewPlanProgress(t *testing.T) {
 		"none":       {fakePlans{}, "No plans registered."},
 		"failing":    {fakePlans{err: errors.New("boom")}, "aimd couldn&#39;t read the plans; see aimd.log."},
 	} {
-		h := newDash(t, newTestStore(t), func(o *Options) { o.Plans = c.plans }).Handler()
+		h := newDash(t, newTestStore(t), func(o *Options) { o.Plans = c.plans }).routes()
 		card := get(t, h, "/app/?fragment=ov-plans")
 		wantIn(t, name, card, `<p class="empty">`+c.want)
 		wantNotIn(t, name, card, `class="ovplan"`)
@@ -256,7 +256,7 @@ func ovAgentsWorld(t *testing.T, opt func(*Options)) (*Server, *store.Store, *st
 
 func TestOverviewAgents(t *testing.T) {
 	srv, _, _ := ovAgentsWorld(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	page := get(t, h, "/app/")
 	rows := ovRows(t, page)
 	// Waiting on you first (longest wait first), then working, then the
@@ -294,12 +294,12 @@ func TestOverviewAgents(t *testing.T) {
 
 	// Without Go, no buttons at all.
 	noGo, _, _ := ovAgentsWorld(t, func(o *Options) { o.Go = nil })
-	card := get(t, noGo.Handler(), "/app/?fragment=ov-agents")
+	card := get(t, noGo.routes(), "/app/?fragment=ov-agents")
 	wantNotIn(t, "no Go", card, "<button", "<form")
 	wantIn(t, "no Go", card, "needy tab", "iTerm2")
 
 	// Nothing running.
-	empty := newDash(t, newTestStore(t), nil).Handler()
+	empty := newDash(t, newTestStore(t), nil).routes()
 	wantIn(t, "empty", get(t, empty, "/app/?fragment=ov-agents"), `<p class="empty">No session is running.</p>`)
 }
 
@@ -329,7 +329,7 @@ func TestOverviewAgentsFollowMonitoring(t *testing.T) {
 
 func TestOverviewGo(t *testing.T) {
 	srv, _, g := ovAgentsWorld(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	post := func(key string, hdr map[string]string) (int, appAnswer, string) {
 		t.Helper()
 		vals := url.Values{"key": {key}, "return": {"/app/"}, CSRFField: {srv.CSRF().Token()}}
@@ -407,7 +407,7 @@ func TestOverviewGo(t *testing.T) {
 	// Without a Go service, it says so.
 	noGo, _, _ := ovAgentsWorld(t, func(o *Options) { o.Go = nil })
 	vals := url.Values{"key": {"pid:42"}, CSRFField: {noGo.CSRF().Token()}}
-	rec := do(t, noGo.Handler(), "POST", "/app/overview/go", strings.NewReader(vals.Encode()),
+	rec := do(t, noGo.routes(), "POST", "/app/overview/go", strings.NewReader(vals.Encode()),
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", CSRFHeader: noGo.CSRF().Token()})
 	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `Go isn't available`) {
 		t.Errorf("Go without a service = %d %s", rec.Code, rec.Body)
@@ -499,7 +499,7 @@ func ovActivityWorld(t *testing.T) *store.Store {
 
 func TestOverviewActivity(t *testing.T) {
 	st := ovActivityWorld(t)
-	h := newDash(t, st, func(o *Options) { o.Plans = ovBoards }).Handler()
+	h := newDash(t, st, func(o *Options) { o.Plans = ovBoards }).routes()
 	page := get(t, h, "/app/")
 	// Newest first; at the same time, a finish before a registration and
 	// a PR before a session's start.
@@ -544,7 +544,7 @@ func TestOverviewActivity(t *testing.T) {
 	sameList(t, "fragment", feedWhats(t, `<div id="ov-activity">`+get(t, h, "/app/?fragment=ov-activity")+`</div>`), feedWhats(t, page))
 
 	// Without the store's history (another Store), PRs and sessions still show.
-	bare := newDash(t, plainStore{st}, func(o *Options) { o.Plans = ovBoards }).Handler()
+	bare := newDash(t, plainStore{st}, func(o *Options) { o.Plans = ovBoards }).routes()
 	got := feedWhats(t, get(t, bare, "/app/"))
 	if len(got) != 14 || got[2] != "Agent started" || !slices.Contains(got, "Background job nightly started") {
 		t.Errorf("without history: %q", got)
@@ -556,7 +556,7 @@ func TestOverviewActivity(t *testing.T) {
 	}
 
 	// Nothing in the window.
-	empty := newDash(t, newTestStore(t), nil).Handler()
+	empty := newDash(t, newTestStore(t), nil).routes()
 	wantIn(t, "empty", get(t, empty, "/app/?fragment=ov-activity"), `<p class="empty">Nothing happened in the last 24 hours.</p>`)
 }
 
@@ -611,7 +611,7 @@ func TestOverviewActivityCap(t *testing.T) {
 			CreatedAt: t0.Add(-time.Duration(i+1) * time.Minute)})
 	}
 	must(t, st.UpsertPRs(context.Background(), prs...))
-	h := newDash(t, st, nil).Handler()
+	h := newDash(t, st, nil).routes()
 
 	page := get(t, h, "/app/")
 	if n := len(feedWhats(t, page)); n != activityCap {
@@ -643,7 +643,7 @@ func TestOverviewHealth(t *testing.T) {
 		// Expired jobs: job:j1's conversation is gone; job:j2's isn't.
 		o.Jobs = fakeJobs{"j1": 30}
 	})
-	page := get(t, srv.Handler(), "/app/")
+	page := get(t, srv.routes(), "/app/")
 	card := section(t, page, "ov-health")
 	// The counts, each linking its page: seedDash's -old and -gone are safe
 	// to remove, -gone's folder is gone, o/web#3 is a stale draft, and
@@ -669,7 +669,7 @@ func TestOverviewHealth(t *testing.T) {
 
 	// Without the expired-jobs check, the count is unknown.
 	noJobs, _ := newApp(t, nil)
-	wantIn(t, "no jobs", get(t, noJobs.Handler(), "/app/?fragment=ov-health"),
+	wantIn(t, "no jobs", get(t, noJobs.routes(), "/app/?fragment=ov-health"),
 		`<a class="stat" href="/app/sessions" title="This aimd doesn&#39;t check background jobs for a deleted conversation."><strong>—</strong><span>expired background jobs</span></a>`)
 
 	// The safe-to-remove count while it is unknown.
@@ -677,12 +677,12 @@ func TestOverviewHealth(t *testing.T) {
 		"pending": fakeVerdicts{err: ErrVerdictsPending}, "failing": fakeVerdicts{err: errors.New("git broke")}, "not wired": nil,
 	} {
 		srv, _ := newApp(t, func(o *Options) { o.SafeToRemove = sr })
-		card := get(t, srv.Handler(), "/app/?fragment=ov-health")
+		card := get(t, srv.routes(), "/app/?fragment=ov-health")
 		wantIn(t, name, card, `<strong>—</strong><span>worktrees safe to remove</span>`)
 	}
 
 	// Nothing wired at all.
-	bare := get(t, newDash(t, newTestStore(t), nil).Handler(), "/app/?fragment=ov-health")
+	bare := get(t, newDash(t, newTestStore(t), nil).routes(), "/app/?fragment=ov-health")
 	wantIn(t, "bare", bare, `<strong>0</strong><span>records whose folder is gone</span>`, `<strong>0</strong><span>stale draft PRs</span>`,
 		">aimd running</li>", ">Sessions: no poller</li>", ">GitHub budget unknown</li>", ">Plans unavailable</li>", ">Plugin reporting: no receiver</li>")
 }
@@ -746,7 +746,7 @@ func TestOverviewNoInlineCode(t *testing.T) {
 	srv, st, _ := ovAgentsWorld(t, nil)
 	must(t, st.UpsertPRs(context.Background(), store.PR{Repo: "o/app", Number: 40, Title: "Triggers", State: store.PROpen,
 		URL: "https://github.com/o/app/pull/40", CreatedAt: t0.Add(-time.Hour)}))
-	h := srv.Handler()
+	h := srv.routes()
 	for _, target := range []string{"/app/", "/app/?feed=all", "/app/?fragment=ov-agents", "/app/?fragment=ov-plans"} {
 		body := get(t, h, target)
 		if m := inlineRE.FindString(body); m != "" {
@@ -775,7 +775,7 @@ func TestOverviewEscapes(t *testing.T) {
 	h := newDash(t, st, func(o *Options) {
 		o.Go = &stubGo{}
 		o.Terminals = fakeTerms{"pid:7": term.App{Kind: term.KindOther, Name: evil}}
-	}).Handler()
+	}).routes()
 	body := get(t, h, "/app/")
 	wantNotIn(t, "escapes", body, "<script>alert", "<img src=x")
 	wantIn(t, "escapes", body, "&lt;script&gt;alert(1)&lt;/script&gt;")

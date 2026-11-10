@@ -1,11 +1,12 @@
-// The pure rules of the mod's reporting (wait.ts): labels, permission
-// summaries, redaction and wait details. The examples are the ones
-// internal/events/eventstest checks in Go (TestLabel, TestWaitFor), so
-// the mod and aimd's mapping agree.
+// The pure rules of the mod's reporting (wait.ts): labels, reasons, the
+// first line of an answer, permission summaries, redaction and wait
+// details. The examples are the ones internal/events/eventstest checks in
+// Go (TestLabel, TestLabelIsRedacted, TestReasonAndLastSaidAreRedacted,
+// TestWaitFor), so the mod and aimd's mapping agree.
 
 import { expect, test } from 'claude-code/testing'
 
-import { label, planLines, redact, truncate, waitFor } from './wait'
+import { label, lastSaid, planLines, reason, redact, truncate, waitFor } from './wait'
 
 test('labels: a short summary of each call, never its output', () => {
   const cwd = '/r'
@@ -175,4 +176,61 @@ test('a question, its options and a plan are redacted too; the summary keeps its
   const long = waitFor('Bash', { command: `GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123 ${'x'.repeat(500)}` })
   expect(long?.kind === 'permission' ? long.summary?.length : 0).toBe(300)
   expect(long?.kind === 'permission' ? long.summary?.startsWith('GITHUB_TOKEN=[redacted] ') : false).toBe(true)
+})
+
+// A made-up token, as the examples below use it.
+const FAKE_TOKEN = 'ghp_0123456789abcdefABCDEF0123456789abcd'
+
+// The examples internal/events/eventstest checks too (TestLabelIsRedacted,
+// TestReasonAndLastSaidAreRedacted): change both together.
+test('a label is redacted before it is cut; ordinary text and paths stay', () => {
+  const cases: [string, Record<string, unknown>, string][] = [
+    ['Bash', { command: 'x', description: `Export GITHUB_TOKEN=${FAKE_TOKEN} and push` }, 'Bash: Export GITHUB_TOKEN=[redacted] and push'],
+    ['Bash', { command: 'x', description: 'Call the API with Bearer abcdefghijklmnop1234' }, 'Bash: Call the API with Bearer [redacted]'],
+    ['Agent', { description: 'Clone https://user:pw@example.com/acme/app.git' }, 'Agent: Clone https://[redacted]@example.com/acme/app.git'],
+    ['Grep', { pattern: FAKE_TOKEN }, 'Grep: [redacted]'],
+    ['WebFetch', { url: 'https://user:pw@example.com/a' }, 'WebFetch example.com'],
+    // A secret across a cut is redacted first, never left in half.
+    ['Grep', { pattern: `${'x'.repeat(50)} ${FAKE_TOKEN}` }, `Grep: ${'x'.repeat(50)} [redacted`],
+    ['Bash', { command: 'x', description: `${'y'.repeat(280)} GITHUB_TOKEN=${FAKE_TOKEN}` }, `Bash: ${'y'.repeat(280)} GITHUB_TOKEN=`],
+    // Ordinary text and paths pass unchanged.
+    ['Bash', { command: 'x', description: 'Run the tests in ~/Projects/app' }, 'Bash: Run the tests in ~/Projects/app'],
+    ['Edit', { file_path: '/r/internal/auth/token.go' }, 'Edit internal/auth/token.go'],
+    ['Read', { file_path: '/r/config/secrets.env' }, 'Read config/secrets.env'],
+    ['Grep', { pattern: 'password\\s*=' }, 'Grep: password\\s*='],
+    ['SendMessage', { to: 'token-auditor' }, 'SendMessage to token-auditor'],
+  ]
+  for (const [tool, input, want] of cases) {
+    const got = label(tool, input, '/r')
+    expect(got, `${tool} ${JSON.stringify(input)}`).toBe(want)
+    expect(got.includes('ghp_'), `part of the token: ${got}`).toBe(false)
+  }
+})
+
+test('a reason and the first line of an answer are redacted before they are cut', () => {
+  const reasons: [string, string][] = [
+    ['answer', 'answer'],
+    ['rate_limit', 'rate_limit'],
+    ['clear', 'clear'],
+    ['permission_prompt', 'permission_prompt'],
+    [`request failed:\n GITHUB_TOKEN=${FAKE_TOKEN} rejected`, 'request failed: GITHUB_TOKEN=[redacted] rejected'],
+    ['401 from https://user:pw@example.com/ with Bearer abcdefghijklmnop1234', '401 from https://[redacted]@example.com/ with Bearer [redacted]'],
+  ]
+  for (const [input, want] of reasons) expect(reason(input), input).toBe(want)
+  const said: [string, string][] = [
+    ['Done: the tests pass.\nHere is more.', 'Done: the tests pass.'],
+    [`I set GITHUB_TOKEN=${FAKE_TOKEN} in ~/Projects/app/.env\nNext, the deploy.`, 'I set GITHUB_TOKEN=[redacted] in ~/Projects/app/.env'],
+    ['The header was Bearer abcdefghijklmnop1234, now revoked.', 'The header was Bearer [redacted], now revoked.'],
+    ['Pushed to https://user:pw@example.com/acme/app.git', 'Pushed to https://[redacted]@example.com/acme/app.git'],
+    // A secret across the cut is redacted first, never left in half.
+    [`${'z'.repeat(290)} ${FAKE_TOKEN}\nmore`, `${'z'.repeat(290)} [redacted`],
+    // Ordinary text and paths pass unchanged, spacing included.
+    ['Edited internal/auth/token.go and  ~/Projects/app/README.md', 'Edited internal/auth/token.go and  ~/Projects/app/README.md'],
+    ['The password check in acme/app now passes: 12 tests.', 'The password check in acme/app now passes: 12 tests.'],
+  ]
+  for (const [input, want] of said) {
+    const got = lastSaid(input)
+    expect(got, input).toBe(want)
+    expect(got.includes('ghp_'), `part of the token: ${got}`).toBe(false)
+  }
 })

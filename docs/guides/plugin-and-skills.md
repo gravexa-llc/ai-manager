@@ -118,7 +118,7 @@ The plugin's settings are the `userConfig` fields in `plugin/.claude-plugin/plug
 | Setting | Default | What it does |
 |---|---|---|
 | `token` | none | aimd's write token: the contents of `~/.ai-manager/token`. Stored as a secret. Without it, the plugin can still read the progress line and `plan_status`, but can't link, register, report or watch. |
-| `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. |
+| `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. It must be this machine (`127.0.0.1`, `localhost` or `[::1]`): to any other address the plugin sends nothing (no token, no events, no plan calls), opens nothing, and says so once a session. |
 | `band` | on | The band above the prompt: the progress line, and the Register and link offers. |
 | `appendConventions` | on | Appends the convention block to each linked agent's brief, and to a linked session's system prompt. |
 | `prCheck` | on | Refuses a linked agent's `gh pr create` when the PR body lacks its `Plan:` line. |
@@ -274,7 +274,7 @@ Rules for the mod:
 - **Every hook fails open.** End each `on(…)` with `.catch(($, e, next) => next(e))`, and keep any work that can fail away from the path that calls `next`. `turn.step` streams, so its hook and its handler are generators: the handler is `.catch(async function* ($, e, next) { return yield* next(e) })`.
 - **Never block a session on aimd.** Calls go through `call()` or `request()` in `aimd.ts`, which time out after 1 second and never throw. Reporting is unawaited.
 - **Keep the hot paths cheap.** `tool.call` runs on every tool call: test with a local regex or an in-memory map before doing anything else.
-- **Send summaries only** (below). A new kind of detail needs redaction on both sides: `plugin/mod/wait.ts` and `internal/events/redact.go` share the same patterns, tested on the same examples.
+- **Send summaries only** (below). Any new free text needs redaction on both sides: `plugin/mod/wait.ts` and `internal/events/redact.go` share the same patterns, tested on the same examples.
 
 ## What it reports to aimd
 
@@ -318,7 +318,7 @@ Older builds of the plugin did send a `needs_you` for every `tool.check` ask, wi
 - the questions and their options (at most 4 questions of 6 options);
 - the first 12 lines of a plan to approve.
 
-**Redaction.** Before it leaves the session, the mod replaces these with `[redacted]`:
+**Redaction.** The mod redacts every piece of free text it sends: a label, a reason, the first line of an answer, and what a dialog waits on. A label or an answer rarely holds a secret, only when Claude writes one out or searches for one, but aimd stores both and serves them. Before the text leaves the session, the mod replaces these with `[redacted]`:
 
 - assignments whose name says secret, such as `GITHUB_TOKEN=…` or `api_key=…`;
 - `Authorization` and `Cookie` headers, and other secret-named `-H` headers;
@@ -328,6 +328,8 @@ Older builds of the plugin did send a `needs_you` for every `tool.check` ask, wi
 - GitHub, OpenAI-style, Slack and AWS key shapes;
 - long runs of base64 or hex.
 
-aimd applies the same rules again when the event arrives. It keeps the detail in memory only while the ask is pending, never writes it to its database, and gives it out over `/api/` only to callers with the token.
+The text is redacted first and cut to its length second, so a secret at the cut is never left in half.
+
+aimd applies the same rules again when the event arrives, so a session still running an older build of the plugin is covered. Rows aimd stored before it was upgraded keep what they had until the session's next event. aimd keeps what a dialog waits on in memory only while the ask is pending, never writes it to its database, and gives it out over `/api/` only to callers with the token.
 
 aimd answers each batch at once and never sends the mod anything to act on beyond "accepted" or "drop it".

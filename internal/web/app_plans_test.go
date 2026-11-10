@@ -64,7 +64,7 @@ func (e *planEnv) serve() {
 		o.Monitor = nil
 	}
 	e.srv = New(o)
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 }
 
 // postJSON posts a form the way app-shell.js does, and decodes its answer.
@@ -228,7 +228,7 @@ func TestAppPlanViews(t *testing.T) {
 	// A plan without packages says so in every view.
 	empty, _ := newApp(t, nil)
 	for _, view := range []string{"graph", "kanban", "timeline"} {
-		wantIn(t, "empty "+view, get(t, empty.Handler(), "/app/plans/sharing?view="+view), "This plan has no packages.")
+		wantIn(t, "empty "+view, get(t, empty.routes(), "/app/plans/sharing?view="+view), "This plan has no packages.")
 	}
 }
 
@@ -1332,7 +1332,7 @@ func TestAppPlanTimelineBars(t *testing.T) {
 	srv, _ := newApp(t, func(o *Options) {
 		o.Plans = tlPlans{fakePlans: fakePlans{plans: []api.Plan{b}, sums: map[string]api.PlanSummary{"p": {}}}, tl: tl}
 	})
-	list := inner(t, get(t, srv.Handler(), "/app/plans/p?view=timeline"), "list")
+	list := inner(t, get(t, srv.routes(), "/app/plans/p?view=timeline"), "list")
 	// The axis runs from the first start (3 days ago) to now.
 	for id, bars := range map[string][]string{
 		"R1": {`class="tl-bar work" x="0.00%" y="1" width="33.33%" height="12"`, `class="tl-bar review" x="33.33%" y="4" width="66.67%" height="6"`},
@@ -1370,7 +1370,7 @@ func TestTimelineTicks(t *testing.T) {
 }
 
 func TestAppPlanStatic(t *testing.T) {
-	h := newDash(t, newTestStore(t), nil).Handler()
+	h := newDash(t, newTestStore(t), nil).routes()
 	for file, ctype := range map[string]string{"app-plan.js": "text/javascript; charset=utf-8", "app-plan.css": "text/css; charset=utf-8"} {
 		rec := do(t, h, "GET", "/static/"+file, nil, nil)
 		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != ctype {

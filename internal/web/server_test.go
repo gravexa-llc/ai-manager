@@ -52,7 +52,7 @@ func seed(t *testing.T, st *store.Store) {
 func TestSessionsEndpoint(t *testing.T) {
 	st := newTestStore(t)
 	seed(t, st)
-	h := newTestServer(t, st, nil).Handler()
+	h := newTestServer(t, st, nil).routes()
 
 	var got api.Sessions
 	rec := do(t, h, "GET", "/api/sessions", nil, nil)
@@ -88,7 +88,7 @@ func TestSessionsEndpoint(t *testing.T) {
 	}
 
 	// An empty store answers an empty list, not null.
-	rec = do(t, newTestServer(t, newTestStore(t), nil).Handler(), "GET", "/api/sessions", nil, nil)
+	rec = do(t, newTestServer(t, newTestStore(t), nil).routes(), "GET", "/api/sessions", nil, nil)
 	if !strings.Contains(rec.Body.String(), `"sessions":[]`) {
 		t.Errorf("empty store body = %s, want an empty list", rec.Body)
 	}
@@ -97,7 +97,7 @@ func TestSessionsEndpoint(t *testing.T) {
 func TestWorktreesEndpoint(t *testing.T) {
 	st := newTestStore(t)
 	seed(t, st)
-	h := newTestServer(t, st, nil).Handler()
+	h := newTestServer(t, st, nil).routes()
 
 	var got api.Worktrees
 	decode(t, do(t, h, "GET", "/api/worktrees", nil, nil), &got)
@@ -131,7 +131,7 @@ func TestWorktreesEndpoint(t *testing.T) {
 func TestPRsEndpoint(t *testing.T) {
 	st := newTestStore(t)
 	seed(t, st)
-	h := newTestServer(t, st, nil).Handler()
+	h := newTestServer(t, st, nil).routes()
 
 	// Your review is requested on #5.
 	if _, err := st.SetReviewRequests(context.Background(), []string{"o"}, []store.PRKey{{Repo: "o/b", Number: 5}}, t0.Add(-time.Hour)); err != nil {
@@ -206,7 +206,7 @@ func TestStatusEndpoint(t *testing.T) {
 		},
 		GitHub: api.GitHubStatus{Budget: api.Budget{Verdict: "normal", Known: true, Remaining: 4900, Limit: 5000}},
 	}
-	h := newTestServer(t, st, fakeStatus{ds}).Handler()
+	h := newTestServer(t, st, fakeStatus{ds}).routes()
 	var got api.Status
 	rec := do(t, h, "GET", "/api/status", nil, nil)
 	if rec.Code != 200 {
@@ -236,7 +236,7 @@ func TestStatusEndpoint(t *testing.T) {
 
 func TestStoreErrorsAre500(t *testing.T) {
 	st := newTestStore(t)
-	h := newTestServer(t, st, nil).Handler()
+	h := newTestServer(t, st, nil).routes()
 	st.Close()
 	for _, p := range []string{"/api/sessions", "/api/worktrees", "/api/prs", "/api/status"} {
 		rec := do(t, h, "GET", p, nil, nil)
@@ -260,7 +260,7 @@ func startServer(t *testing.T, onWatchers func(int), keepalive time.Duration) (s
 		hub.keepalive = keepalive
 	}
 	s := New(Options{Port: port, Token: testToken, Store: newTestStore(t), Hub: hub})
-	srv := httptest.NewUnstartedServer(s.Handler())
+	srv := httptest.NewUnstartedServer(s.routes())
 	srv.Listener.Close()
 	srv.Listener = ln
 	srv.Config.RegisterOnShutdown(hub.Close)

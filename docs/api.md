@@ -37,9 +37,12 @@ Older page URLs answer `308` to their app pages, and drop their other parameters
 ## Conventions
 
 - **Where.** aimd listens on `http://127.0.0.1:<port>`, 7777 by default. The `Host` header must be `127.0.0.1:<port>` or `localhost:<port>`. No CORS headers are ever sent.
-- **Reads** (`GET`) need no auth.
-- **Writes** (`POST`, `DELETE`) need one of two things:
-  - **aimd's token** in `X-AIM-Token`. The plugin, `aim` and `curl` use this. The token is the content of `$AIM_HOME/token`, by default `~/.ai-manager/token`.
+- **Every request needs a credential**, reads included. The only exceptions are the files under `/static/` and the sign-in link ([Signing a browser in](#signing-a-browser-in)). Without one the answer is `401`.
+  - **A program** sends aimd's token in `X-AIM-Token`. The plugin, `aim` and `curl` use this. The token is the content of `$AIM_HOME/token`, by default `~/.ai-manager/token`.
+  - **A browser** sends the session cookie that `aim open` gives it.
+- **Reads** (`GET`) need only that. Below, "Auth: read" means the token or a signed-in browser.
+- **Writes** (`POST`, `DELETE`) need one of two things on top:
+  - **aimd's token** in `X-AIM-Token`, as above. A session cookie alone writes nothing.
   - **For a script on one of aimd's own dashboard pages:** the page's CSRF token in `X-CSRF-Token`. The request must also be same-origin: its `Origin`, if sent, is aimd's own, and `Sec-Fetch-Site`, if sent, is `same-origin` or `none`. A plain form post to `/api/` needs the token: the pages' forms post under `/app/`.
 
   A missing or wrong token gets `401`. A bad CSRF token or another origin gets `403`.
@@ -123,6 +126,42 @@ A plan's page refreshes on `plans`, `sessions`, `prs` and `inbox`. Between passe
 
 ---
 
+## Signing a browser in
+
+aimd serves its pages only to a browser that is signed in. Signing in takes aimd's token, so only someone who can read `~/.ai-manager/token` can do it:
+
+```sh
+aim open            # the Overview
+aim open search     # the plan "search"
+aim open --print    # print the link instead of opening it
+```
+
+In a Claude session, `/aim` and the plan band do the same. A browser stays signed in for 30 days, per browser and per host name: `127.0.0.1` and `localhost` are different sites to a browser. One that isn't signed in gets a `401` page that says to run `aim open`.
+
+### `POST /api/sign-in`: a one-time link
+
+Auth: the token. The body is optional:
+
+```json
+{"return": "/app/plans/search"}
+```
+
+`return` is the app page the link ends on. Anything that isn't a path under `/app/` means the Overview. The answer:
+
+```json
+{"path": "/app/sign-in?code=…&return=%2Fapp%2Fplans%2Fsearch", "expires_in": 60}
+```
+
+`path` has no scheme or host: put the address you use for aimd in front of it, so the cookie lands on that host name. The link works once, within `expires_in` seconds. Until it is used it is a credential, so open it and don't log it.
+
+### `GET /app/sign-in?code=…&return=…`: use the link
+
+No auth: the code is the credential. A good code sets the session cookie and answers `303` to `return`. A used, expired or unknown code sets nothing and answers `401` with the sign-in page, unless the browser is signed in already, which is sent on to `return`.
+
+The cookie is `aim_session_<port>`: `HttpOnly`, `SameSite=Lax`, 30 days. Its value is a random nonce and the issue time, signed with a key derived from aimd's token, so it survives a restart of aimd, and replacing the token file signs every browser out.
+
+**What it doesn't cover.** Browsers send a cookie to every port of a host, so another server on 127.0.0.1 that a signed-in browser visits receives the cookie.
+
 ## Plans
 
 ### `POST /api/plans`: register a plan
@@ -197,11 +236,11 @@ It stops watching the file and runs a state pass, so the board is gone from ever
 
 ### `GET /api/plans`: every board
 
-Auth: none. The response is `{"plans": [<board>, …]}`, in the order the plans were registered. Each board is the same as `GET /api/plans/{slug}`.
+Auth: read. The response is `{"plans": [<board>, …]}`, in the order the plans were registered. Each board is the same as `GET /api/plans/{slug}`.
 
 ### `GET /api/plans/{slug}`: one board
 
-Auth: none. The slug matches in any case. This is the full derived state from the last state pass. The one exception is `band`, whose need-you count is read with the board (see the summary). An unknown slug gets `404`.
+Auth: read. The slug matches in any case. This is the full derived state from the last state pass. The one exception is `band`, whose need-you count is read with the board (see the summary). An unknown slug gets `404`.
 
 ```json
 {
@@ -317,7 +356,7 @@ Board fields:
 
 ### `GET /api/plans/{slug}/summary[?since=<RFC 3339>]`: the band and `plan_status`
 
-Auth: none. A `since` that isn't RFC 3339 gets `400`, and an unknown slug gets `404`.
+Auth: read. A `since` that isn't RFC 3339 gets `400`, and an unknown slug gets `404`.
 
 ```json
 {
@@ -584,7 +623,7 @@ So one named only by a branch whose worktree was removed goes a day later, and s
 
 ## `GET /api/context?cwd=<path>`: what the plugin needs at session start
 
-Auth: none. `cwd` must be absolute, or the answer is `400`. A directory outside every repo aimd may look at gets an empty context (`"repo": null`), not an error.
+Auth: read. `cwd` must be absolute, or the answer is `400`. A directory outside every repo aimd may look at gets an empty context (`"repo": null`), not an error.
 
 ```json
 {
@@ -620,7 +659,7 @@ Auth: none. `cwd` must be absolute, or the answer is `400`. A directory outside 
 
 ## `GET /api/sessions[?all=1]`: live sessions
 
-Auth: none, except for `waiting_on` (below). The types are `api.Sessions` and `api.Session`. It lists the live sessions as aimd has them. Headless `claude -p` runs are left out and counted in `hidden_headless`, unless `all=1` is given.
+Auth: read, except for `waiting_on` (below). The types are `api.Sessions` and `api.Session`. It lists the live sessions as aimd has them. Headless `claude -p` runs are left out and counted in `hidden_headless`, unless `all=1` is given.
 
 Each session also says whether it is monitored (`monitored`, `monitored_why`; see [Monitored sessions](#monitored-sessions)) and which terminal app it runs in (`terminal`, `terminal_app`; see [Terminal apps](#terminal-apps)).
 
@@ -662,10 +701,10 @@ A session loads the plugin when it starts and keeps that build until it restarts
 
 ### Who may read it
 
-- **Reads are open to local processes, by design.** aimd listens only on 127.0.0.1. `GET` requests (the dashboard's pages and `/api/` JSON) need no credentials. The `Host` check stops DNS rebinding, and aimd sends no CORS headers, so other websites can't read the answers. Any process on this Mac can.
-- **That is no new exposure on a one-account Mac.** Those processes run as you, and you can already read `~/.ai-manager/token` and Claude Code's transcripts, which hold far more than aimd shows.
+- **Nothing is served without a credential.** aimd listens only on 127.0.0.1, and every read needs aimd's token or a signed-in browser's cookie. Another account on the Mac, a browser extension or a sandboxed process that can reach 127.0.0.1 gets `401`, for the dashboard's pages as for `/api/` JSON. The `Host` check stops DNS rebinding, and aimd sends no CORS headers, so other websites can't read the answers either.
+- **Programs that run as you can read the token file,** so to them aimd shows nothing new: they can already read Claude Code's transcripts, which hold far more.
 - **Wait detail is redacted twice.** `waiting_on` holds the command a person is asked to allow, the question and its options, or the plan. The plugin redacts it before it leaves the session, and aimd redacts it again when it arrives. A command can still carry a secret neither layer spots.
-- **The `/api/` field needs the token.** `GET /api/sessions` includes `waiting_on` only when the request carries aimd's token in `X-AIM-Token`, as the plugin and `aim` send it. A dashboard page's CSRF token (`X-CSRF-Token`) doesn't count, since every page embeds one and anything that can fetch a page has it. Without the token, each session is listed with its state, `state_reason` and `needs_you_since`, but no `waiting_on`. The only other `/api/` answers that carry the wait detail are the inbox's (`GET /api/inbox`, `GET /api/inbox/{id}` and the answer of `POST /api/inbox/{id}`), under the same rule.
+- **The `/api/` field needs the token.** `GET /api/sessions` includes `waiting_on` only when the request carries aimd's token in `X-AIM-Token`, as the plugin and `aim` send it. A browser's session cookie doesn't count. Without the token, each session is listed with its state, `state_reason` and `needs_you_since`, but no `waiting_on`. The only other `/api/` answers that carry the wait detail are the inbox's (`GET /api/inbox`, `GET /api/inbox/{id}` and the answer of `POST /api/inbox/{id}`), under the same rule.
 - **Pages show the redacted detail.** aimd's own server-rendered pages are your UI and may show it. The app's script fetches HTML fragments, not `/api/` JSON, and uses the CSRF token only for writes.
 
 ### Terminal apps
@@ -851,7 +890,7 @@ Like every hook, they never fail the command.
 
 ## `GET /api/prs`: pull requests and what they wait on
 
-Auth: none. Every PR aimd has stored, by repo then number.
+Auth: read. Every PR aimd has stored, by repo then number.
 
 - `?state=open|merged|closed|all` narrows it; any other `state` gets `400`.
 - `?repo=<owner/name>` narrows it to one repo.
@@ -1099,7 +1138,7 @@ Refusals are `{"error": "…"}`:
 - for `go`, the refusals of `POST /api/go`, and `422` when Go isn't allowed, with the reason.
 
 ```sh
-curl -s http://127.0.0.1:7777/api/inbox | jq '.items[] | {id, kind_label, title}'
+curl -s -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:7777/api/inbox | jq '.items[] | {id, kind_label, title}'
 curl -s -X POST -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:7777/api/inbox/7 -d '{"action": "done"}'
 ```
 
@@ -1193,7 +1232,7 @@ The page's forms post to `/app/settings/set` and `/app/settings/merges` with its
 - **`/app/settings/merges`** takes `plan` and `merges`.
 
 ```sh
-curl -s http://127.0.0.1:7777/api/settings | jq '{chime, back_to_open_minutes}'
+curl -s -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:7777/api/settings | jq '{chime, back_to_open_minutes}'
 curl -s -X POST -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:7777/api/settings -d '{"merges": {"search": "lead"}}'
 ```
 
@@ -1201,7 +1240,7 @@ curl -s -X POST -H "X-AIM-Token: $(cat ~/.ai-manager/token)" http://127.0.0.1:77
 
 ### `GET /api/status`: aimd's health
 
-Auth: none. `aim status` reads it, and prints the running aimd's `version`, with a note when it isn't the `aim` binary's own (`aim --version`): an update replaces the binaries while the old aimd keeps running until `aim up` restarts it.
+Auth: read. `aim status` reads it, and prints the running aimd's `version`, with a note when it isn't the `aim` binary's own (`aim --version`): an update replaces the binaries while the old aimd keeps running until `aim up` restarts it.
 
 - `version`, `started_at`, `now`;
 - `watchers`: how many dashboard pages are connected to the stream;
@@ -1213,7 +1252,7 @@ Auth: none. `aim status` reads it, and prints the running aimd's `version`, with
 
 ### `GET /api/worktrees[?all=1][&repo=<path>]`: worktrees
 
-Auth: none. The worktrees the last scans found: path, main checkout, branch, HEAD, lock and prune state, uncommitted and untracked counts, upstream state and last commit time. `?all=1` adds the ones since removed, and `?repo=` narrows the list to one main checkout's path.
+Auth: read. The worktrees the last scans found: path, main checkout, branch, HEAD, lock and prune state, uncommitted and untracked counts, upstream state and last commit time. `?all=1` adds the ones since removed, and `?repo=` narrows the list to one main checkout's path.
 
 ### `POST /events`: the plugin's reports
 
@@ -1267,6 +1306,6 @@ Examples with `curl`:
 TOKEN=$(cat ~/.ai-manager/token)
 curl -s -X POST -H "X-AIM-Token: $TOKEN" http://127.0.0.1:7777/api/plans \
   -d '{"path": "'"$HOME"'/Projects/recipes-api/docs/search-plan.md"}'
-curl -s http://127.0.0.1:7777/api/plans/search/summary | jq -r .band
+curl -s -H "X-AIM-Token: $TOKEN" http://127.0.0.1:7777/api/plans/search/summary | jq -r .band
 curl -s -X POST -H "X-AIM-Token: $TOKEN" http://127.0.0.1:7777/api/plans/search/packages/P1/done
 ```

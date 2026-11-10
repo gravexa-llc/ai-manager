@@ -1,0 +1,32 @@
+#!/bin/sh
+# Installs scripts/hooks/pre-commit into this clone (`make hooks`).
+#
+# The hook is copied into the repo's shared hooks folder (the main
+# checkout's .git/hooks), not pointed at with core.hooksPath: every
+# worktree of the clone then runs it, even one on a branch from before the
+# hook existed. A pre-commit hook of your own is left alone.
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+src=scripts/hooks/pre-commit
+dir="$(git rev-parse --path-format=absolute --git-common-dir)/hooks"
+dst="$dir/pre-commit"
+
+set_path=$(git config --get core.hooksPath || true)
+if [ -n "$set_path" ]; then
+  echo "hooks: core.hooksPath is $set_path, so git doesn't read $dir." >&2
+  echo "hooks: add $src to that folder yourself, or unset core.hooksPath and run this again." >&2
+  exit 1
+fi
+if [ -e "$dst" ] && ! grep -q 'ai-manager pre-commit hook' "$dst"; then
+  echo "hooks: $dst is a hook of your own, so it is left alone." >&2
+  echo "hooks: call $src from it, or move it away and run this again." >&2
+  exit 1
+fi
+
+mkdir -p "$dir"
+install -m 0755 "$src" "$dst"
+echo "hooks: installed $dst"
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "hooks: gitleaks isn't on PATH; the hook refuses commits until it is (brew install gitleaks)"
+fi

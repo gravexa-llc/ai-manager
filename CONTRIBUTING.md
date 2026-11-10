@@ -14,24 +14,39 @@ To learn the product first, start with the [README](README.md) and the [guides](
 - **Go 1.21 or later.** `go.mod`'s `toolchain` line makes the go command fetch the exact version this repo uses (1.26.10) for this repo only.
 - **Claude Code 2.1.319 or later**, on your `PATH`: `make check` runs its plugin checks.
 - **`git`, and the GitHub CLI `gh`**, logged in, for running aimd against real repos.
+- **[gitleaks](https://github.com/gitleaks/gitleaks)** (`brew install gitleaks`), for the credential scan in `make check` and the pre-commit hook.
 
 ## Build and check
 
 ```sh
+make hooks        # once per clone: the pre-commit hook that keeps credentials out
 make build        # bin/aim and bin/aimd
-make check        # what CI runs: gofmt, go vet, go test -race, and the plugin checks
+make check        # what CI runs: the credential scan, gofmt, go vet, go test -race, and the plugin checks
 make go-check     # the Go part only, without the race detector: quicker while you work
 ```
 
 `make check` runs:
 
-1. a check that every Go file is `gofmt`-clean (it doesn't rewrite them: run `gofmt -w` yourself);
-2. `go vet ./...`;
-3. `go test -race ./...`;
-4. `claude plugin validate plugin/` and `claude plugin validate .`, for the plugin and the marketplace;
-5. `claude plugin test plugin/`, the mod's TypeScript tests.
+1. `gitleaks` over the working tree, for credentials (`make secrets`);
+2. a check that every Go file is `gofmt`-clean (it doesn't rewrite them: run `gofmt -w` yourself);
+3. `go vet ./...`;
+4. `go test -race ./...`;
+5. `claude plugin validate plugin/` and `claude plugin validate .`, for the plugin and the marketplace;
+6. `claude plugin test plugin/`, the mod's TypeScript tests.
 
-Without `claude` on your `PATH` it skips steps 4 and 5 and says so. CI doesn't skip them.
+Without `gitleaks` on your `PATH` it skips step 1, and without `claude` steps 5 and 6, and says so. CI doesn't skip them.
+
+### Keeping credentials out
+
+Three checks use the same rules, gitleaks' own plus `.gitleaks.toml`:
+
+- **The pre-commit hook** (`scripts/hooks/pre-commit`) refuses a commit whose staged changes hold what looks like a credential. `make hooks` installs it, once per clone. It goes in the clone's shared hooks folder, so every worktree runs it, agents' worktrees included. Run `make hooks` again when the hook changes.
+- **`make secrets`**, the first step of `make check`, scans the whole working tree. That covers a clone without the hook and a commit made with `--no-verify`.
+- **`scripts/ci.sh`** runs the same scan itself on a PR's merge result, with `main`'s rules: a PR can change the `Makefile` and `.gitleaks.toml`, so its own `make check` isn't what vouches for it.
+
+A test that needs something credential-shaped uses one of the made-up values `.gitleaks.toml` lists. They pass only in test files (`*_test.go`, `*.test.ts`). For a new one, add it there in the same PR, and say why: CI scans with `main`'s rules until the maintainer has read that change. Don't get past the hook with `--no-verify`.
+
+gitleaks only knows credentials. It doesn't know names, paths or other projects: for those, see [Code conventions](#code-conventions).
 
 Pass `make check` before you push.
 
@@ -83,7 +98,7 @@ AIM_HOME="$DEV/home" bin/aimd --foreground --debug
 **3. Use it.** It makes `$DEV/home/token` on its first start.
 
 ```sh
-open http://127.0.0.1:7778/app/
+AIM_HOME="$DEV/home" bin/aim open     # opens http://127.0.0.1:7778/app/ and signs your browser in
 AIM_HOME="$DEV/home" bin/aim status
 curl -s -X POST -H "X-AIM-Token: $(cat "$DEV/home/token")" \
   http://127.0.0.1:7778/api/plans -d '{"path": "'"$DEV"'/repos/demo/docs/demo-plan.md"}'
@@ -142,6 +157,7 @@ Forks are welcome. To send a change:
    - **Open questions:** anything you weren't sure of, or left out on purpose.
 4. **Expect a review before checks run.** There's no hosted CI. The maintainer runs `scripts/ci.sh <PR>` on their own Mac, which:
    - merges the PR into the latest `main` in a temporary worktree;
+   - scans the result for credentials itself, with `main`'s `.gitleaks.toml` rather than the PR's, before any of the PR's code runs. A PR that changes that file is called out, and the maintainer reads the change before scanning with it;
    - runs `make check` there, with a scrubbed environment and a throwaway `HOME`;
    - posts the result to the PR's head commit as the `local-ci` status.
 

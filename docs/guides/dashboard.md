@@ -1,6 +1,6 @@
 # The dashboard
 
-aimd serves the dashboard at http://127.0.0.1:7777/app/. In a Claude session, `/aim` opens it at that session's plan. It updates live: each page listens to aimd's change stream and redraws only the parts that changed. Pages also refresh once a minute, so ages move on. Every selection is in the URL, so a reload or a bookmark lands on the same view.
+aimd serves the dashboard at http://127.0.0.1:7777/app/, to a signed-in browser only. `aim open` opens it and signs your browser in for 30 days; after that a bookmark works. In a Claude session, `/aim` opens it at that session's plan, signing the browser in the same way. It updates live: each page listens to aimd's change stream and redraws only the parts that changed. Pages also refresh once a minute, so ages move on. Every selection is in the URL, so a reload or a bookmark lands on the same view.
 
 The menu on the left:
 

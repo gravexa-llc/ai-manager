@@ -152,6 +152,7 @@ POST routes live under `/app/<page>/…`. Add them in your `routes` function:
 func inboxRoutes(s *Server) { s.mux.HandleFunc("POST /app/inbox/move", s.inboxMove) }
 ```
 
+- **Sign-in.** Every page, fragment and form post needs the browser's session cookie (`requireSignIn`, `signin.go`); a handler never checks it itself. A fragment fetch that gets `401` reloads the page, which then shows the sign-in page.
 - **CSRF.** `CSRF.Protect` checks every `/app/` write. Put `<input type="hidden" name="csrf_token" value="{{.CSRF}}">` in each form, and a `return` field when the answer should come back to the page (`appReturn(r)` reads it, limited to `/app/` paths). The script refreshes the token in every form it submits.
 - **The answer.** Use one of the two helpers, never your own redirect:
 

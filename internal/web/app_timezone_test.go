@@ -81,7 +81,7 @@ func TestTimelineInTimeZone(t *testing.T) {
 		o.Now = func() time.Time { return lateNY }
 		o.SystemZone = fixedZone(ny)
 	})
-	h := srv.Handler()
+	h := srv.routes()
 
 	// System: the machine's zone, New York.
 	list := inner(t, get(t, h, "/app/plans/p?view=timeline"), "list")
@@ -222,7 +222,7 @@ func TestTimeZoneFallsBackToSystem(t *testing.T) {
 		o.Plans = appPlans
 		o.SystemZone = fixedZone(zoneOf(t, "America/New_York"))
 	})
-	h := srv.Handler()
+	h := srv.routes()
 	settings := get(t, h, "/app/settings?fragment=content")
 	wantIn(t, "settings", settings, `<option value="system" selected>System (America/New_York)</option>`)
 	wantNotIn(t, "settings", settings, "Mars")
@@ -262,6 +262,6 @@ func TestOverviewInTimeZone(t *testing.T) {
 	st := ovActivityWorld(t)
 	_, err := st.SetSettings(context.Background(), map[string]string{store.SettingTimeZone: "America/New_York"})
 	must(t, err)
-	page := get(t, newDash(t, st, func(o *Options) { o.Plans = ovBoards }).Handler(), "/app/")
+	page := get(t, newDash(t, st, func(o *Options) { o.Plans = ovBoards }).routes(), "/app/")
 	wantIn(t, "feed", section(t, page, "ov-activity"), `<time class="when" datetime="2026-11-05T11:50:00Z" title="06:50">10m</time>`)
 }

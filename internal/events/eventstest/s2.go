@@ -375,17 +375,17 @@ func (t *translator) record(i int) error {
 			// It names no loop (not even a subagent's), so an ask the
 			// mod already reported isn't sent again on the main loop.
 			if len(t.open) == 0 {
-				t.emit(rec, events.Event{Kind: events.NeedsYou, AgentID: agent, Source: events.SourceNotification, Reason: typ})
+				t.emit(rec, events.Event{Kind: events.NeedsYou, AgentID: agent, Source: events.SourceNotification, Reason: Reason(typ)})
 			}
 		}
 
 	case rec.Event == "classic.StopFailure" && in:
-		t.emit(rec, events.Event{Kind: events.Error, AgentID: str(d, "agent_id"), Reason: str(d, "error")})
+		t.emit(rec, events.Event{Kind: events.Error, AgentID: str(d, "agent_id"), Reason: Reason(str(d, "error"))})
 
 	case rec.Event == "turn.complete" && in:
 		t.answered(str(d, "agentId"), "")
 		t.emit(rec, events.Event{Kind: events.TurnComplete, AgentID: str(d, "agentId"),
-			Reason: str(d, "reason"), LastSaid: events.FirstLine(str(d, "answer"))})
+			Reason: Reason(str(d, "reason")), LastSaid: LastSaid(str(d, "answer"))})
 
 	case rec.Event == "classic.WorktreeCreate" && in:
 		t.emit(rec, events.Event{Kind: events.WorktreeCreate, AgentID: str(d, "agent_id"), Name: str(d, "name")})
@@ -435,7 +435,7 @@ func (t *translator) record(i int) error {
 		t.emit(rec, e)
 
 	case rec.Event == "session.end" && in:
-		t.emit(rec, events.Event{Kind: events.SessionEnd, Reason: str(d, "reason")})
+		t.emit(rec, events.Event{Kind: events.SessionEnd, Reason: Reason(str(d, "reason"))})
 	}
 	return nil
 }
@@ -502,7 +502,24 @@ func (t *translator) sessionKind(i int) string {
 //	EnterWorktree                        "EnterWorktree <name>"
 //	ExitWorktree                         "ExitWorktree <action>"
 //	anything else                        "<Tool>"
+//
+// The label is redacted (events.Redact) and then cut to 300 characters, in
+// that order (events.RedactLine says why). A Grep or Glob pattern is
+// redacted before its own cut to 60, for the same reason.
 func Label(tool string, input map[string]any, cwd string) string {
+	return events.RedactLine(rawLabel(tool, input, cwd), events.MaxSummaryLen)
+}
+
+// Reason is an event's reason as the mod sends it: on one line, redacted,
+// at most 300 characters. A needs_you about a tool call sends Label.
+func Reason(s string) string { return events.RedactLine(s, events.MaxSummaryLen) }
+
+// LastSaid is a turn_complete's last_said as the mod sends it: the first
+// line of the answer, redacted, at most 300 characters.
+func LastSaid(answer string) string { return events.RedactFirstLine(answer, events.MaxSummaryLen) }
+
+// rawLabel is Label before the whole of it is redacted and cut.
+func rawLabel(tool string, input map[string]any, cwd string) string {
 	switch tool {
 	case "Bash":
 		if d := events.OneLine(str(input, "description")); d != "" {
@@ -526,7 +543,7 @@ func Label(tool string, input map[string]any, cwd string) string {
 		return "Agent"
 	case "Grep", "Glob":
 		if p := str(input, "pattern"); p != "" {
-			return tool + ": " + events.Truncate(events.OneLine(p), 60)
+			return tool + ": " + events.RedactLine(p, 60)
 		}
 	case "WebFetch":
 		if u, err := url.Parse(str(input, "url")); err == nil && u.Host != "" {

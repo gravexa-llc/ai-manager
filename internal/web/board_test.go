@@ -61,7 +61,7 @@ func newBoardEnv(t *testing.T) *boardEnv {
 	})
 	t.Cleanup(e.svc.Wait)
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, HomeDir: tmp, Now: func() time.Time { return t0 }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	return e
 }
 
@@ -76,7 +76,7 @@ func (e *boardEnv) monitored(mode string) {
 		return list.Plans, err
 	}}
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, Monitor: mon, HomeDir: e.tmp, Now: func() time.Time { return t0 }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 }
 
 func (e *boardEnv) write(path, content string) string {

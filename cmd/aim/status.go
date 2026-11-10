@@ -159,11 +159,18 @@ func shortAge(d time.Duration) string {
 	}
 }
 
-// httpGet fetches url and returns the body of a 200 answer.
+// httpGet fetches url and returns the body of a 200 answer. It sends
+// aimd's token when there is one to read: aimd answers no read without a
+// credential.
 func httpGet(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
+	}
+	if home, err := config.Home(); err == nil {
+		if token, err := config.ReadSecretFile(config.TokenPath(home)); err == nil {
+			req.Header.Set("X-AIM-Token", token)
+		}
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

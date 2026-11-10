@@ -28,7 +28,8 @@ const (
 // aimd and can't be forged by another page on localhost (cookies don't
 // separate ports, so a cookie-based double submit could be). A cross-site
 // page can't read a token out of a dashboard page: aimd sends no CORS
-// headers and checks the Host header.
+// headers and checks the Host header. Nor can a local process without a
+// credential: a page is served only to a signed-in browser (signin.go).
 type CSRF struct {
 	key     []byte
 	origins map[string]bool
@@ -55,36 +56,47 @@ const (
 )
 
 // Token returns a new token for one page.
-func (c *CSRF) Token() string {
+func (c *CSRF) Token() string { return newSigned(c.key, c.now()) }
+
+// Valid reports whether tok is a token this aimd issued less than
+// CSRFMaxAge ago.
+func (c *CSRF) Valid(tok string) bool { return validSigned(c.key, tok, c.now(), CSRFMaxAge) }
+
+// newSigned returns a random nonce and the time now, signed with
+// HMAC-SHA256 under key: a CSRF token, or a session cookie's value
+// (signin.go), each under its own key.
+func newSigned(key []byte, now time.Time) string {
 	buf := make([]byte, csrfNonceLen+csrfTimeLen, csrfNonceLen+csrfTimeLen+csrfMACLen)
 	if _, err := rand.Read(buf[:csrfNonceLen]); err != nil {
 		panic("web: crypto/rand failed: " + err.Error())
 	}
-	binary.BigEndian.PutUint64(buf[csrfNonceLen:], uint64(c.now().Unix()))
-	buf = append(buf, c.mac(buf)...)
+	binary.BigEndian.PutUint64(buf[csrfNonceLen:], uint64(now.Unix()))
+	buf = append(buf, signedMAC(key, buf)...)
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
-func (c *CSRF) mac(b []byte) []byte {
-	m := hmac.New(sha256.New, c.key)
+func (c *CSRF) mac(b []byte) []byte { return signedMAC(c.key, b) }
+
+func signedMAC(key, b []byte) []byte {
+	m := hmac.New(sha256.New, key)
 	m.Write(b)
 	return m.Sum(nil)
 }
 
-// Valid reports whether tok is a token this aimd issued less than
-// CSRFMaxAge ago.
-func (c *CSRF) Valid(tok string) bool {
+// validSigned reports whether tok is a newSigned value under key, issued
+// less than maxAge before now.
+func validSigned(key []byte, tok string, now time.Time, maxAge time.Duration) bool {
 	b, err := base64.RawURLEncoding.DecodeString(tok)
 	if err != nil || len(b) != csrfNonceLen+csrfTimeLen+csrfMACLen {
 		return false
 	}
 	body, sig := b[:csrfNonceLen+csrfTimeLen], b[csrfNonceLen+csrfTimeLen:]
-	if !hmac.Equal(sig, c.mac(body)) {
+	if !hmac.Equal(sig, signedMAC(key, body)) {
 		return false
 	}
 	issued := time.Unix(int64(binary.BigEndian.Uint64(body[csrfNonceLen:])), 0)
-	age := c.now().Sub(issued)
-	return age >= -time.Minute && age < CSRFMaxAge
+	age := now.Sub(issued)
+	return age >= -time.Minute && age < maxAge
 }
 
 // maxFormBytes bounds a form body read for its token.

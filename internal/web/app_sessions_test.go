@@ -74,7 +74,7 @@ func newSessionsEnv(t *testing.T, mode string, opt func(*Options)) (*boardEnv, *
 		opt(&o)
 	}
 	e.srv = New(o)
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	return e, g
 }
 

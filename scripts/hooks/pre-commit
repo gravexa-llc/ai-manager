@@ -1,0 +1,42 @@
+#!/bin/sh
+# ai-manager pre-commit hook: refuses a commit whose staged changes hold a
+# credential (gitleaks, with the repo's .gitleaks.toml).
+#
+# `make hooks` copies it into the repo's shared hooks folder, so it runs
+# for commits in every worktree, whatever branch that worktree is on. Run
+# `make hooks` again after this file changes.
+#
+# It checks only what is staged, so it takes well under a second. `make
+# check` scans the whole tree with the same rules. A finding that is a
+# made-up value for a test goes in .gitleaks.toml. Never commit a real
+# one, and never get past this with --no-verify.
+set -eu
+
+gitleaks=$(command -v gitleaks 2>/dev/null || true)
+if [ -z "$gitleaks" ]; then
+  # A commit made from an app may not have the shell's PATH.
+  for dir in /opt/homebrew/bin /usr/local/bin "$HOME/go/bin"; do
+    if [ -x "$dir/gitleaks" ]; then
+      gitleaks="$dir/gitleaks"
+      break
+    fi
+  done
+fi
+if [ -z "$gitleaks" ]; then
+  echo "pre-commit: gitleaks isn't installed, so this commit can't be checked for credentials." >&2
+  echo "pre-commit: install it (brew install gitleaks) and commit again." >&2
+  exit 1
+fi
+
+top=$(git rev-parse --show-toplevel)
+if [ -f "$top/.gitleaks.toml" ]; then
+  set -- --config "$top/.gitleaks.toml"
+else
+  # A branch from before the config: gitleaks' own rules.
+  set --
+fi
+if ! "$gitleaks" git --pre-commit --staged --redact --verbose --no-banner --log-level warn "$@" "$top"; then
+  echo "pre-commit: gitleaks found what looks like a credential in the staged changes (above)." >&2
+  echo "pre-commit: take it out and commit again. A made-up value for a test goes in .gitleaks.toml." >&2
+  exit 1
+fi

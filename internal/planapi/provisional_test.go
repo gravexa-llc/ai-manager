@@ -1,6 +1,7 @@
 package planapi_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"slices"
@@ -9,6 +10,33 @@ import (
 
 	"github.com/gravexa-llc/ai-manager/internal/web/api"
 )
+
+// A provisional package's title is a spawn's description, stored and
+// served: a credential in it is redacted on the way in, even from a mod
+// that didn't.
+func TestProvisionalTitleIsRedacted(t *testing.T) {
+	e := newEnv(t)
+	e.registerSharing()
+	const token = "ghp_0123456789abcdefABCDEF0123456789abcd"
+	res := ok[api.LinkResult](t, e.req("POST", "/api/links/spawn", api.SpawnLinkRequest{
+		SessionID: "lead-1", AgentID: "agent-q8", Plan: "sharing", Pkg: "Q8", Provisional: true,
+		Title: "Q8: sync the mirror with GITHUB_TOKEN=" + token,
+	}), http.StatusCreated)
+	if len(res.Packages) != 1 {
+		t.Fatalf("packages = %+v", res.Packages)
+	}
+	q8 := res.Packages[0]
+	if q8.Title != "Sync the mirror with GITHUB_TOKEN=[redacted]" {
+		t.Errorf("title = %q", q8.Title)
+	}
+	body, err := json.Marshal(e.board("sharing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), token) {
+		t.Error("the board holds the credential")
+	}
+}
 
 // A spawn whose brief names a package the plan doesn't have makes a
 // provisional package, on the board, the summary and the context;

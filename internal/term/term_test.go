@@ -348,6 +348,133 @@ func TestScriptsAreConstant(t *testing.T) {
 	}
 }
 
+// The focus scripts activate the app before they bring a window forward,
+// and wait until it is the front app (focusOrder): a window brought
+// forward by an app in the background is pulled onto the current desktop,
+// where the active app's own window makes macOS switch to its desktop.
+func TestFocusActivatesBeforeItRaises(t *testing.T) {
+	s := AllScripts()
+	for _, tc := range []struct {
+		name, script string
+		// found are the lines that match a session; raises the lines that
+		// bring it forward, in the order they must come.
+		found  []string
+		raises []string
+	}{
+		{"iTerm2", s.FocusITerm,
+			[]string{"if (tty of s) is wantTTY then", "if (id of s) is wantID then"},
+			[]string{"select w", "select t", "select s"}},
+		{"Terminal", s.FocusTerminal,
+			[]string{"if (tty of t) is wantTTY then"},
+			[]string{"set selected of t to true", "set frontmost of w to true"}},
+	} {
+		lines := scriptLines(tc.script)
+		blocks := 0
+		for i, line := range lines {
+			if !slices.Contains(tc.found, line) {
+				continue
+			}
+			blocks++
+			// What follows a match, up to its return: activate, the wait,
+			// then the raise, and nothing that activates afterwards.
+			var block []string
+			for _, l := range lines[i+1:] {
+				block = append(block, l)
+				if strings.HasPrefix(l, "return ") {
+					break
+				}
+			}
+			want := append([]string{
+				"activate",
+				"repeat 40 times",
+				"if frontmost then exit repeat",
+				"delay 0.05",
+				"end repeat",
+				"if miniaturized of w then set miniaturized of w to false",
+			}, tc.raises...)
+			if got := block[:len(block)-1]; !slices.Equal(got, want) {
+				t.Errorf("%s: after %q the script runs\n  %s\nwant\n  %s", tc.name, line,
+					strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+			}
+		}
+		if blocks != len(tc.found) {
+			t.Errorf("%s: %d matches found in the script, want %d", tc.name, blocks, len(tc.found))
+		}
+		// The app comes forward only for a session that was found.
+		if n := strings.Count(tc.script, "activate"); n != len(tc.found) {
+			t.Errorf("%s: activate appears %d times, want once per match (%d)", tc.name, n, len(tc.found))
+		}
+		first := slices.IndexFunc(lines, func(l string) bool { return slices.Contains(tc.found, l) })
+		if i := slices.Index(lines, "activate"); i < first {
+			t.Errorf("%s: activates before a session is found", tc.name)
+		}
+		// Reordering by index is what pulled a window across desktops.
+		if strings.Contains(tc.script, "set index of") {
+			t.Errorf("%s: brings a window forward with set index", tc.name)
+		}
+	}
+}
+
+// scriptLines is a script's lines, trimmed, without the empty ones.
+func scriptLines(script string) []string {
+	var out []string
+	for _, l := range strings.Split(script, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// The attach scripts type the command only into what they made. iTerm2's
+// create commands return the new tab or window: the script keeps it and
+// writes to its session, never to "current session of" a window it merely
+// looked up, which is another session whenever the new tab isn't current.
+// Terminal's do script makes its own window, so it must not be given one.
+func TestAttachTypesIntoWhatItMade(t *testing.T) {
+	s := AllScripts()
+	const takeSession, write = "set s to current session of made", "tell s to write text cmd"
+	for _, want := range []string{
+		"set made to (create window with default profile)",
+		"tell w to set made to (create tab with default profile)",
+		takeSession,
+		write,
+	} {
+		if !strings.Contains(s.AttachITerm, want) {
+			t.Errorf("attach iTerm2 script lacks %q", want)
+		}
+	}
+	// Every create is kept, one line writes, and the only session asked
+	// for is the made one's.
+	for _, line := range strings.Split(s.AttachITerm, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "create ") && !strings.Contains(line, "set made to (create ") {
+			t.Errorf("attach iTerm2 script doesn't keep what it creates: %q", line)
+		}
+		if strings.Contains(line, "write text") && line != write {
+			t.Errorf("attach iTerm2 script writes to something else: %q", line)
+		}
+		if strings.Contains(line, "session") && line != takeSession {
+			t.Errorf("attach iTerm2 script addresses another session: %q", line)
+		}
+	}
+	if n := strings.Count(s.AttachITerm, "write text"); n != 1 {
+		t.Errorf("attach iTerm2 script writes %d times, want once", n)
+	}
+	if i, j := strings.Index(s.AttachITerm, takeSession), strings.Index(s.AttachITerm, write); i < 0 || j < i {
+		t.Error("attach iTerm2 script writes before it has the made tab's session")
+	}
+
+	for _, line := range strings.Split(s.AttachTerminal, "\n") {
+		if line = strings.TrimSpace(line); strings.Contains(line, "do script") && line != "do script cmd" {
+			t.Errorf("attach Terminal script runs in an existing tab: %q", line)
+		}
+	}
+	if n := strings.Count(s.AttachTerminal, "do script"); n != 1 {
+		t.Errorf("attach Terminal script runs do script %d times, want once", n)
+	}
+}
+
 // The real ps: this process exists (with or without a terminal), and pid
 // 0 is refused without running anything.
 func TestPS(t *testing.T) {

@@ -365,7 +365,16 @@ func TestEndToEnd(t *testing.T) {
 		<-done
 	}()
 
-	resp, err := http.Get(srv.URL + "/api/stream")
+	// aimd answers no read without a credential: the token, as `aim` sends it.
+	get := func(url string) (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set(web.TokenHeader, "tok")
+		return http.DefaultClient.Do(req)
+	}
+	resp, err := get(srv.URL + "/api/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +411,7 @@ func TestEndToEnd(t *testing.T) {
 	}
 	getJSON := func(path string, v any) {
 		t.Helper()
-		r, err := http.Get(srv.URL + path)
+		r, err := get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}

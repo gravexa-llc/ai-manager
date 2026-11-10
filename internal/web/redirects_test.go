@@ -16,7 +16,7 @@ import (
 
 func TestOldURLsRedirect(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, c := range []struct {
 		from, to string
 		status   int
@@ -67,7 +67,7 @@ func TestOldURLsRedirect(t *testing.T) {
 // / lands on the Overview.
 func TestRootIsTheOverview(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	rec := do(t, h, "GET", "/", nil, nil)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("GET / = %d", rec.Code)
@@ -81,7 +81,7 @@ func TestRootIsTheOverview(t *testing.T) {
 // app's forms are where writes go.
 func TestOldFormsAreGone(t *testing.T) {
 	srv, _ := newApp(t, func(o *Options) { o.Go = &stubGo{} })
-	h := srv.Handler()
+	h := srv.routes()
 	hdr := map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "null", "Sec-Fetch-Site": "same-origin"}
 	for _, p := range []string{"/dismiss", "/watch", "/unwatch", "/plans", "/plans/sharing/link", "/plans/sharing/unlink",
 		"/plans/sharing/done", "/plans/sharing/unregister"} {

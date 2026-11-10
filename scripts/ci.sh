@@ -24,6 +24,13 @@
 #     toolchain line pick the Go version (downloaded once into the module
 #     cache). This is not a sandbox: the code still runs
 #     as this user.
+#   - this script scans the merge result for credentials itself (gitleaks),
+#     before any of the PR's code runs, and with the base branch's
+#     .gitleaks.toml, not the PR's. The PR's own `make check` scans too, but a
+#     PR can change the Makefile and the rules, so that scan can't be the one
+#     that vouches for it. A PR that changes .gitleaks.toml is called out:
+#     read the change, then run again with AIM_CI_NEW_RULES=1 to scan with
+#     the PR's rules;
 #   - the status is posted by this outer script, never by the build.
 set -euo pipefail
 
@@ -33,6 +40,10 @@ cd "$(git rev-parse --show-toplevel)"
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "ci: claude is not on PATH, and the plugin checks are part of CI" >&2
+  exit 2
+fi
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "ci: gitleaks is not on PATH, and the credential scan is part of CI (brew install gitleaks)" >&2
   exit 2
 fi
 
@@ -94,10 +105,41 @@ if ! git -C "$tmp" -c user.name=local-ci -c user.email=local-ci@invalid \
 fi
 base_sha=$(git rev-parse --short "origin/$base")
 
+# The credential scan, by this script and with rules the PR didn't write.
+# The rules are the base branch's .gitleaks.toml. They are the PR's only
+# when the base has none yet (the PR that adds the file), or when the
+# maintainer has read the PR's change to them and says so
+# (AIM_CI_NEW_RULES=1). With no file on either side, gitleaks' own rules.
+rules="$home/gitleaks.toml"
+rules_from="$base"
+if ! git show "origin/$base:.gitleaks.toml" >"$rules" 2>/dev/null; then
+  rules_from="the PR (the base has none)"
+  if ! git show "$sha:.gitleaks.toml" >"$rules" 2>/dev/null; then
+    rules_from="gitleaks' defaults"
+    printf '[extend]\nuseDefault = true\n' >"$rules"
+  fi
+elif ! git diff --quiet "origin/$base...$sha" -- .gitleaks.toml; then
+  if [ "${AIM_CI_NEW_RULES:-}" = 1 ]; then
+    git show "$sha:.gitleaks.toml" >"$rules"
+    rules_from="the PR (AIM_CI_NEW_RULES=1)"
+    echo "ci: PR #$pr changes .gitleaks.toml; scanning with the PR's rules, as asked" >&2
+  else
+    echo "ci: PR #$pr changes .gitleaks.toml; scanning with $base's rules." >&2
+    echo "ci: read that change. If it is right and the scan fails only for it, run: AIM_CI_NEW_RULES=1 scripts/ci.sh $pr" >&2
+  fi
+fi
+if ! (cd "$tmp" && gitleaks dir . --config "$rules" --redact --verbose --no-banner --log-level warn) >"$log" 2>&1; then
+  post failure "gitleaks found what looks like a credential"
+  posted=1
+  tail -n 40 "$log"
+  echo "ci: PR #$pr ${sha:0:7} FAILED the credential scan (rules: $rules_from; full log: $log)" >&2
+  exit 1
+fi
+
 # The PATH the build gets: the folders holding the tools it needs, plus the
 # system ones.
 path=""
-for tool in go claude git make; do
+for tool in go claude git make gitleaks; do
   dir=$(dirname "$(command -v "$tool")")
   case ":$path:" in *":$dir:"*) ;; *) path="$path:$dir" ;; esac
 done

@@ -85,7 +85,7 @@ func newCleanupEnv(t *testing.T) *cleanupEnv {
 		o.SafeToRemove = fakeVerdicts{v: verdicts}
 		o.Cleanup = e.cleanup
 	})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	return e
 }
 
@@ -571,7 +571,7 @@ func worktreesApp(t *testing.T) (*Server, *store.Store) {
 // whole and as fragments, over the dashboard fixture.
 func TestWorktreesPageSelections(t *testing.T) {
 	srv, st := worktreesApp(t)
-	h := srv.Handler()
+	h := srv.routes()
 	old, det := wtID(appRepo+"-old"), wtID(appRepo+"-det")
 
 	page := get(t, h, "/app/worktrees")
@@ -654,17 +654,17 @@ func TestWorktreesPageSelections(t *testing.T) {
 // checkboxes or forms.
 func TestWorktreesPageReadOnly(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	list := get(t, srv.Handler(), "/app/worktrees?fragment=list")
+	list := get(t, srv.routes(), "/app/worktrees?fragment=list")
 	wantIn(t, "read-only", list, "Safe to remove", "This aimd can't remove worktrees")
 	wantNotIn(t, "read-only", list, `name="pick"`, "wt-confirm", "/app/worktrees/prune")
-	rec := do(t, srv.Handler(), "POST", "/app/worktrees/remove", strings.NewReader("wt=x&csrf_token="+url.QueryEscape(srv.CSRF().Token())),
+	rec := do(t, srv.routes(), "POST", "/app/worktrees/remove", strings.NewReader("wt=x&csrf_token="+url.QueryEscape(srv.CSRF().Token())),
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
 	if rec.Code != http.StatusNotImplemented {
 		t.Errorf("remove without a Cleanup = %d", rec.Code)
 	}
 	// Pending verdicts say so.
 	pending, _ := newApp(t, func(o *Options) { o.SafeToRemove = fakeVerdicts{err: ErrVerdictsPending} })
-	wantIn(t, "pending", get(t, pending.Handler(), "/app/worktrees?fragment=list"), "aimd is working out which worktrees are safe", "not checked yet")
+	wantIn(t, "pending", get(t, pending.routes(), "/app/worktrees?fragment=list"), "aimd is working out which worktrees are safe", "not checked yet")
 }
 
 func TestParsePick(t *testing.T) {
@@ -814,7 +814,7 @@ func wtGroupsEnv(t *testing.T) http.Handler {
 		}}
 		o.Cleanup = NewCleanup(CleanupOptions{Checker: &prune.Checker{}, Log: st})
 	})
-	return srv.Handler()
+	return srv.routes()
 }
 
 // wtRowsOf are the worktrees a section lists, by their ids.

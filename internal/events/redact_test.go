@@ -1,6 +1,9 @@
 package events
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // redactCases are the examples plugin/mod/wait.test.ts checks too
 // (REDACT_CASES there): change both together.
@@ -85,5 +88,49 @@ func TestNormalizeRedactsTheWait(t *testing.T) {
 	}
 	if p.Wait.Plan != "1. Set SECRET_TOKEN=[redacted]\n2. Deploy" {
 		t.Errorf("plan = %q", p.Wait.Plan)
+	}
+}
+
+// aimd redacts the label, the reason and last_said on receipt too: an
+// older mod sent them as they were, and aimd stores and serves them.
+func TestNormalizeRedactsLabelReasonAndLastSaid(t *testing.T) {
+	const token = "ghp_0123456789abcdefABCDEF0123456789abcd"
+	for _, c := range []struct{ in, want string }{
+		{"Bash: Export GITHUB_TOKEN=" + token + " and push", "Bash: Export GITHUB_TOKEN=[redacted] and push"},
+		{"Bash: Call the API with Bearer abcdefghijklmnop1234", "Bash: Call the API with Bearer [redacted]"},
+		{"Agent: Clone https://user:pw@example.com/acme/app.git", "Agent: Clone https://[redacted]@example.com/acme/app.git"},
+		{"Grep: " + token, "Grep: [redacted]"},
+		// Redacted before the cut to 300: no half of the token is left.
+		{"Bash: " + strings.Repeat("y", 285) + " " + token, "Bash: " + strings.Repeat("y", 285) + " [redacte"},
+		// Ordinary text and paths pass unchanged.
+		{"Edit internal/auth/token.go", "Edit internal/auth/token.go"},
+		{"Bash: Run the tests in ~/Projects/app", "Bash: Run the tests in ~/Projects/app"},
+		{"rate_limit", "rate_limit"},
+	} {
+		tool := Event{Kind: Tool, SessionID: "s", At: at, Tool: "Bash", Label: c.in}
+		need := Event{Kind: NeedsYou, SessionID: "s", At: at, Source: SourcePermissionRequest, Reason: c.in}
+		fail := Event{Kind: Error, SessionID: "s", At: at, Reason: c.in}
+		said := Event{Kind: TurnComplete, SessionID: "s", At: at, Reason: ReasonAnswer, LastSaid: c.in + "\nsecond line " + token}
+		for _, e := range []*Event{&tool, &need, &fail, &said} {
+			if err := e.Normalize(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if tool.Label != c.want || need.Reason != c.want || fail.Reason != c.want || said.LastSaid != c.want {
+			t.Errorf("%q\n label %q\nreason %q, %q\n  said %q\n  want %q", c.in, tool.Label, need.Reason, fail.Reason, said.LastSaid, c.want)
+		}
+		if said.Reason != ReasonAnswer {
+			t.Errorf("reason = %q, want %q", said.Reason, ReasonAnswer)
+		}
+		// A second pass (the mod redacted, then aimd) changes nothing.
+		again := tool
+		if err := again.Normalize(); err != nil || again.Label != tool.Label {
+			t.Errorf("a second Normalize changed %q to %q (%v)", tool.Label, again.Label, err)
+		}
+	}
+	// last_said keeps its spacing; a reason and a label are folded to one line.
+	e := Event{Kind: TurnComplete, SessionID: "s", At: at, LastSaid: "  a  b: GITHUB_TOKEN=" + token + "\nnext"}
+	if err := e.Normalize(); err != nil || e.LastSaid != "a  b: GITHUB_TOKEN=[redacted]" {
+		t.Errorf("last_said = %q (%v)", e.LastSaid, err)
 	}
 }

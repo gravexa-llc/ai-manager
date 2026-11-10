@@ -8,11 +8,15 @@
 //  1. its controlling terminal, from `ps -o tty= -p <pid>` (e.g. ttys021,
 //     which becomes /dev/ttys021);
 //  2. the iTerm2 session whose `tty` property is that path, found with
-//     AppleScript; that session, its tab and its window are selected, and
-//     iTerm2 is activated;
-//  3. failing that, the Terminal.app tab whose `tty` is that path: the tab
-//     is selected, its window brought to the front, and Terminal
-//     activated.
+//     AppleScript; iTerm2 is activated, then that session, its tab and its
+//     window are selected;
+//  3. failing that, the Terminal.app tab whose `tty` is that path:
+//     Terminal is activated, then the tab is selected and its window
+//     brought to the front.
+//
+// The app is activated before the window is brought forward, so macOS
+// switches to the desktop the window is on and doesn't pull the window to
+// the current one (focusOrder).
 //
 // When the pid has no terminal, or no tab has its tty, the session's
 // ITERM_SESSION_ID (which the mod may report, as w0t1p0:<guid>) is a
@@ -214,10 +218,26 @@ const (
 	answerNotRunning = "not-running"
 )
 
-// focusITermScript selects the iTerm2 session whose tty is argv 1, or
-// failing that whose id is argv 2 (either may be empty), with its tab and
-// window, and activates iTerm2. It answers "ok tty", "ok id", "not-found"
-// or "not-running"; it never launches iTerm2.
+// focusOrder: both focus scripts activate the app first, wait until it
+// is the front app (at most two seconds), and only then bring the window
+// forward.
+//
+// A window brought forward while its app is in the background is put on
+// the desktop (Space) the person is looking at: the terminal is pulled
+// out of the desktop they arranged it on. Brought forward by the active
+// app, as its Window menu does, macOS switches to the window's desktop
+// instead, when "When switching to an application, switch to a Space with
+// open windows for the application" is on in System Settings. Measured
+// with Terminal.app on macOS 26: raise-then-activate pulled the window
+// over, activate-then-raise switched desktops.
+//
+// The app is activated only once the session is found, so a session that
+// isn't there doesn't bring the app forward.
+
+// focusITermScript activates iTerm2, then selects the iTerm2 session whose
+// tty is argv 1, or failing that whose id is argv 2 (either may be empty),
+// with its tab and window. It answers "ok tty", "ok id", "not-found" or
+// "not-running"; it never launches iTerm2.
 const focusITermScript = `on run argv
 	set wantTTY to item 1 of argv
 	set wantID to item 2 of argv
@@ -228,11 +248,15 @@ const focusITermScript = `on run argv
 				repeat with t in tabs of w
 					repeat with s in sessions of t
 						if (tty of s) is wantTTY then
+							activate
+							repeat 40 times
+								if frontmost then exit repeat
+								delay 0.05
+							end repeat
 							if miniaturized of w then set miniaturized of w to false
 							select w
 							select t
 							select s
-							activate
 							return "ok tty"
 						end if
 					end repeat
@@ -244,11 +268,15 @@ const focusITermScript = `on run argv
 				repeat with t in tabs of w
 					repeat with s in sessions of t
 						if (id of s) is wantID then
+							activate
+							repeat 40 times
+								if frontmost then exit repeat
+								delay 0.05
+							end repeat
 							if miniaturized of w then set miniaturized of w to false
 							select w
 							select t
 							select s
-							activate
 							return "ok id"
 						end if
 					end repeat
@@ -259,9 +287,12 @@ const focusITermScript = `on run argv
 	return "not-found"
 end run`
 
-// focusTerminalScript selects the Terminal.app tab whose tty is argv 1,
-// brings its window to the front and activates Terminal. It answers "ok
-// tty", "not-found" or "not-running"; it never launches Terminal.
+// focusTerminalScript activates Terminal, then selects the Terminal.app
+// tab whose tty is argv 1 and makes its window Terminal's front one. It
+// answers "ok tty", "not-found" or "not-running"; it never launches
+// Terminal, and a tty no tab has leaves Terminal where it was.
+//
+// The order is what keeps a window on its own desktop (focusOrder).
 const focusTerminalScript = `on run argv
 	set wantTTY to item 1 of argv
 	if not (application id "` + TerminalBundleID + `" is running) then return "not-running"
@@ -269,10 +300,14 @@ const focusTerminalScript = `on run argv
 		repeat with w in windows
 			repeat with t in tabs of w
 				if (tty of t) is wantTTY then
+					activate
+					repeat 40 times
+						if frontmost then exit repeat
+						delay 0.05
+					end repeat
 					if miniaturized of w then set miniaturized of w to false
 					set selected of t to true
-					set index of w to 1
-					activate
+					set frontmost of w to true
 					return "ok tty"
 				end if
 			end repeat
@@ -285,26 +320,34 @@ end run`
 // tab with the default profile in the current window (or a new window
 // when there is none), and types argv 1 into its shell. It answers "ok",
 // or "not-running" without launching iTerm2.
+//
+// The text goes to the session of the tab (or window) this script made,
+// which the create command returns, and never to whichever session is
+// current afterwards: when the new tab isn't the current one, that is
+// some other session, and the command would be typed into it. If the
+// create command returns nothing the script fails and types nothing.
 const attachITermScript = `on run argv
 	set cmd to item 1 of argv
 	if not (application id "` + ITermBundleID + `" is running) then return "not-running"
 	tell application id "` + ITermBundleID + `"
 		activate
 		if (count of windows) is 0 then
-			set w to (create window with default profile)
+			set made to (create window with default profile)
 		else
 			set w to current window
 			if w is missing value then set w to window 1
-			tell w to create tab with default profile
+			tell w to set made to (create tab with default profile)
 		end if
-		tell current session of w to write text cmd
+		set s to current session of made
+		tell s to write text cmd
 	end tell
 	return "ok"
 end run`
 
 // attachTerminalScript types argv 1 into the shell of a new Terminal.app
 // window (do script; Terminal is launched if need be) and activates
-// Terminal. It answers "ok".
+// Terminal. It answers "ok". do script without "in" always makes its own
+// window and runs there, so it has no existing tab to mistake for it.
 const attachTerminalScript = `on run argv
 	set cmd to item 1 of argv
 	tell application id "` + TerminalBundleID + `"

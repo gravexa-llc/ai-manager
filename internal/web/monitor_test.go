@@ -48,7 +48,7 @@ func newMonitorEnv(t *testing.T, mode string) *boardEnv {
 	}
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, Monitor: mon, Repos: repos,
 		HomeDir: e.tmp, Now: func() time.Time { return t0 }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 
 	e.registerAim()
 	ctx := context.Background()
@@ -430,7 +430,7 @@ func TestMonitorAll(t *testing.T) {
 func TestNoMonitorWired(t *testing.T) {
 	st := newTestStore(t)
 	seedDash(t, st)
-	h := newDash(t, st, nil).Handler()
+	h := newDash(t, st, nil).routes()
 	rec := do(t, h, "GET", "/api/sessions", nil, nil)
 	var got api.Sessions
 	decode(t, rec, &got)

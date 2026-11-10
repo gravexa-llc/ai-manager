@@ -135,22 +135,110 @@ export function idsIn(text: string): string[] {
   return [...seen]
 }
 
+// --- text from a plan, cleaned for the slot it goes into ----------------------
+//
+// A plan is markdown in a repo and a package title is free text, and both
+// come back from aimd and GitHub into what the model and the user read. The
+// mod trusts none of it: wherever such a value is put into a text it is
+// folded onto one line and cut, so it stays in its slot. This is about
+// structure only; nothing here judges what the words say.
+
+/** The caps, in characters (code points), of the values the mod puts into text. */
+export const MAX_TITLE = 120
+export const MAX_SLUG = 64
+export const MAX_ID = 64
+export const MAX_BRANCH = 120
+export const MAX_PLAN_LINE = 200
+export const MAX_FILE = 200
+/** Any other string field of a tool result (a needs note, a badge, a reason, a URL). */
+export const MAX_FIELD = 300
+
+// Whitespace of any kind, line breaks and the Unicode line and paragraph
+// separators (in \s) and NEL included: each run becomes one space.
+const SPACES = /[\s\u0085]+/g
+// What is left out: the other C0 and C1 control characters and DEL, and the
+// bidi marks, embeddings, overrides and isolates.
+const DROPPED = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+
+/**
+ * s as it may be put into one slot of a line: every run of whitespace (line
+ * breaks, tabs, no-break spaces, the Unicode line and paragraph separators)
+ * folded into one space, control and bidi characters left out, the ends
+ * trimmed, and at most `max` characters (code points), the last an ellipsis
+ * when it was cut. Anything but a string is ''.
+ */
+export function clean(s: unknown, max: number): string {
+  if (typeof s !== 'string' || s === '' || max <= 0) return ''
+  const out = s.replace(SPACES, ' ').replace(DROPPED, '').replace(/ {2,}/g, ' ').trim()
+  if (out.length <= max) return out
+  const chars = Array.from(out)
+  return chars.length <= max ? out : `${chars.slice(0, max - 1).join('').trimEnd()}…`
+}
+
+/** A package ID for a text: as it is when ID-shaped (isID), else only its letters, digits and hyphens. */
+export function cleanId(s: unknown): string {
+  const id = clean(s, MAX_ID)
+  return isID(id) ? id : id.replace(/[^A-Za-z0-9-]/g, '')
+}
+
+// What a tool result's string fields are cut to, by key; MAX_FIELD for the rest.
+const FIELD_CAPS: Readonly<Record<string, number>> = {
+  title: MAX_TITLE,
+  slug: MAX_SLUG,
+  plan: MAX_SLUG,
+  id: MAX_ID,
+  pkg: MAX_ID,
+  branch: MAX_BRANCH,
+  suggested_branch: MAX_BRANCH,
+  plan_line: MAX_PLAN_LINE,
+  file: MAX_FILE,
+}
+
+/**
+ * JSON data with every string value in it cleaned (clean), cut to its
+ * key's cap: what the plan_status tool hands the model. Numbers, booleans,
+ * null, the keys and the shape stay as they are.
+ */
+export function cleanData(value: unknown, key = ''): unknown {
+  if (typeof value === 'string') return clean(value, FIELD_CAPS[key] ?? MAX_FIELD)
+  if (Array.isArray(value)) return value.map(one => cleanData(one, key))
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = cleanData(v, k)
+    return out
+  }
+  return value
+}
+
 /** The marker that opens the convention block, so it is added once. */
 export const MARK = '[ai-manager]'
 
-/** The convention block appended to a brief, or added to a system prompt. */
+// The package's Plan: line as a text shows it; aimd's, or the plain one when that is empty.
+function planLineOf(pkg: Pkg): string {
+  return clean(pkg.planLine, MAX_PLAN_LINE) || `Plan: ${clean(pkg.plan, MAX_SLUG)} · ${cleanId(pkg.id)}`
+}
+
+/**
+ * The convention block appended to a brief, or added to a system prompt:
+ * always these three lines, whatever the plan's text holds.
+ */
 export function conventionBlock(pkg: Pkg, who: 'agent' | 'session'): string {
-  const title = pkg.title === '' ? '' : ` (${pkg.title})`
+  const plan = clean(pkg.plan, MAX_SLUG)
+  const id = cleanId(pkg.id)
+  const cleaned = clean(pkg.title, MAX_TITLE)
+  const title = cleaned === '' ? '' : ` (${cleaned})`
+  const branch = clean(pkg.suggestedBranch, MAX_BRANCH) || `${plan}/${id.toLowerCase()}`
   return [
-    `${MARK} This ${who} works on package ${pkg.plan} · ${pkg.id}${title} of a plan registered with ai-manager.`,
-    `- Suggested branch: ${pkg.suggestedBranch}`,
-    `- Put this line in the pull request body: ${pkg.planLine}`,
+    `${MARK} This ${who} works on package ${plan} · ${id}${title} of a plan registered with ai-manager.`,
+    `- Suggested branch: ${branch}`,
+    `- Put this line in the pull request body: ${planLineOf(pkg)}`,
   ].join('\n')
 }
 
-/** The deny text for a PR body that lacks the package's Plan: line. */
-export function planLineDeny(pkg: Pkg): string {
-  return `Add '${pkg.planLine}' to the PR body and run it again.`
+/** The deny text for a PR body (the file at `path`, when it is one) that lacks the package's Plan: line. */
+export function planLineDeny(pkg: Pkg, path?: string): string {
+  const file = path === undefined ? '' : clean(path, MAX_FILE)
+  return `Add '${planLineOf(pkg)}' to the PR body${file === '' ? '' : ` (${file})`} and run it again.`
 }
 
 // --- packages the plan file doesn't have --------------------------------------
@@ -158,14 +246,16 @@ export function planLineDeny(pkg: Pkg): string {
 /** A package a brief's Package: line names that its registered plan's tables don't have. */
 export type Unknown = { plan: string; id: string; file: string }
 
+const fileOf = (u: Unknown): string => clean(u.file, MAX_FILE) || 'the plan file'
+
 /** The note the lead gets when it spawns for an Unknown package. */
 export function unknownNote(u: Unknown): string {
-  return `${MARK} Package ${u.id} isn't in ${u.file}'s tables. Add its row so ai-manager tracks it; it shows as provisional until then.`
+  return `${MARK} Package ${cleanId(u.id)} isn't in ${fileOf(u)}'s tables. Add its row so ai-manager tracks it; it shows as provisional until then.`
 }
 
 /** The deny text when requirePlanRow is on. */
 export function unknownDeny(u: Unknown): string {
-  return `Package ${u.id} isn't in ${u.file}'s tables. Add its row so ai-manager tracks it, then spawn the agent again (ai-manager's requirePlanRow setting is on).`
+  return `Package ${cleanId(u.id)} isn't in ${fileOf(u)}'s tables. Add its row so ai-manager tracks it, then spawn the agent again (ai-manager's requirePlanRow setting is on).`
 }
 
 /** An ID as a provisional package spells it: as written when ID-shaped, else in upper case; undefined when neither is. */

@@ -15,6 +15,9 @@
 //     localhost:<port>, which blocks DNS rebinding.
 //   - No CORS: no Access-Control-* header is ever sent, so other origins
 //     can't read responses or send preflighted requests.
+//   - requireSignIn: every request but the static files and the sign-in
+//     link needs aimd's token in X-AIM-Token or a browser's session
+//     cookie, reads included (signin.go). `aim open` signs a browser in.
 //   - Writes (any method but GET, HEAD, OPTIONS) under /api/ and /events
 //     need the X-AIM-Token header (RequireToken); under /api/ a dashboard
 //     page's script may send its CSRF token in X-CSRF-Token instead
@@ -30,7 +33,6 @@ package web
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -149,8 +151,10 @@ type Server struct {
 	opts Options
 	mux  *http.ServeMux
 	csrf *CSRF
-	now  func() time.Time
-	log  *slog.Logger
+	// signIn holds the browser sessions' key and one-time codes (signin.go).
+	signIn *signIn
+	now    func() time.Time
+	log    *slog.Logger
 	// inbox serializes the Needs you inbox's sync passes (app_inbox_sync.go).
 	inbox inboxState
 }
@@ -158,11 +162,12 @@ type Server struct {
 // New returns a server for opts.
 func New(opts Options) *Server {
 	s := &Server{
-		opts: opts,
-		mux:  http.NewServeMux(),
-		csrf: NewCSRF(opts.Token, opts.Port),
-		now:  opts.Now,
-		log:  opts.Logger,
+		opts:   opts,
+		mux:    http.NewServeMux(),
+		csrf:   NewCSRF(opts.Token, opts.Port),
+		signIn: newSignIn(opts.Token, opts.Port),
+		now:    opts.Now,
+		log:    opts.Logger,
 	}
 	if s.opts.Hub == nil {
 		s.opts.Hub = NewHub(nil)
@@ -187,6 +192,8 @@ func New(opts Options) *Server {
 		s.mux.HandleFunc("POST /api/go", s.postGo)
 	}
 	s.mux.HandleFunc("POST /events", s.postEvents)
+	s.mux.HandleFunc("POST "+signInAPIPath, s.postSignIn)
+	s.mux.HandleFunc("GET "+signInPath, s.getSignIn)
 	s.mux.HandleFunc("GET /static/{file}", serveStatic)
 	s.routeApp()
 	s.routeRedirects()
@@ -196,18 +203,29 @@ func New(opts Options) *Server {
 // CSRF returns the CSRF protection, for templates to call Token.
 func (s *Server) CSRF() *CSRF { return s.csrf }
 
-// Handler returns the routes behind the request checks.
+// Handler returns the routes behind every request check: what aimd serves.
 func (s *Server) Handler() http.Handler {
+	return CheckHost(s.opts.Port, securityHeaders(s.requireSignIn(s.authorize())))
+}
+
+// routes is Handler without the sign-in check, for tests of the pages and
+// the API that aren't about who may ask.
+func (s *Server) routes() http.Handler {
+	return CheckHost(s.opts.Port, securityHeaders(s.authorize()))
+}
+
+// authorize is the routes behind the checks on writes: the token under
+// /api/ and /events (apiAuth), a CSRF token on the dashboard's forms.
+func (s *Server) authorize() http.Handler {
 	api := s.apiAuth(s.mux)
 	forms := s.csrf.Protect(s.mux)
-	route := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isAPIPath(r.URL.Path) {
 			api.ServeHTTP(w, r)
 			return
 		}
 		forms.ServeHTTP(w, r)
 	})
-	return CheckHost(s.opts.Port, securityHeaders(route))
 }
 
 // isAPIPath reports whether a path is for programs (token auth) rather
@@ -282,16 +300,12 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 
 // detailAllowed reports whether a JSON read may see what a session waits
 // on: it carries aimd's token in X-AIM-Token (as the mod and `aim` send
-// it). Other reads under /api/ are open to any local process by design
-// (docs/api.md, "Who may read it"), and the wait detail holds the commands
-// and questions a person is asked: redacted twice, but not proof against
-// every secret. A dashboard page's CSRF token is no credential for this:
-// every page embeds one, so anything that can fetch a page has one.
-// Server-rendered pages are aimd's own UI and may show the redacted detail.
-func (s *Server) detailAllowed(r *http.Request) bool {
-	tok := r.Header.Get(TokenHeader)
-	return tok != "" && s.opts.Token != "" && subtle.ConstantTimeCompare([]byte(tok), []byte(s.opts.Token)) == 1
-}
+// it). The wait detail holds the commands and questions a person is asked:
+// redacted twice, but not proof against every secret, so the JSON API
+// gives it to programs that hold the token and not to a browser session
+// (docs/api.md, "Who may read it"). Server-rendered pages are aimd's own
+// UI and may show the redacted detail.
+func (s *Server) detailAllowed(r *http.Request) bool { return s.hasToken(r) }
 
 // waitingOn is what a session that needs you waits on, when the event
 // receiver knows; nil otherwise. Only for a request detailAllowed

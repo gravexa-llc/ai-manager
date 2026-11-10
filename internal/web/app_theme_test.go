@@ -129,7 +129,7 @@ func TestSettingTheme(t *testing.T) {
 func TestSettingThemeWithoutStore(t *testing.T) {
 	st := newTestStore(t)
 	seedDash(t, st)
-	h := newDash(t, plainStore{st}, func(o *Options) { o.Plans = appPlans }).Handler()
+	h := newDash(t, plainStore{st}, func(o *Options) { o.Plans = appPlans }).routes()
 	page := get(t, h, "/app/settings")
 	wantNotIn(t, "page", htmlTag(t, page), "data-theme")
 	wantIn(t, "page", page, `data-theme="system"></span>`, `id="seg-theme-system" name="value" value="system" class="on"`)

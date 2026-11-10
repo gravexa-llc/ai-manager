@@ -63,7 +63,7 @@ func groupCookieOf(rec interface{ Result() *http.Response }, page string) *http.
 // live refresh) never sets it, and values a page doesn't have are ignored.
 func TestGroupByRemembered(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, page := range []struct{ path, name, def, other string }{
 		{"/app/prs", "prs", "repo", "plan"},
 		{"/app/worktrees", "worktrees", "repo", "status"},
@@ -136,7 +136,7 @@ func TestGroupsScript(t *testing.T) {
 
 	// Each page with sections loads the script.
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, p := range []string{"/app/prs", "/app/worktrees", "/app/sessions", "/app/inbox"} {
 		wantIn(t, p, get(t, h, p), `<script src="/static/app-groups.js?v=`+assetVersion+`" defer></script>`)
 	}

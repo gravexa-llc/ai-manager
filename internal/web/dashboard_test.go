@@ -150,7 +150,7 @@ func wantNotIn(t *testing.T, where, body string, subs ...string) {
 func TestDashboardHeaders(t *testing.T) {
 	st := newTestStore(t)
 	seedDash(t, st)
-	h := newDash(t, st, nil).Handler()
+	h := newDash(t, st, nil).routes()
 	for _, p := range []string{"/", "/sessions", "/plans/aim", "/app/", "/app/sessions", "/app/worktrees", "/app/?fragment=menu",
 		"/static/app-shell.js", "/static/app-shell.css", "/static/icon.svg", "/api/status"} {
 		rec := do(t, h, "GET", p, nil, nil)
@@ -210,7 +210,7 @@ func TestDashboardEscapesUntrustedText(t *testing.T) {
 	h := newDash(t, st, func(o *Options) {
 		o.Repos = fakeRepos{evilRepo: `o/app"><script>alert(5)</script>`}
 		o.SafeToRemove = fakeVerdicts{v: map[string]Verdict{evilRepo + "-wt": {Category: script, Removable: true, Reasons: []string{evil}}}}
-	}).Handler()
+	}).routes()
 
 	pages := []string{"/app/", "/app/sessions", "/app/sessions?s=pid:1", "/app/worktrees", "/app/worktrees?fragment=list",
 		"/app/prs", "/app/prs?pr=o/app%232", "/app/inbox", "/app/inbox?fragment=list", "/app/sessions?q=" + url.QueryEscape(script)}
@@ -240,7 +240,7 @@ func TestWorktreeUnknownStatusIsNotClean(t *testing.T) {
 		store.Worktree{Path: "/r/a", MainRepo: "/r/a", Branch: "main", LastSeen: t0},
 		store.Worktree{Path: "/r/a-x", MainRepo: "/r/a", Branch: "x", DirtyCount: -1, UntrackedCount: -1, LastSeen: t0},
 	))
-	rec := do(t, newDash(t, st, nil).Handler(), "GET", "/api/worktrees", nil, nil)
+	rec := do(t, newDash(t, st, nil).routes(), "GET", "/api/worktrees", nil, nil)
 	wantIn(t, "api", rec.Body.String(), `"status_known":false,"dirty_count":null,"untracked_count":null`)
 }
 
@@ -258,7 +258,7 @@ func TestNeedsYouTotal(t *testing.T) {
 	if n := needsYouTotal(sn); n != 4 {
 		t.Errorf("needsYouTotal = %d, want 4", n)
 	}
-	wantIn(t, "menu", get(t, srv.Handler(), "/app/?fragment=menu"), `data-needs-count="4"`)
+	wantIn(t, "menu", get(t, srv.routes(), "/app/?fragment=menu"), `data-needs-count="4"`)
 }
 
 func TestFormatting(t *testing.T) {

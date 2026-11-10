@@ -100,7 +100,7 @@ func up(s sys, args []string, stdout, stderr io.Writer) int {
 			url, err, config.LogPath(plan.home), plan.data.LaunchdLog)
 		return 1
 	}
-	fmt.Fprintf(stdout, "aimd is running at %s (launchd agent %s)\n", url, plan.plistPath)
+	fmt.Fprintf(stdout, "aimd is running at %s (launchd agent %s)\nOpen the dashboard with `aim open`: it signs your browser in.\n", url, plan.plistPath)
 	return 0
 }
 

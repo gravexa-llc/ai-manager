@@ -41,7 +41,7 @@ func (e *planEnv) at(now time.Time) {
 	}}
 	e.srv = New(Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc, Terminals: e.terms, Monitor: mon, Go: e.g,
 		HomeDir: e.tmp, Now: func() time.Time { return now }})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 }
 
 var rectXRE = regexp.MustCompile(`<rect class="pg-box" x="(\d+)"`)

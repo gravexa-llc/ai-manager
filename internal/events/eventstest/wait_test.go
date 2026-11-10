@@ -171,3 +171,91 @@ func TestWaitFor(t *testing.T) {
 		}
 	}
 }
+
+// A made-up token, as the examples below use it.
+const fakeToken = "ghp_0123456789abcdefABCDEF0123456789abcd"
+
+// The examples plugin/mod/wait.test.ts checks too (its label, reason and
+// last_said tests): a secret in a label, a reason or the first line of an
+// answer goes, ordinary text and paths stay. Change both together.
+func TestLabelIsRedacted(t *testing.T) {
+	for _, c := range []struct {
+		tool  string
+		input map[string]any
+		want  string
+	}{
+		{"Bash", map[string]any{"command": "x", "description": "Export GITHUB_TOKEN=" + fakeToken + " and push"}, "Bash: Export GITHUB_TOKEN=[redacted] and push"},
+		{"Bash", map[string]any{"command": "x", "description": "Call the API with Bearer abcdefghijklmnop1234"}, "Bash: Call the API with Bearer [redacted]"},
+		{"Agent", map[string]any{"description": "Clone https://user:pw@example.com/acme/app.git"}, "Agent: Clone https://[redacted]@example.com/acme/app.git"},
+		{"Grep", map[string]any{"pattern": fakeToken}, "Grep: [redacted]"},
+		{"WebFetch", map[string]any{"url": "https://user:pw@example.com/a"}, "WebFetch example.com"},
+		// A secret across a cut is redacted first, never left in half.
+		{"Grep", map[string]any{"pattern": strings.Repeat("x", 50) + " " + fakeToken}, "Grep: " + strings.Repeat("x", 50) + " [redacted"},
+		{"Bash", map[string]any{"command": "x", "description": strings.Repeat("y", 280) + " GITHUB_TOKEN=" + fakeToken}, "Bash: " + strings.Repeat("y", 280) + " GITHUB_TOKEN="},
+		// Ordinary text and paths pass unchanged.
+		{"Bash", map[string]any{"command": "x", "description": "Run the tests in ~/Projects/app"}, "Bash: Run the tests in ~/Projects/app"},
+		{"Edit", map[string]any{"file_path": "/r/internal/auth/token.go"}, "Edit internal/auth/token.go"},
+		{"Read", map[string]any{"file_path": "/r/config/secrets.env"}, "Read config/secrets.env"},
+		{"Grep", map[string]any{"pattern": `password\s*=`}, `Grep: password\s*=`},
+		{"SendMessage", map[string]any{"to": "token-auditor"}, "SendMessage to token-auditor"},
+	} {
+		got := Label(c.tool, c.input, "/r")
+		if got != c.want {
+			t.Errorf("Label(%s, %v)\n got %q\nwant %q", c.tool, c.input, got, c.want)
+		}
+		if strings.Contains(got, "ghp_") {
+			t.Errorf("Label(%s) kept part of the token: %q", c.tool, got)
+		}
+		unchanged(t, events.Event{Kind: events.Tool, Label: got}, events.Event{Kind: events.NeedsYou, Reason: got})
+	}
+}
+
+func TestReasonAndLastSaidAreRedacted(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"answer", "answer"},
+		{"rate_limit", "rate_limit"},
+		{"clear", "clear"},
+		{"permission_prompt", "permission_prompt"},
+		{"request failed:\n GITHUB_TOKEN=" + fakeToken + " rejected", "request failed: GITHUB_TOKEN=[redacted] rejected"},
+		{"401 from https://user:pw@example.com/ with Bearer abcdefghijklmnop1234", "401 from https://[redacted]@example.com/ with Bearer [redacted]"},
+	} {
+		got := Reason(c.in)
+		if got != c.want {
+			t.Errorf("Reason(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+		unchanged(t, events.Event{Kind: events.Error, Reason: got})
+	}
+	for _, c := range []struct{ in, want string }{
+		{"Done: the tests pass.\nHere is more.", "Done: the tests pass."},
+		{"I set GITHUB_TOKEN=" + fakeToken + " in ~/Projects/app/.env\nNext, the deploy.", "I set GITHUB_TOKEN=[redacted] in ~/Projects/app/.env"},
+		{"The header was Bearer abcdefghijklmnop1234, now revoked.", "The header was Bearer [redacted], now revoked."},
+		{"Pushed to https://user:pw@example.com/acme/app.git", "Pushed to https://[redacted]@example.com/acme/app.git"},
+		// A secret across the cut is redacted first, never left in half.
+		{strings.Repeat("z", 290) + " " + fakeToken + "\nmore", strings.Repeat("z", 290) + " [redacted"},
+		// Ordinary text and paths pass unchanged, spacing included.
+		{"Edited internal/auth/token.go and  ~/Projects/app/README.md", "Edited internal/auth/token.go and  ~/Projects/app/README.md"},
+		{"The password check in acme/app now passes: 12 tests.", "The password check in acme/app now passes: 12 tests."},
+	} {
+		got := LastSaid(c.in)
+		if got != c.want {
+			t.Errorf("LastSaid(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+		if strings.Contains(got, "ghp_") {
+			t.Errorf("LastSaid kept part of the token: %q", got)
+		}
+		unchanged(t, events.Event{Kind: events.TurnComplete, LastSaid: got})
+	}
+}
+
+// unchanged checks that what the mod sends passes aimd's Normalize as it
+// is: the two sides redact and cut the same way.
+func unchanged(t *testing.T, evs ...events.Event) {
+	t.Helper()
+	for _, e := range evs {
+		e.SessionID, e.At = "s", time.Unix(1, 0)
+		got := e
+		if err := got.Normalize(); err != nil || got.Label != e.Label || got.Reason != e.Reason || got.LastSaid != e.LastSaid {
+			t.Errorf("Normalize changed what the mod sends: %+v → %+v (%v)", e, got, err)
+		}
+	}
+}

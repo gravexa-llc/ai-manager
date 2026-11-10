@@ -88,7 +88,7 @@ The plugin's other settings, and their defaults (`claude plugin configure ai-man
 
 | Setting | Default | What it does |
 |---|---|---|
-| `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. |
+| `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. It must be this machine (`127.0.0.1`, `localhost` or `[::1]`); the plugin sends nothing to any other address. |
 | `band` | on | The plan line above the prompt, and the Register offer. |
 | `appendConventions` | on | Adds the package, its branch name and the PR's `Plan:` line to each agent's brief. |
 | `prCheck` | on | Asks a linked agent to add the `Plan:` line to its PR body. |
@@ -101,7 +101,7 @@ echo '{"requirePlanRow": "true"}' | claude plugin configure ai-manager@ai-manage
 **6. Restart your Claude sessions.** New sessions load the plugin by themselves. In a session that's already running, type `/exit`, then `claude -c` to continue the same conversation. Background jobs pick it up the next time they start.
 
 **7. Check it works.**
-- Open http://127.0.0.1:7777/app/ and you should see the Overview.
+- Run `aim open` and you should see the Overview. It signs your browser in for 30 days; aimd serves the dashboard at http://127.0.0.1:7777/app/ to a signed-in browser only.
 - In a restarted session, `/aim` opens the dashboard.
 - In a repo with a registered plan, the progress line appears above the prompt.
 
@@ -197,6 +197,7 @@ There are two ways to remove them:
 | `aim up`, `aim down` | Start aimd (and reload it after an update), or stop it |
 | `aim status` | One line: what needs you, stale sources, GitHub budget, and the running aimd's version (with a note when it isn't this `aim`'s: run `aim up` to restart it) |
 | `aim ls`, `aim prune [--apply]` | Worktrees and cleanup |
+| `aim open [plan]` | Opens the dashboard and signs your browser in |
 | `aim go <session>` | Brings a session's tab to the front |
 
 ## Updating

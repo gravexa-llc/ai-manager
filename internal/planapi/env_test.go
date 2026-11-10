@@ -24,6 +24,7 @@ import (
 	"github.com/gravexa-llc/ai-manager/internal/store"
 	"github.com/gravexa-llc/ai-manager/internal/testenv"
 	"github.com/gravexa-llc/ai-manager/internal/web"
+	"github.com/gravexa-llc/ai-manager/internal/web/webtest"
 	"github.com/gravexa-llc/ai-manager/internal/worktrees"
 )
 
@@ -90,6 +91,7 @@ type env struct {
 	svc      *planapi.Service
 	srv      *web.Server
 	h        http.Handler
+	session  *http.Cookie // a signed-in browser's, on every request
 	notes    *notes
 	backfill *fakeBackfill
 	refresh  *fakeRefresh
@@ -137,6 +139,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(e.svc.Wait)
 	e.srv = web.New(web.Options{Port: testPort, Token: testToken, Store: e.st, Plans: e.svc})
 	e.h = e.srv.Handler()
+	e.session = webtest.SignIn(t, e.h, fmt.Sprintf("127.0.0.1:%d", testPort), testToken)
 	return e
 }
 
@@ -224,6 +227,7 @@ func (e *env) send(method, target string, body any, hdrs ...string) *httptest.Re
 		}
 		req.Header.Set(k, v)
 	}
+	req.AddCookie(e.session)
 	rec := httptest.NewRecorder()
 	e.h.ServeHTTP(rec, req)
 	return rec

@@ -111,7 +111,7 @@ var currentRE = regexp.MustCompile(`<a class="nav[^"]* on" aria-current="page" h
 
 func TestAppPagesRender(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, rt := range appRoutes {
 		body := get(t, h, rt.path)
 		wantIn(t, rt.path, body,
@@ -141,7 +141,7 @@ func TestAppPagesRender(t *testing.T) {
 
 func TestAppMenu(t *testing.T) {
 	srv, st := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	menu := get(t, h, "/app/sessions?fragment=menu")
 	wantIn(t, "menu", menu,
 		// Needs you: the old dashboard's count (2 sessions, 2 PRs).
@@ -174,16 +174,16 @@ func TestAppMenu(t *testing.T) {
 	wantIn(t, "after dismiss", get(t, h, "/app/sessions"), `<title>(3) aim</title>`)
 
 	// Nothing needs you: no badge, and the tab says just aim.
-	quiet := newDash(t, newTestStore(t), nil).Handler()
+	quiet := newDash(t, newTestStore(t), nil).routes()
 	page := get(t, quiet, "/app/")
 	wantIn(t, "quiet", page, `<title>aim</title>`, `data-needs-count="0"`, "Plans aren&#39;t available.")
 	wantNotIn(t, "quiet", page, `class="count"`, `title="0 safe to remove"`, `class="mini" title`)
 
 	// No plans, or the plan service failing, say so.
 	none, _ := newApp(t, func(o *Options) { o.Plans = fakePlans{} })
-	wantIn(t, "no plans", get(t, none.Handler(), "/app/?fragment=menu"), `<p class="navnote">No plans registered.</p>`)
+	wantIn(t, "no plans", get(t, none.routes(), "/app/?fragment=menu"), `<p class="navnote">No plans registered.</p>`)
 	broken, _ := newApp(t, func(o *Options) { o.Plans = fakePlans{err: errors.New("boom")} })
-	wantIn(t, "plans failing", get(t, broken.Handler(), "/app/?fragment=menu"), "aimd couldn&#39;t read the plans.")
+	wantIn(t, "plans failing", get(t, broken.routes(), "/app/?fragment=menu"), "aimd couldn&#39;t read the plans.")
 }
 
 // TestAppMenuFollowsMonitoring checks the menu against the monitoring
@@ -238,7 +238,7 @@ func TestAppMenuFollowsMonitoring(t *testing.T) {
 
 func TestAppFragments(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, c := range []struct {
 		target string
 		want   []string
@@ -282,12 +282,12 @@ func TestAppFragments(t *testing.T) {
 
 func TestAppPlanPage(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	wantIn(t, "plan", get(t, h, "/app/plans/aim"), "<h1>ai-manager — build plan</h1>", "<p>32 packages · 25 done</p>")
 	if rec := do(t, h, "GET", "/app/plans/nope", nil, nil); rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `no plan "nope" is registered`) {
 		t.Errorf("unknown plan = %d %s, want 404", rec.Code, rec.Body)
 	}
-	bare := newDash(t, newTestStore(t), nil).Handler()
+	bare := newDash(t, newTestStore(t), nil).routes()
 	if rec := do(t, bare, "GET", "/app/plans/aim", nil, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("plan page without a plan service = %d, want 404", rec.Code)
 	}
@@ -301,7 +301,7 @@ func TestAppPlanPage(t *testing.T) {
 
 func TestAppRequestChecks(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	for _, target := range []string{"/app/", "/app/inbox", "/app/inbox?fragment=list", "/app/plans/sharing?fragment=menu", "/app/settings"} {
 		rec := do(t, h, "GET", target, nil, nil)
 		hd := rec.Header()
@@ -367,7 +367,7 @@ func addToastRoute(s *Server) {
 func TestAppToastProtocol(t *testing.T) {
 	srv, _ := newApp(t, nil)
 	addToastRoute(srv)
-	h := srv.Handler()
+	h := srv.routes()
 	formHdr := map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "null", "Sec-Fetch-Site": "same-origin"}
 	jsonHdr := map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", CSRFHeader: srv.CSRF().Token()}
 	postForm := func(vals url.Values, hdr map[string]string) *httptest.ResponseRecorder {
@@ -527,7 +527,7 @@ func TestAppTemplatesNeedNoInlineCode(t *testing.T) {
 	}
 	srv, _ := newApp(t, nil)
 	addToastRoute(srv)
-	h := srv.Handler()
+	h := srv.routes()
 	rec := do(t, h, "POST", "/app/test/move", strings.NewReader("to=done&csrf_token="+url.QueryEscape(srv.CSRF().Token())),
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "null", "Sec-Fetch-Site": "same-origin"})
 	pages := []string{rec.Header().Get("Location")}
@@ -555,7 +555,7 @@ func TestAppEscapes(t *testing.T) {
 			sums:  map[string]api.PlanSummary{},
 		}
 	})
-	h := srv.Handler()
+	h := srv.routes()
 	for _, p := range []string{"/app/", "/app/plans/" + url.PathEscape(`x"><script>`), "/app/inbox?q=" + url.QueryEscape(evil)} {
 		body := get(t, h, p)
 		wantNotIn(t, p, body, "<script>alert", "<img src=x", `"><script>`)
@@ -570,7 +570,7 @@ func TestAppEscapes(t *testing.T) {
 
 func TestAppStoreErrorIs500(t *testing.T) {
 	srv, st := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	st.Close()
 	for _, p := range []string{"/app/", "/app/inbox", "/app/inbox?fragment=menu"} {
 		rec := do(t, h, "GET", p, nil, nil)
@@ -581,7 +581,7 @@ func TestAppStoreErrorIs500(t *testing.T) {
 }
 
 func TestAppStaticAssets(t *testing.T) {
-	h := newDash(t, newTestStore(t), nil).Handler()
+	h := newDash(t, newTestStore(t), nil).routes()
 	for file, ctype := range map[string]string{
 		"app-shell.js":  "text/javascript; charset=utf-8",
 		"app-shell.css": "text/css; charset=utf-8",
@@ -661,7 +661,7 @@ func jsFunc(t *testing.T, js, name string) string {
 func TestAppShellFollowUps(t *testing.T) {
 	js := string(staticFiles["app-shell.js"].data)
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 
 	// SVG links take data-pane: their href is read as an attribute (an SVG
 	// <a>'s href is an SVGAnimatedString), and a click or Enter on one
@@ -728,7 +728,7 @@ func TestAppShellFollowUps(t *testing.T) {
 // the page doesn't bind it.
 func TestAppHelpSheet(t *testing.T) {
 	srv, _ := newApp(t, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	help := func(p string) string { return section(t, get(t, h, p), "help") }
 	key := func(k, label string) string { return "<dt><kbd>" + k + "</kbd></dt><dd>" + label + "</dd>" }
 

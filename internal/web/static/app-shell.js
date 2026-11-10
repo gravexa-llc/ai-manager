@@ -204,7 +204,9 @@
             touched();
           },
           function (e) {
-            if (e.status === 404) location.reload(); // the page is gone
+            // The page is gone (404), or this browser's sign-in ended (401):
+            // the reload shows what aimd says now.
+            if (e.status === 404 || e.status === 401) location.reload();
             failed = true;
             showLive();
           }

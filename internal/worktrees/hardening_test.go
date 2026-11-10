@@ -592,3 +592,102 @@ func TestScanLeavesIndexAlone(t *testing.T) {
 		}
 	}
 }
+
+// signHead replaces dir's HEAD commit with a copy carrying sig as its
+// gpgsig header, and returns the new commit. The signature is made up:
+// git only has to find one to hand it to a signature program.
+func signHead(t *testing.T, dir string, sig []string) string {
+	t.Helper()
+	raw := gitT(t, dir, "cat-file", "commit", "HEAD")
+	headers, message, ok := strings.Cut(raw, "\n\n")
+	if !ok {
+		t.Fatalf("commit without a message:\n%s", raw)
+	}
+	body := headers + "\ngpgsig " + strings.Join(sig, "\n ") + "\n\n" + message + "\n"
+	cmd := exec.Command("git", "hash-object", "-t", "commit", "-w", "--stdin")
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(body)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git hash-object: %v\n%s", err, out)
+	}
+	commit := strings.TrimSpace(string(out))
+	gitT(t, dir, "update-ref", "HEAD", commit)
+	return commit
+}
+
+// A repo's log.showSignature=true makes log and show check the signature
+// of each commit they print, by running the repo's gpg.program (or the ssh
+// or x509 one, by the signature's kind), even with a format that shows no
+// signature.
+func TestHardeningSignatureProgramsNotRun(t *testing.T) {
+	requireGit(t)
+	for _, tc := range []struct {
+		name, key string
+		sig       []string
+	}{
+		{"openpgp", "gpg.program", []string{"-----BEGIN PGP SIGNATURE-----", "", "bm90IGEgc2lnbmF0dXJl", "-----END PGP SIGNATURE-----"}},
+		{"ssh", "gpg.ssh.program", []string{"-----BEGIN SSH SIGNATURE-----", "bm90IGEgc2lnbmF0dXJl", "-----END SSH SIGNATURE-----"}},
+		{"x509", "gpg.x509.program", []string{"-----BEGIN SIGNED MESSAGE-----", "bm90IGEgc2lnbmF0dXJl", "-----END SIGNED MESSAGE-----"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parallel(t)
+			base := tempDir(t)
+			repo := filepath.Join(base, "app")
+			newRepo(t, repo, d1)
+			write(t, filepath.Join(repo, "plugin", "mod", "register.tsx"), "v1\n")
+			gitT(t, repo, "add", ".")
+			commitAt(t, repo, "plugin", d2)
+			head := signHead(t, repo, tc.sig)
+
+			marker := filepath.Join(base, "signature-program-ran")
+			gitT(t, repo, "config", "log.showSignature", "true")
+			gitT(t, repo, "config", tc.key, markerScript(t, base, "verify.sh", marker))
+			// git won't check an ssh signature without a list of signers.
+			signers := filepath.Join(base, "allowed_signers")
+			write(t, signers, "")
+			gitT(t, repo, "config", "gpg.ssh.allowedSignersFile", signers)
+
+			// The control: git with the scanner's environment but without
+			// its options runs the program for the command DescribeDir
+			// used to run.
+			lastChange := []string{"log", "-1", "--format=%H", "--", "."}
+			cmd := exec.Command("git", lastChange...)
+			cmd.Dir = repo
+			cmd.Env = baseEnv(os.Environ())
+			out, err := cmd.CombinedOutput()
+			t.Logf("control git log: err=%v\n%s", err, out)
+			if !exists(marker) {
+				t.Fatalf("control: plain git log didn't run %s", tc.key)
+			}
+			if err := os.Remove(marker); err != nil {
+				t.Fatal(err)
+			}
+
+			s := New(Options{})
+			ctx := context.Background()
+			plugin := filepath.Join(repo, "plugin")
+			got, err := s.DescribeDir(ctx, plugin)
+			if exists(marker) {
+				t.Errorf("DescribeDir ran the repo's %s", tc.key)
+				os.Remove(marker)
+			}
+			if want := gitT(t, repo, "rev-parse", "--short", head); err != nil || got != want {
+				t.Errorf("DescribeDir = %q, %v; want %q", got, err, want)
+			}
+
+			// The scanner's options stop it for any command that prints
+			// commits, not only the one DescribeDir runs now.
+			for _, args := range [][]string{lastChange, {"show", "-s", "--format=%H", "HEAD"}} {
+				out, err := s.git(ctx, plugin, nil, args...)
+				if exists(marker) {
+					t.Errorf("hardened git %s ran the repo's %s", strings.Join(args, " "), tc.key)
+					os.Remove(marker)
+				}
+				if got := strings.TrimSpace(string(out)); err != nil || got != head {
+					t.Errorf("hardened git %s = %q, %v; want %s", strings.Join(args, " "), got, err, head)
+				}
+			}
+		})
+	}
+}

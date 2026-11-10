@@ -108,7 +108,7 @@ func attr(t *testing.T, s string) string {
 // page's detail (headless runs aren't listed there).
 func TestTerminalTagsAndGoButtons(t *testing.T) {
 	st, terms := goWorld(t)
-	h := termServer(t, &stubGo{}, st, terms).Handler()
+	h := termServer(t, &stubGo{}, st, terms).routes()
 	for _, c := range goCases() {
 		if c.row.Headless {
 			continue
@@ -126,7 +126,7 @@ func TestTerminalTagsAndGoButtons(t *testing.T) {
 	}
 
 	// Without a terminal source every session has none, and no Go.
-	unknown := get(t, termServer(t, &stubGo{}, st, nil).Handler(), "/app/sessions?"+url.Values{"s": {"pid:43"}, "fragment": {"detail"}}.Encode())
+	unknown := get(t, termServer(t, &stubGo{}, st, nil).routes(), "/app/sessions?"+url.Values{"s": {"pid:43"}, "fragment": {"detail"}}.Encode())
 	wantNotIn(t, "no terminal source", unknown, `action="/app/sessions/go"`, "term-iterm2")
 	wantIn(t, "no terminal source", unknown, attr(t, "No terminal."))
 }
@@ -134,7 +134,7 @@ func TestTerminalTagsAndGoButtons(t *testing.T) {
 func TestSessionsAPITerminal(t *testing.T) {
 	st, terms := goWorld(t)
 	var body api.Sessions
-	decode(t, do(t, termServer(t, nil, st, terms).Handler(), "GET", "/api/sessions?all=1", nil, nil), &body)
+	decode(t, do(t, termServer(t, nil, st, terms).routes(), "GET", "/api/sessions?all=1", nil, nil), &body)
 	got := map[string][2]string{}
 	for _, s := range body.Sessions {
 		got[s.Key] = [2]string{s.Terminal, s.TerminalApp}
@@ -157,7 +157,7 @@ func TestSessionsAPITerminal(t *testing.T) {
 	}
 
 	// terminal is always there; terminal_app only when there is a name.
-	rec := do(t, termServer(t, nil, st, nil).Handler(), "GET", "/api/sessions", nil, nil)
+	rec := do(t, termServer(t, nil, st, nil).routes(), "GET", "/api/sessions", nil, nil)
 	raw := rec.Body.String()
 	if n := strings.Count(raw, `"terminal":"none"`); n != 9 {
 		t.Errorf("without a terminal source, %d sessions say none, want 9 (all but the headless one): %s", n, raw)

@@ -1,7 +1,9 @@
 // Pure helpers for the mod's reporting: the last-action label of a tool
-// call, and what a needs-you waits on. internal/events/eventstest (Label, WaitFor, Summary,
-// Redact) holds the same rules in Go, and both sides test them on the same
-// examples. Nothing here touches `$`, so it is cheap on every tool call.
+// call, a reason, the first line of an answer, and what a needs-you waits
+// on, each redacted. internal/events and internal/events/eventstest (Label,
+// Reason, LastSaid, WaitFor, Summary, Redact) hold the same rules in Go,
+// and both sides test them on the same examples. Nothing here touches `$`,
+// so it is cheap on every tool call.
 
 import { absolute, baseName } from './text'
 
@@ -115,9 +117,39 @@ export function redact(s: string): string {
   )
 }
 
-/** s on one line, redacted and cut to n characters (events.RedactLine); cut to 1000 first, so a huge value costs little. */
+/**
+ * s on one line, redacted and cut to n characters (events.RedactLine); cut
+ * to 1000 first, so a huge value costs little.
+ *
+ * redact comes before the cut to n: cut first, and a secret straddling the
+ * cut could lose the part its pattern needs (a ghp_ token left with 15 of
+ * its characters matches nothing) and stay, half of it visible. Redacted
+ * first, the cut can only land in ordinary text or inside "[redacted]".
+ * The cut at 1000 can still split a secret; its half is at the end of
+ * those 1000 characters, and shows only if redaction shrank them to under
+ * n.
+ */
 export function redactLine(s: string, n: number): string {
   return truncate(oneLine(redact(oneLine(truncate(s, 1000)))), n)
+}
+
+/**
+ * s up to its first line break, redacted and cut to n characters
+ * (events.RedactFirstLine): a turn_complete's last_said. Redacted before
+ * the cut, as redactLine is and for the same reason; its spacing is kept.
+ */
+export function redactFirstLine(s: string, n: number): string {
+  return truncate(redact(truncate(firstLine(s), 1000)), n)
+}
+
+/** An event's reason: on one line, redacted, at most 300 characters (eventstest.Reason). */
+export function reason(s: string): string {
+  return redactLine(s, MAX_SUMMARY)
+}
+
+/** A turn_complete's last_said: the first line of the answer, redacted, at most 300 characters (eventstest.LastSaid). */
+export function lastSaid(answer: string): string {
+  return redactFirstLine(answer, MAX_SUMMARY)
 }
 
 /** p relative to cwd when p is inside it, else p's base name (eventstest.relPath). */
@@ -137,10 +169,18 @@ function hostOf(url: string): string {
 }
 
 /**
- * The last-action label of a tool call (a `tool` event's label): a short
- * summary, never the tool's output or a file's contents.
+ * The last-action label of a tool call (a `tool` event's label, and a
+ * needs_you's reason): a short summary, never the tool's output or a
+ * file's contents (eventstest.Label). It is redacted and then cut to 300
+ * characters, in that order (redactLine says why): a handful of regexes
+ * over at most 1000 characters, on every tool call.
  */
 export function label(tool: string, input: Input, cwd: string): string {
+  return redactLine(rawLabel(tool, input, cwd), MAX_SUMMARY)
+}
+
+/** label before the whole of it is redacted and cut. */
+function rawLabel(tool: string, input: Input, cwd: string): string {
   switch (tool) {
     case 'Bash': {
       const d = oneLine(str(input, 'description'))
@@ -166,7 +206,8 @@ export function label(tool: string, input: Input, cwd: string): string {
     case 'Grep':
     case 'Glob': {
       const p = str(input, 'pattern')
-      if (p !== '') return `${tool}: ${truncate(oneLine(p), 60)}`
+      // Redacted before its own cut to 60, as the whole label is before its cut.
+      if (p !== '') return `${tool}: ${redactLine(p, 60)}`
       break
     }
     case 'WebFetch': {

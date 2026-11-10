@@ -295,6 +295,34 @@ test('prompts, turns and tools are summaries: no prompt text, the first line of 
   expect(w.sent('POST /events').length).toBe(1)
 })
 
+test('a secret in a label or in the first line of the answer is redacted before it is sent', { options: OPTIONS }, async ($, on) => {
+  const w = reporting(on)
+  await begin($, w)
+  const token = 'ghp_0123456789abcdefABCDEF0123456789abcd'
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  w.below.verdict = 'ask'
+  await within(w, 0, $.tool.call({ tool: 'Bash', command: `GITHUB_TOKEN=${token} git push`, description: `Export GITHUB_TOKEN=${token} and push` }))
+  await $.turn.complete({
+    answer: `Pushed to https://user:pw@example.com/acme/app.git with Bearer abcdefghijklmnop1234\n${token}`,
+    durationMs: 9,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  })
+  await w.clock.advance(1000)
+  const sent = JSON.stringify(posted(w))
+  for (const secret of [token, 'user:pw@', 'abcdefghijklmnop1234']) expect(sent.includes(secret), secret).toBe(false)
+  expect(ofKind(w, 'tool').map(e => e.label)).toEqual(['Bash: Export GITHUB_TOKEN=[redacted] and push'])
+  expect(ofKind(w, 'needs_you')[0]).toMatchObject({
+    reason: 'Bash: Export GITHUB_TOKEN=[redacted] and push',
+    wait: { kind: 'permission', tool: 'Bash', summary: 'GITHUB_TOKEN=[redacted] git push' },
+  })
+  expect(ofKind(w, 'turn_complete')[0]).toMatchObject({
+    reason: 'answer',
+    last_said: 'Pushed to https://[redacted]@example.com/acme/app.git with Bearer [redacted]',
+  })
+})
+
 test('agent.spawn: the flags, a snapshot, and one every 30 s while agents run', { options: OPTIONS }, async ($, on) => {
   const w = reporting(on)
   await begin($, w)

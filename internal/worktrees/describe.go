@@ -17,17 +17,22 @@ var ErrNoCommitHere = errors.New("no commit changed this folder")
 // files don't count), e.g. "v1.0.0-12-gabc1234" or "abc1234-dirty".
 //
 // It is how a plugin build is identified (internal/events PluginBuild):
-// the plugin's mod runs the same three commands in its own folder at
-// session start, and aimd runs them in that folder later to see whether
-// the build on disk has moved on. Commits that change nothing under dir
-// leave its name alone, so a pull that only touches the daemon doesn't
-// make every session's plugin look old.
+// the plugin's mod works it out the same way in its own folder at session
+// start, and aimd does so in that folder later to see whether the build on
+// disk has moved on. Commits that change nothing under dir leave its name
+// alone, so a pull that only touches the daemon doesn't make every
+// session's plugin look old.
+//
+// The last commit comes from `git rev-list -1 HEAD -- .`, which names the
+// commit `git log -1 --format=%H -- .` (the mod's command) prints, but is
+// plumbing: it reads no log.* setting, so a repo's log.showSignature can't
+// make it run a signature program (see hardening).
 //
 // dir may be anywhere in a worktree: git searches upward from it for the
 // repository. The calls go through the scanner's hardened runner, with
 // the worktree's filter drivers disabled for the status call.
 func (s *Scanner) DescribeDir(ctx context.Context, dir string) (string, error) {
-	out, err := s.git(ctx, dir, nil, "log", "-1", "--format=%H", "--", ".")
+	out, err := s.git(ctx, dir, nil, "rev-list", "-1", "HEAD", "--", ".")
 	if err != nil {
 		if isNotRepo(err) {
 			return "", errors.Join(ErrNoCommitHere, err)

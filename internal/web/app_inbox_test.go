@@ -45,7 +45,7 @@ func newInboxEnv(t *testing.T) *inboxEnv {
 		o.Terminals = fakeTerms{"pid:11": {Kind: term.KindTerminal, Name: "Terminal"}}
 		o.Now = func() time.Time { return e.clock }
 	})
-	e.h = e.srv.Handler()
+	e.h = e.srv.routes()
 	return e
 }
 

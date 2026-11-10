@@ -1,6 +1,7 @@
 // The mod's client for aimd's plan API (docs/api.md). Every call goes
 // through $.http.fetch with a 1 s timeout and the X-AIM-Token header, and
-// never throws: a failure is an answer with ok false.
+// never throws: a failure is an answer with ok false. Nothing is sent to an
+// aimdUrl that isn't this machine (localBase): aimd listens on loopback only.
 
 import type { EngineInterface, PluginOptions } from 'claude-code'
 
@@ -13,7 +14,10 @@ export type Answer<T> =
 
 export type Settings = {
   token: string
+  /** aimd's base URL as localBase wrote it; '' when aimdUrl isn't a local address. */
   url: string
+  /** Whether aimdUrl is a local address. When not, nothing is sent to it and nothing opens it. */
+  local: boolean
   band: boolean
   appendConventions: boolean
   prCheck: boolean
@@ -21,12 +25,44 @@ export type Settings = {
   requirePlanRow: boolean
 }
 
+/** What the user is told, once a session, when aimdUrl isn't a local address. Names no URL and no token. */
+export const NOT_LOCAL =
+  "ai-manager: aimdUrl isn't a local address (127.0.0.1 or localhost), so nothing is sent to it. Fix it with /plugin configure."
+
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]']
+
+/**
+ * aimd's base URL from the aimdUrl setting, or undefined when it isn't a
+ * loopback address: http or https, host exactly 127.0.0.1, localhost or
+ * [::1], no user or password. The answer is the parsed URL written back
+ * out (scheme, host, port, path; no trailing slash, query or fragment), so
+ * what is fetched is what was checked. Never throws.
+ */
+export function localBase(raw: string): string | undefined {
+  try {
+    const u = new URL(raw.trim())
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined
+    if (u.username !== '' || u.password !== '') return undefined
+    if (!LOOPBACK_HOSTS.includes(u.hostname.toLowerCase())) return undefined
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether an aimdUrl is a loopback address: the only kind the mod talks to. */
+export function isLoopback(raw: string): boolean {
+  return localBase(raw) !== undefined
+}
+
 export function settings(options: PluginOptions): Settings {
   const text = (v: unknown, d: string) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : d)
   const flag = (v: unknown) => v !== false
+  const base = localBase(text(options.aimdUrl, 'http://127.0.0.1:7777'))
   return {
     token: text(options.token, ''),
-    url: text(options.aimdUrl, 'http://127.0.0.1:7777').replace(/\/+$/, ''),
+    url: base ?? '',
+    local: base !== undefined,
     band: flag(options.band),
     appendConventions: flag(options.appendConventions),
     prCheck: flag(options.prCheck),
@@ -81,6 +117,7 @@ export async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<Answer<T>> {
+  if (!s.local) return { ok: false, status: 0, error: "aimdUrl isn't a local address, so nothing was sent" }
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (s.token !== '') headers['X-AIM-Token'] = s.token
   if (body !== undefined) headers['Content-Type'] = 'application/json'

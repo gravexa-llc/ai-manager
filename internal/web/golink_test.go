@@ -40,7 +40,7 @@ var formHeaders = map[string]string{
 
 func TestGoAPI(t *testing.T) {
 	g := &stubGo{res: api.GoResult{Key: "pid:42", Action: api.GoFocused, Message: "Focused lead in iTerm2 (/dev/ttys021)."}}
-	h := goServer(t, g, nil).Handler()
+	h := goServer(t, g, nil).routes()
 	tok := map[string]string{TokenHeader: testToken}
 
 	rec := do(t, h, "POST", "/api/go", strings.NewReader(`{"key":"lead"}`), tok)
@@ -74,7 +74,7 @@ func TestGoAPI(t *testing.T) {
 	}
 
 	// Without a Go service there is no route.
-	if rec := do(t, goServer(t, nil, nil).Handler(), "POST", "/api/go", strings.NewReader(`{"key":"x"}`), tok); rec.Code != http.StatusNotFound {
+	if rec := do(t, goServer(t, nil, nil).routes(), "POST", "/api/go", strings.NewReader(`{"key":"x"}`), tok); rec.Code != http.StatusNotFound {
 		t.Errorf("no service: %d", rec.Code)
 	}
 }
@@ -86,7 +86,7 @@ func TestGoAPI(t *testing.T) {
 func TestGoAuth(t *testing.T) {
 	g := &stubGo{res: api.GoResult{Message: "ok"}}
 	srv := goServer(t, g, nil)
-	h := srv.Handler()
+	h := srv.routes()
 	csrf := srv.CSRF().Token()
 	json := func() *strings.Reader { return strings.NewReader(`{"key":"lead"}`) }
 	form := func(tok string) *strings.Reader {

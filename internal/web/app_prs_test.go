@@ -223,7 +223,7 @@ func TestAppPRsSelection(t *testing.T) {
 	}
 	wantIn(t, "search", found, `href="/app/prs?pr=example-org%2Fbrand%236&amp;q=brand"`)
 	wantIn(t, "search none", get(t, e.h, "/app/prs?q=zzz&fragment=list"), "No open pull request matches “zzz”.")
-	wantIn(t, "no PRs", get(t, newDash(t, newTestStore(t), nil).Handler(), "/app/prs?fragment=list"), "No open pull requests.")
+	wantIn(t, "no PRs", get(t, newDash(t, newTestStore(t), nil).routes(), "/app/prs?fragment=list"), "No open pull requests.")
 }
 
 func TestWhoChips(t *testing.T) {
