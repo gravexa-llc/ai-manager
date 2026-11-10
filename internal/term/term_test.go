@@ -16,6 +16,8 @@ type fakeRunner struct {
 	answers map[string]string
 	err     error
 	calls   []call
+	// checks are the bundle ids runningScript was asked about.
+	checks []string
 }
 
 type call struct {
@@ -23,7 +25,17 @@ type call struct {
 	args   []string
 }
 
+// Run answers a script. The "is it running" check (runningScript) is kept
+// apart from calls, in checks, so calls holds what was told to an app; it
+// answers "running" unless the test says otherwise.
 func (f *fakeRunner) Run(_ context.Context, script string, args ...string) (string, error) {
+	if script == runningScript {
+		f.checks = append(f.checks, args...)
+		if a, ok := f.answers[script]; ok {
+			return a, f.err
+		}
+		return "running", f.err
+	}
 	f.calls = append(f.calls, call{script, args})
 	return f.answers[script], f.err
 }
@@ -183,8 +195,8 @@ func TestFocusOddAnswers(t *testing.T) {
 	}
 	boom := errors.New("osascript broke")
 	r := &fakeRunner{err: boom}
-	if _, err := (Terminal{Runner: r, TTYs: ps42}).Focus(context.Background(), 42, ""); !errors.Is(err, boom) || len(r.calls) != 1 {
-		t.Errorf("runner error: %v after %d calls", err, len(r.calls))
+	if _, err := (Terminal{Runner: r, TTYs: ps42}).Focus(context.Background(), 42, ""); !errors.Is(err, boom) || len(r.checks) != 1 || len(r.calls) != 0 {
+		t.Errorf("runner error: %v after %d checks and %d calls; want it to stop at the first", err, len(r.checks), len(r.calls))
 	}
 }
 
@@ -230,8 +242,8 @@ func TestAttachInTerminal(t *testing.T) {
 	}
 	boom := errors.New("osascript broke")
 	r = &fakeRunner{err: boom}
-	if _, err := (Terminal{Runner: r, Claude: testClaude}).Attach(context.Background(), "022c44bf"); !errors.Is(err, boom) || len(r.calls) != 1 {
-		t.Errorf("runner error: %v after %d calls", err, len(r.calls))
+	if _, err := (Terminal{Runner: r, Claude: testClaude}).Attach(context.Background(), "022c44bf"); !errors.Is(err, boom) || len(r.checks) != 1 || len(r.calls) != 0 {
+		t.Errorf("runner error: %v after %d checks and %d calls; want it to stop at the first", err, len(r.checks), len(r.calls))
 	}
 }
 
@@ -345,6 +357,55 @@ func TestScriptsAreConstant(t *testing.T) {
 	if !strings.Contains(s.FocusTerminal, "tty of t") || !strings.Contains(s.FocusTerminal, "set selected of t to true") ||
 		!strings.Contains(s.AttachTerminal, "do script cmd") {
 		t.Error("Terminal scripts don't use Terminal's tab tty, selected and do script")
+	}
+}
+
+// On a Mac without iTerm2 its scripts can't be compiled, so nothing is
+// told to iTerm2 unless it runs: Go and attach go straight to Terminal.app.
+func TestNoITermScriptWithoutITerm(t *testing.T) {
+	r := runner("", "ok tty")
+	r.answers[runningScript] = "not-running"
+	f, err := Terminal{Runner: r, TTYs: ps42}.Focus(context.Background(), 42, "")
+	if err != nil || f.App != AppTerminal || f.Via != "tty" {
+		t.Errorf("focus = %+v, %v", f, err)
+	}
+	if !slices.Equal(r.scripts(), []string{"focus Terminal"}) || !slices.Equal(r.checks, []string{ITermBundleID}) {
+		t.Errorf("ran %v after checking %v", r.scripts(), r.checks)
+	}
+
+	// Neither app has it: not running, as before.
+	r = runner("", "not-running")
+	r.answers[runningScript] = "not-running"
+	if _, err := (Terminal{Runner: r, TTYs: ps42}).Focus(context.Background(), 42, ""); !errors.Is(err, ErrNotRunning) {
+		t.Errorf("no iTerm2 and no Terminal: %v", err)
+	}
+
+	r = &fakeRunner{answers: map[string]string{runningScript: "not-running", attachTerminalScript: "ok"}}
+	a, err := Terminal{Runner: r, Claude: testClaude}.Attach(context.Background(), "0a1b2c3d")
+	if err != nil || a.App != AppTerminal {
+		t.Errorf("attach = %+v, %v", a, err)
+	}
+	if !slices.Equal(r.scripts(), []string{"attach Terminal"}) {
+		t.Errorf("attach ran %v", r.scripts())
+	}
+
+	// An answer the check doesn't know is an error, and nothing is told to an app.
+	r = runner("ok tty", "ok tty")
+	r.answers[runningScript] = "huh"
+	if _, err := (Terminal{Runner: r, TTYs: ps42}).Focus(context.Background(), 42, ""); err == nil || len(r.calls) != 0 {
+		t.Errorf("odd check answer: %v, ran %v", err, r.scripts())
+	}
+}
+
+// The check itself names no app in its text: it must compile on a Mac
+// that has neither terminal app's dictionary to offer.
+func TestRunningScriptNamesNoApp(t *testing.T) {
+	s := AllScripts().Running
+	if strings.Contains(s, "tell ") || strings.Contains(s, ITermBundleID) || strings.Contains(s, TerminalBundleID) {
+		t.Errorf("the running check tells an app, or names one:\n%s", s)
+	}
+	if !strings.Contains(s, "application id (item 1 of argv) is running") || !strings.Contains(s, "try") {
+		t.Errorf("the running check doesn't ask by argv inside a try:\n%s", s)
 	}
 }
 
