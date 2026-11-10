@@ -218,6 +218,24 @@ const (
 	answerNotRunning = "not-running"
 )
 
+// runningScript answers "running" when the app whose bundle id is argv 1
+// runs, "not-running" when it doesn't or isn't installed.
+//
+// It is asked before a script that tells iTerm2 anything. osascript
+// compiles a whole script before it runs a line of it, and a `tell
+// application id "…"` block needs the app's dictionary to compile: on a
+// Mac without iTerm2 the iTerm2 scripts fail as a "syntax error: Can't get
+// application id" before their own "is running" line is reached, and Go
+// failed for every session. This script names no app in its text, so it
+// compiles anywhere. Terminal.app is part of macOS, so its scripts need no
+// such check.
+const runningScript = `on run argv
+	try
+		if application id (item 1 of argv) is running then return "running"
+	end try
+	return "not-running"
+end run`
+
 // focusOrder: both focus scripts activate the app first, wait until it
 // is the front app (at most two seconds), and only then bring the window
 // forward.
@@ -359,12 +377,13 @@ end run`
 
 // Scripts are the AppleScripts this package runs, for tests and review.
 type Scripts struct {
-	FocusITerm, FocusTerminal, AttachITerm, AttachTerminal string
+	Running, FocusITerm, FocusTerminal, AttachITerm, AttachTerminal string
 }
 
 // AllScripts returns the scripts.
 func AllScripts() Scripts {
 	return Scripts{
+		Running:        runningScript,
 		FocusITerm:     focusITermScript,
 		FocusTerminal:  focusTerminalScript,
 		AttachITerm:    attachITermScript,
@@ -399,6 +418,21 @@ type Attached struct {
 	App string
 	// Command is what was typed into the new tab's shell.
 	Command string
+}
+
+// running reports whether the app with this bundle id runs (runningScript).
+func (t Terminal) running(ctx context.Context, bundleID string) (bool, error) {
+	out, err := t.runner().Run(ctx, runningScript, bundleID)
+	if err != nil {
+		return false, err
+	}
+	switch out {
+	case "running":
+		return true, nil
+	case answerNotRunning:
+		return false, nil
+	}
+	return false, fmt.Errorf("osascript: unexpected answer %q", out)
 }
 
 func (t Terminal) runner() osascript.Runner {
@@ -441,10 +475,17 @@ func (t Terminal) Focus(ctx context.Context, pid int, itermSessionID string) (Fo
 	if f.TTY != "" && !ValidTTY(f.TTY) { // a TTYs that didn't validate
 		return f, fmt.Errorf("%w: tty %q", ErrInvalid, f.TTY)
 	}
-	// iTerm2 first: it has both keys.
-	out, err := t.runner().Run(ctx, focusITermScript, f.TTY, guid)
+	// iTerm2 first: it has both keys. Its script is run only when iTerm2
+	// runs: it can't be compiled on a Mac without iTerm2 (runningScript).
+	out := answerNotRunning
+	iterm, err := t.running(ctx, ITermBundleID)
 	if err != nil {
 		return f, err
+	}
+	if iterm {
+		if out, err = t.runner().Run(ctx, focusITermScript, f.TTY, guid); err != nil {
+			return f, err
+		}
 	}
 	switch out {
 	case answerOKTTY:
@@ -495,7 +536,12 @@ func (t Terminal) Attach(ctx context.Context, jobID string) (Attached, error) {
 		return Attached{}, err
 	}
 	a := Attached{App: AppITerm, Command: cmd}
-	out, err := t.runner().Run(ctx, attachITermScript, cmd)
+	// As in Focus: the iTerm2 script only when iTerm2 runs (runningScript).
+	out := answerNotRunning
+	iterm, err := t.running(ctx, ITermBundleID)
+	if err == nil && iterm {
+		out, err = t.runner().Run(ctx, attachITermScript, cmd)
+	}
 	if err == nil && out == answerNotRunning {
 		a.App = AppTerminal
 		out, err = t.runner().Run(ctx, attachTerminalScript, cmd)
