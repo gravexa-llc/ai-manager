@@ -2,7 +2,8 @@
 // worktrees and GitHub (internal/daemon), keeps what it finds in SQLite
 // (internal/store), and serves it on 127.0.0.1 (internal/web).
 //
-// It runs in the foreground; `aim up` runs it under launchd.
+// It runs in the foreground; `aim up` runs it under launchd on macOS and
+// as a systemd user unit on Linux.
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -46,9 +48,11 @@ and GitHub, and serves what it finds on http://127.0.0.1:<port>. It runs in
 the foreground, logging to stderr and to $AIM_HOME/aimd.log, which it rotates
 to aimd.log.1 at 10 MB.
 
-Use ` + "`aim up`" + ` to run it under launchd. That sets AIMD_LAUNCHD=1, and aimd
-then logs only to aimd.log. launchd's stderr file, aimd.launchd.log, keeps
-what aimd.log doesn't get: a panic, or the error aimd stops with.
+Use ` + "`aim up`" + ` to run it under launchd (macOS) or as a systemd user unit
+(Linux). That sets AIMD_LAUNCHD=1, and aimd then logs only to aimd.log.
+launchd's stderr file, aimd.launchd.log, or systemd's journal
+(journalctl --user -u aimd.service) keeps what aimd.log doesn't get: a
+panic, or the error aimd stops with.
 
 Flags:
   -foreground  run the daemon (required)
@@ -102,8 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	// The explicit signal from `aim up`'s plist, never a guess from the
-	// environment.
+	// The explicit signal from `aim up`'s plist or systemd unit, never a
+	// guess from the environment.
 	underLaunchd := os.Getenv(deploy.LaunchdEnv) == "1"
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -282,7 +286,9 @@ func serve(ctx context.Context, port int, debug, underLaunchd bool, stderr io.Wr
 		// The Settings page says when config.toml turns notifications
 		// off.
 		NotifyDisabled: !cfg.Notify.Enabled,
-		Logger:         log,
+		// And when this machine can't post any (off macOS).
+		NotifyUnavailable: notifyUnavailable(runtime.GOOS),
+		Logger:            log,
 	})
 
 	// Notifications (internal/notify), only for the Needs you inbox's

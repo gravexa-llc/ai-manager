@@ -6,7 +6,7 @@ Notes for anyone changing this repo, human or Claude Code. `CONTRIBUTING.md` cov
 - `cmd/aimd`: the daemon. `cmd/aim`: the CLI (`aim ls`, `aim prune`, `aim up`, `aim down`, `aim status`, `aim open`, `aim go`).
 - `internal/`: one package per job: `sessions`, `worktrees`, `github` (the sources), `store` (SQLite, migrations in `store/migrations/`), `plans` (the plan parser), `state` (matching work to packages), `planapi` and `web` (the HTTP API and the dashboard), `live` and `events` (what the mod reports), `config`.
 - `plugin/`: the Claude Code plugin. `plugin/mod/` is the mod (TypeScript), `plugin/skills/` the skills.
-- `deploy/`: the launchd plist template that `aim up` installs.
+- `deploy/`: the launchd plist template (macOS) and the systemd unit template (Linux) that `aim up` installs.
 - `docs/api.md`: the HTTP API. `docs/guides/`: how it works. `testdata/`: recorded and hand-written fixtures.
 
 ## Code
@@ -22,7 +22,7 @@ Notes for anyone changing this repo, human or Claude Code. `CONTRIBUTING.md` cov
 - `make hooks` installs the pre-commit hook (`scripts/hooks/pre-commit`) that refuses a commit holding a credential, for every worktree of the clone. Never commit with `--no-verify`. A made-up credential a test needs goes in `.gitleaks.toml`.
 
 ## Tests
-- Tests use temp dirs, temp git repos and `AIM_HOME`. They never touch the real `~/.ai-manager`, `~/.claude`, launchd, aimd or your repos and worktrees. `aim up` and `aim down` are tested with a fake `launchctl` (`cmd/aim/up_test.go`).
+- Tests use temp dirs, temp git repos and `AIM_HOME`. They never touch the real `~/.ai-manager`, `~/.claude`, launchd, systemd, aimd or your repos and worktrees. `aim up` and `aim down` are tested with a fake `launchctl` (`cmd/aim/up_test.go`) and a fake `systemctl` (`cmd/aim/systemd_test.go`).
 - Never run `aim prune --apply` against real worktrees while testing.
 - Load the plugin with `--plugin-dir`, never at user scope, while you work on it.
 

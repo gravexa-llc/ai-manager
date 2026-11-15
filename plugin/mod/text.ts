@@ -135,6 +135,41 @@ export function idsIn(text: string): string[] {
   return [...seen]
 }
 
+// A range of IDs with one prefix, as a title writes it: U1-U3, U1–U3,
+// U1—U3, U1..U3, U1 to U3, U1 through U3, U1-3. The second end may drop
+// the prefix.
+const RANGE =
+  /(?<![A-Za-z0-9])([A-Z]{1,4})(-?)([0-9]+)\s*(?:-|–|—|\.\.|\bto\b|\bthrough\b)\s*(?:\1\2)?([0-9]+)(?![A-Za-z0-9])/g
+/** The most IDs one range spells out; a longer one is left as written. */
+export const MAX_RANGE = 20
+
+/**
+ * The package IDs a title names, each once and in order, with ranges spelled
+ * out: "front end U1-U3" names U1, U2 and U3. A range that is itself an ID
+ * `isKnown` knows (a plan may have a package called U1-U3) stays one ID.
+ */
+export function titleIds(text: string, isKnown: (id: string) => boolean): string[] {
+  const out: string[] = []
+  const add = (id: string) => {
+    if (!out.includes(id)) out.push(id)
+  }
+  let last = 0
+  for (const m of text.matchAll(RANGE)) {
+    const [whole, prefix = '', sep = '', from = '', to = ''] = m
+    const at = m.index ?? 0
+    const lo = Number(from)
+    const hi = Number(to)
+    // Left as written (and read by idsIn below): a known ID, a backwards or too long range.
+    if (isKnown(whole.replace(/\s+/g, '')) || !(hi > lo) || hi - lo >= MAX_RANGE) continue
+    // The IDs before the range, then the range: the title's order.
+    for (const id of idsIn(text.slice(last, at))) add(id)
+    for (let n = lo; n <= hi; n++) add(`${prefix}${sep}${n}`)
+    last = at + whole.length
+  }
+  for (const id of idsIn(text.slice(last))) add(id)
+  return out
+}
+
 // --- text from a plan, cleaned for the slot it goes into ----------------------
 //
 // A plan is markdown in a repo and a package title is free text, and both
@@ -222,17 +257,47 @@ function planLineOf(pkg: Pkg): string {
  * The convention block appended to a brief, or added to a system prompt:
  * always these three lines, whatever the plan's text holds.
  */
-export function conventionBlock(pkg: Pkg, who: 'agent' | 'session'): string {
+export function conventionBlock(pkg: Pkg, who: 'agent' | 'session', also: readonly Pkg[] = []): string {
   const plan = clean(pkg.plan, MAX_SLUG)
   const id = cleanId(pkg.id)
   const cleaned = clean(pkg.title, MAX_TITLE)
   const title = cleaned === '' ? '' : ` (${cleaned})`
   const branch = clean(pkg.suggestedBranch, MAX_BRANCH) || `${plan}/${id.toLowerCase()}`
-  return [
+  const lines = [
     `${MARK} This ${who} works on package ${plan} · ${id}${title} of a plan registered with ai-manager.`,
     `- Suggested branch: ${branch}`,
     `- Put this line in the pull request body: ${planLineOf(pkg)}`,
-  ].join('\n')
+  ]
+  if (also.length > 0) {
+    const ids = also.map(p => cleanId(p.id)).join(', ')
+    lines.push(`- It also works on ${ids} of the same plan: ai-manager links its pull request to each of them, so one Plan: line is enough.`)
+  }
+  return lines.join('\n')
+}
+
+/** A candidate package as a note names it: `slug · ID (title)`. */
+function candidateName(c: { plan: string; id: string; title: string }): string {
+  const title = clean(c.title, MAX_TITLE)
+  return `${clean(c.plan, MAX_SLUG)} · ${cleanId(c.id)}${title === '' ? '' : ` (${title})`}`
+}
+
+/**
+ * The note a loop gets when an agent it spawned names several packages and
+ * ai-manager can't tell which it works on. `agent` is how plan_link takes
+ * it: the agent id, or a remote agent's cloud session URL.
+ */
+export function ambiguousNote(
+  description: string,
+  agent: string,
+  candidates: readonly { plan: string; id: string; title: string }[],
+): string {
+  const named = clean(description, MAX_TITLE)
+  const which = named === '' ? 'the agent you just spawned' : `the agent "${named}"`
+  return [
+    `${MARK} ai-manager couldn't tell which plan package ${which} works on. Its brief mentions ${candidates.map(candidateName).join(', ')}.`,
+    `If it works on one or more of them, call plan_link with agent "${clean(agent, MAX_FIELD)}", the plan's slug and those package IDs: the board then tracks the agent, and later its pull request. If it isn't plan work, do nothing.`,
+    'Next time, name the packages in the agent\'s description ("U1-U3 front end"), or put a line "Package: <slug> · <ID>" in its brief.',
+  ].join(' ')
 }
 
 /** The deny text for a PR body (the file at `path`, when it is one) that lacks the package's Plan: line. */
@@ -573,6 +638,26 @@ export function absolute(path: string, dir: string): string {
     else parts.push(part)
   }
   return `/${parts.join('/')}`
+}
+
+/**
+ * A path typed as `~` or `~/…` with the home folder in place of `~`; any
+ * other path as given. Undefined for a `~` the mod can't expand: home
+ * unknown, or `~name/…` (another user's home).
+ */
+export function expandHome(path: string, home: string | undefined): string | undefined {
+  if (!path.startsWith('~')) return path
+  if (path !== '~' && !path.startsWith('~/')) return undefined
+  if (home === undefined || !home.startsWith('/')) return undefined
+  return `${home.replace(/\/+$/, '')}${path.slice(1)}`
+}
+
+/** A path shown with the home folder as `~`, so a message names it the way it was typed. */
+export function tildePath(path: string, home: string | undefined): string {
+  if (home === undefined || !home.startsWith('/')) return path
+  const base = home.replace(/\/+$/, '')
+  if (base === '') return path
+  return path === base ? '~' : path.startsWith(`${base}/`) ? `~${path.slice(base.length)}` : path
 }
 
 /** The last part of a path. */

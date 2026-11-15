@@ -6,6 +6,7 @@ import (
 	"net"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -41,21 +42,51 @@ func newGo(st *store.Store, homeDir string, log *slog.Logger) *focus.Service {
 		log.Warn("go: background sessions can't be opened", "err", err)
 	}
 	return &focus.Service{
-		Source:   focus.StoreSource{Store: st},
-		Terminal: term.Terminal{Runner: osascript.Exec{Timeout: goTimeout}, TTYs: term.PS{}, Claude: claude},
-		HomeDir:  homeDir,
+		Source:      focus.StoreSource{Store: st},
+		Terminal:    term.Terminal{Runner: osascript.Exec{Timeout: goTimeout}, TTYs: term.PS{}, Claude: claude},
+		HomeDir:     homeDir,
+		Unavailable: goUnavailable(runtime.GOOS),
 	}
+}
+
+// goUnavailable is why Go can't work on goos, or "" on a Mac: Go drives
+// iTerm2 and Terminal.app with AppleScript, which only macOS has.
+func goUnavailable(goos string) string {
+	if goos == "darwin" {
+		return ""
+	}
+	return "Go switches to a session's tab in iTerm2 or Terminal, which only macOS has, and this aimd runs on " + osName(goos)
+}
+
+// notifyUnavailable is why aimd can't post desktop notifications on goos,
+// or "" on a Mac: they go through AppleScript's `display notification`.
+func notifyUnavailable(goos string) string {
+	if goos == "darwin" {
+		return ""
+	}
+	return "aimd posts desktop notifications through macOS, and this one runs on " + osName(goos) + ", so it posts none, whatever this says."
+}
+
+// osName names a GOOS for people.
+func osName(goos string) string {
+	switch goos {
+	case "linux":
+		return "Linux"
+	case "darwin":
+		return "macOS"
+	}
+	return goos
 }
 
 // newNotifier returns aimd's notifier (internal/notify) for the [notify]
 // settings. It waits for the daemon's first session poll, notifies only
 // about the sessions mon says are monitored whose wait is an Open item of
 // the Needs you inbox (internal/inbox), and only while the Settings
-// page's switch is on.
+// page's switch is on. Off macOS it is never enabled (notifyUnavailable).
 func newNotifier(st *store.Store, cfg config.Notify, d *daemon.Daemon, mon *monitor.Source,
 	inbox func(context.Context, []store.Session) (func(store.Session) (string, bool), error), log *slog.Logger) *notify.Watcher {
 	return notify.New(notify.Options{
-		Enabled:   cfg.Enabled,
+		Enabled:   cfg.Enabled && notifyUnavailable(runtime.GOOS) == "",
 		Store:     st,
 		Sender:    notify.Osascript{},
 		After:     cfg.After,

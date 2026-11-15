@@ -52,6 +52,7 @@ func (f *fakeSys) sys(t *testing.T, userHome string, tools map[string]string) sy
 		t.Fatal(err)
 	}
 	return sys{
+		goos: "darwin",
 		lookPath: func(name string) (string, error) {
 			if p, ok := tools[name]; ok {
 				return p, nil

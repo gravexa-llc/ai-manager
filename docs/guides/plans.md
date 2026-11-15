@@ -158,11 +158,11 @@ ai-manager only follows plans you register. There are two ways.
 **The offer above the prompt.** When the lead session writes or edits a markdown file that looks like a plan, the plugin asks aimd about it. If the file isn't registered yet, a line appears above the prompt:
 
 ```text
-search-plan.md looks like a dispatch plan: 6 packages, 2 lanes.  [Register]  [Not a plan]
+search-plan.md looks like a dispatch plan: 6 packages, 2 lanes.  [Register]  [Ignore]
 ```
 
 - **Register** registers it.
-- **Not a plan** dismisses the offer for that file. aimd remembers the dismissal until you register the file by hand.
+- **Ignore** dismisses the offer for that file, whether or not it is a plan: use it when you don't want ai-manager for this file now. aimd remembers the dismissal until you register the file by hand (`/plan-register <path>`).
 
 The offer only comes from the session's main loop, not from its agents.
 
@@ -230,11 +230,17 @@ The agent is linked to the package as it starts, and the plugin adds a short blo
 - Put this line in the pull request body: Plan: search · API1
 ```
 
-Without a `Package:` line, the plugin looks for a package ID in the Agent call's description, and then in the brief. One match links the agent. When several of the repo's packages match, the plugin asks above the prompt:
+Without a `Package:` line, the plugin looks for package IDs in the Agent call's description, and then in the brief:
+
+- **One match** links the agent.
+- **A description naming several packages of one plan** links the agent to each of them, with no question. Ranges are spelled out: `front end U1-U3`, `U1–U3`, `U1..U3`, `U1 to U3` and `U1-3` all name U1, U2 and U3. The brief's convention block names the first package's `Plan:` line, and aimd links the agent's PR to every package the agent has, so merging it completes them all.
+- **Several packages, and no way to tell** (the description names packages of two plans, or names none while the brief mentions several): the session that spawned the agent gets a note naming the candidates. It links the agent with the `plan_link` tool (`agent`, `plan`, `packages`), or does nothing if the agent isn't plan work. With the `band` setting at `full`, the band offers it too:
 
 ```text
 Link search endpoint work to: [API1] [UI2] [Skip]
 ```
+
+An offer goes once the agent is linked, when the agent stops, or after 30 minutes. Work from an agent nobody linked is still matched by its PR's `Plan:` line.
 
 A brief with no package ID at all is a general helper, and is left alone.
 

@@ -17,6 +17,18 @@
 // session's facts for a session_start after /clear, the asks not yet
 // answered, the spawned agents' flags and token counts, the main loop's
 // token count, and the 30 s agent_list ticker.
+//
+// Where the organization's security default is seated (a Team or
+// Enterprise account, a machine with managed settings), Claude Code hands
+// every classic.* event past the plugins a person installs, so none of the
+// classic hooks runs. Until one has run in this process the reporter stands
+// in for them from what it does see: a main loop still quiet IDLE_MS after
+// its turn is idle, and the id $.session.id() answers after a session_end
+// is the next session's. Once a classic hook runs, all of that stays quiet.
+// A permission dialog has no stand-in here: no hook tells a dialog from a
+// call the mode's decider allowed (both are a tool.check ask, then nothing
+// until the call ends), so it is left to aimd's session poller, which reads
+// Claude Code's own `waiting` status.
 
 import type { EngineInterface } from 'claude-code'
 
@@ -44,6 +56,8 @@ export const MAX_BATCH_CHARS = 80_000
 export const BATCH_MS = 1000
 export const MAX_BACKOFF_MS = 15_000
 export const AGENT_TICK_MS = 30_000
+/** How long after the main loop's turn a quiet session is idle, where no classic hook says: when Claude Code's own idle notification comes. */
+export const IDLE_MS = 60_000
 
 type Timer = { cancel: () => void }
 type Spawned = { background: boolean; parent?: string }
@@ -76,6 +90,16 @@ let tokens = new Map<string, number>()
 /** The main loop's token count (onStep), for its tool and turn_complete events; 0 until its first response. */
 let mainTokens = 0
 let ticker: Timer | null = null
+/** A classic.* hook has run in this process: the classic events reach this plugin, and say what the stand-ins below would. */
+let classic = false
+/** The timer of the main loop's idle stand-in. */
+let idler: Timer | null = null
+/** The id the last session_end went under, until the next session's id is known; '' otherwise. */
+let ended = ''
+/** That session_end's reason, as the engine spelled it. */
+let endedWhy = ''
+/** The one look for the next session's id in flight. */
+let moving: Promise<void> | null = null
 
 const MAIN = ''
 
@@ -83,6 +107,7 @@ const MAIN = ''
 export function resetReporter(s: Settings): void {
   if (timer !== null) quietCancel(timer)
   if (ticker !== null) quietCancel(ticker)
+  if (idler !== null) quietCancel(idler)
   settings = s
   queue = []
   timer = null
@@ -99,6 +124,22 @@ export function resetReporter(s: Settings): void {
   tokens = new Map()
   mainTokens = 0
   ticker = null
+  classic = false
+  idler = null
+  ended = ''
+  endedWhy = ''
+  moving = null
+}
+
+/** A classic.* hook ran: the classic events reach this plugin, so the stand-ins stop. */
+export function sawClassic(): void {
+  classic = true
+  stopIdler()
+}
+
+/** Whether a classic.* hook has run in this process. */
+export function classicRuns(): boolean {
+  return classic
 }
 
 function quietCancel(t: Timer): void {
@@ -192,6 +233,46 @@ export async function flush($: EngineInterface): Promise<void> {
 function emit($: EngineInterface, draft: Draft, urgent = false): void {
   try {
     const at = draft.at ?? now()
+    if (ended !== '') {
+      // After a session_end the process may go on under another id.
+      void moveOn($).then(() => stamp($, draft, at, urgent))
+      return
+    }
+    stamp($, draft, at, urgent)
+  } catch {
+    // reporting is best effort
+  }
+}
+
+/**
+ * After a session_end, with no classic.SessionStart to name the session
+ * that follows: asks for the id once, and where it is a new one sends that
+ * session's session_start first, as classic.SessionStart would have. Events
+ * queued behind the look keep their order.
+ */
+function moveOn($: EngineInterface): Promise<void> {
+  moving ??= quietly($.session.id())
+    .then(id => {
+      if (typeof id !== 'string' || id === '' || ended === '' || id === ended) return
+      const prev = ended
+      const why = endedWhy
+      ended = ''
+      sid = id
+      asks.clear()
+      lastAsk.clear()
+      mainTokens = 0
+      const src = why === 'clear' || why === 'resume' ? { source: why } : {}
+      enqueue($, { kind: 'session_start', ...facts, ...src, ...(why === 'clear' ? { prev_session_id: prev } : {}), session_id: id, at: now() }, false)
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      moving = null
+    })
+  return moving
+}
+
+function stamp($: EngineInterface, draft: Draft, at: string, urgent: boolean): void {
+  try {
     if (sid !== '') {
       enqueue($, { ...draft, session_id: sid, at }, urgent)
       return
@@ -233,8 +314,10 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 /** classic.SessionStart: remembers the id and source; after /clear (session.start won't fire again), reports the new id. */
 export function onClassicSessionStart($: EngineInterface, e: { session_id?: unknown; source?: unknown }): void {
+  sawClassic()
   const id = str(e.session_id)
   const src = str(e.source)
+  if (id !== '') ended = '' // this names the session that follows a session_end
   if (started && id !== '' && sid !== '' && id !== sid) {
     const prev = sid
     sid = id
@@ -294,12 +377,20 @@ export function onSessionEnd($: EngineInterface, e: { reason?: unknown }): void 
   asks.clear()
   lastAsk.clear()
   stopTicker()
+  stopIdler()
+  // Where classic.SessionStart doesn't run, the next event finds the id
+  // the process goes on under (moveOn).
+  if (!classic && sid !== '') {
+    ended = sid
+    endedWhy = str(e.reason)
+  }
 }
 
 /** prompt.submit: its origin kind only, never the text. A person's prompt answers every ask. */
 export function onPrompt($: EngineInterface, e: { origin?: { kind?: unknown } }): void {
   const origin = str(e.origin?.kind)
   if (origin === 'composer' || origin === 'sdk' || origin === 'bridge') asks.clear()
+  stopIdler()
   emit($, { kind: 'prompt', origin_kind: origin })
 }
 
@@ -308,11 +399,17 @@ function loopMovedOn(agentId: string): void {
   for (const [id, loop] of asks) if (loop === agentId) asks.delete(id)
 }
 
+function stopIdler(): void {
+  if (idler !== null) quietCancel(idler)
+  idler = null
+}
+
 /** turn.start: turn_start with the loop's cwd, read inside the hook. */
 export function onTurnStart($: EngineInterface, e: { agentId?: string }): void {
   const at = now()
   const loop = e.agentId ?? MAIN
   loopMovedOn(loop)
+  if (loop === MAIN) stopIdler()
   void quietly($.session.cwd()).then(cwd => {
     if (typeof cwd === 'string' && cwd !== '') cwds.set(loop, cwd)
     emit($, { kind: 'turn_start', at, ...withAgent(e.agentId), ...(typeof cwd === 'string' && cwd !== '' ? { cwd } : {}) })
@@ -332,6 +429,19 @@ export function onTurnComplete($: EngineInterface, e: { agentId?: string; reason
     ...mainCount(loop),
   })
   void snapshot($)
+  // classic.Notification's idle_prompt, where it doesn't run: the main
+  // loop's turn ended and nothing followed for IDLE_MS.
+  if (loop === MAIN && !classic && str(e.reason) !== 'error') {
+    stopIdler()
+    try {
+      idler = $.clock.after(IDLE_MS, () => {
+        idler = null
+        if (!classic) emit($, { kind: 'idle' })
+      })
+    } catch {
+      idler = null
+    }
+  }
 }
 
 /** The main loop's token count, for an event in that loop: nothing in a subagent's, or before the first response. */
@@ -385,9 +495,16 @@ export type Ask = {
  * answers most asks with no dialog at all. If a dialog does open,
  * classic.PermissionRequest reports it, under this call's id (it names no
  * call itself).
+ *
+ * Where no classic hook runs, nothing here says a dialog opened, and the
+ * ask is not reported: the hooks look the same for a call the decider
+ * allowed (it then runs, maybe for minutes) as for one held at a dialog
+ * (tool.check's ask, then nothing until tool.call returns), so any timer
+ * here would take a long allowed call for a dialog. aimd's session poller
+ * reports a dialog from Claude Code's own `waiting` status instead.
  */
-export function noteAsk(agentId: string | undefined, toolUseId: string): void {
-  lastAsk.set(agentId ?? MAIN, toolUseId)
+export function noteAsk(a: { agentId?: string; toolUseId: string }): void {
+  lastAsk.set(a.agentId ?? MAIN, a.toolUseId)
 }
 
 /** A dialog opened: needs_you at once, with what it waits on. */
@@ -422,6 +539,7 @@ export function onAsk($: EngineInterface, a: Ask): void {
  * even a subagent's), and the ask was reported already.
  */
 export function onNotification($: EngineInterface, e: { notification_type?: unknown; agent_id?: unknown }): void {
+  sawClassic()
   const type = str(e.notification_type)
   if (type === 'idle_prompt') {
     emit($, { kind: 'idle', ...withAgent(e.agent_id) })
@@ -434,11 +552,13 @@ export function onNotification($: EngineInterface, e: { notification_type?: unkn
 
 /** classic.StopFailure: the API turn failed; sent at once. */
 export function onStopFailure($: EngineInterface, e: { error?: unknown; agent_id?: unknown }): void {
+  sawClassic()
   emit($, { kind: 'error', ...withAgent(e.agent_id), reason: reason(str(e.error)) }, true)
 }
 
 /** classic.WorktreeCreate: the isolated agent's worktree name. */
 export function onWorktreeCreate($: EngineInterface, e: { name?: unknown }): void {
+  sawClassic()
   const name = str(e.name)
   if (name !== '') emit($, { kind: 'worktree_create', name })
 }
@@ -454,6 +574,7 @@ export function onWorktreeCreate($: EngineInterface, e: { name?: unknown }): voi
  * calls alone.
  */
 export function onSubagentStart($: EngineInterface, e: { agent_id?: unknown; agent_type?: unknown; cwd?: unknown }): void {
+  sawClassic()
   const id = str(e.agent_id)
   if (id === '') return
   const type = str(e.agent_type)

@@ -1,5 +1,6 @@
 // Command aim is the ai-manager CLI: the worktree inventory and cleanup,
-// aimd's launchd agent, a one-line status, the dashboard's sign-in and Go.
+// aimd's service (a launchd agent on macOS, a systemd user unit on Linux),
+// a one-line status, the dashboard's sign-in and Go.
 package main
 
 import (
@@ -18,11 +19,13 @@ aim is the ai-manager CLI.
 Commands:
   ls         list worktrees with their state and a safe-to-remove verdict
   prune      remove worktrees that are safe to remove (a dry run by default)
-  up         install aimd as a launchd agent and start it (--print: show the plist)
-  down       stop aimd and remove its launchd agent
+  up         install aimd as a login service and start it: a launchd agent on
+             macOS, a systemd user unit on Linux (--print: show its file)
+  down       stop aimd and remove that service
   status     one line from aimd: what needs you, stale sources, GitHub budget
   open       open the dashboard and sign this browser in (aim open [plan])
-  go         bring a session to the front in iTerm2 or Terminal (aim go <session>)
+  go         bring a session to the front in iTerm2 or Terminal, on macOS
+             (aim go <session>)
   version    print the version
   help       print this help
 `

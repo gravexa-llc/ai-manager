@@ -9,7 +9,7 @@ import (
 )
 
 // DismissPlanFile records that the markdown file at path isn't a plan
-// ("Not a plan"), and returns when it was dismissed: at (or now), or the
+// ([Ignore] on the band), and returns when it was dismissed: at (or now), or the
 // earlier time if it was already dismissed. path should be the file's
 // resolved path; it compares case-insensitively.
 func (s *Store) DismissPlanFile(ctx context.Context, path string, at time.Time) (time.Time, error) {

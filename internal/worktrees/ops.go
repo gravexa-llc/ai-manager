@@ -210,7 +210,7 @@ type PruneEntry struct {
 
 // PrunePreview returns what `git worktree prune` would clear in the repo,
 // from `git worktree prune --dry-run --verbose`, which changes nothing.
-// Locked worktrees are never in it.
+// Locked worktrees are never in it. The entries are sorted by ID.
 func (s *Scanner) PrunePreview(ctx context.Context, gitDir string) ([]PruneEntry, error) {
 	// --verbose reports on stderr.
 	out, err := s.git(withStderr(ctx), gitDir, nil, gitDirArg(gitDir), "worktree", "prune", "--dry-run", "--verbose")
@@ -232,6 +232,9 @@ func (s *Scanner) PrunePreview(ctx context.Context, gitDir string) ([]PruneEntry
 		}
 		entries = append(entries, e)
 	}
+	// git lists them in the order the filesystem lists worktrees/, which
+	// is by name on some filesystems and arbitrary on others (ext4).
+	slices.SortFunc(entries, func(a, b PruneEntry) int { return strings.Compare(a.ID, b.ID) })
 	return entries, nil
 }
 

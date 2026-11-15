@@ -88,18 +88,24 @@ function parsed(out: { result?: unknown }) {
   }
 }
 
-test('plan_status is registered in the prompt where the repo has plans', { options: OPTIONS }, async ($, on) => {
+test('plan_status and plan_link are in the prompt where the repo has plans', { options: OPTIONS }, async ($, on) => {
   const w = world(on, PLAN_ROUTES)
   composing(on)
   await $.session.start(START)
-  expect(w.registered.tools).toEqual([{ name: 'plan_status', isDeferred: false }])
+  expect(w.registered.tools).toEqual([
+    { name: 'plan_status', isDeferred: false },
+    { name: 'plan_link', isDeferred: false },
+  ])
 })
 
-test('plan_status is left behind ToolSearch where the repo has none', { options: OPTIONS }, async ($, on) => {
+test('plan_status and plan_link are left behind ToolSearch where the repo has none', { options: OPTIONS }, async ($, on) => {
   const w = world(on, { 'GET /api/context': { status: 200, body: { ...CONTEXT, plans: [] } } })
   composing(on)
   await $.session.start(START)
-  expect(w.registered.tools).toEqual([{ name: 'plan_status', isDeferred: undefined }])
+  expect(w.registered.tools).toEqual([
+    { name: 'plan_status', isDeferred: undefined },
+    { name: 'plan_link', isDeferred: undefined },
+  ])
 })
 
 test("plan_status returns each plan's summary and board, as data", { options: OPTIONS }, async ($, on) => {
@@ -182,7 +188,10 @@ for (const failure of ['refuse', 'hang'] as const) {
 
     await within(w, 1000, $.session.start(START))
     expect(w.registered.commands).toEqual(['plan-register', 'aim'])
-    expect(w.registered.tools).toEqual([{ name: 'plan_status', isDeferred: undefined }])
+    expect(w.registered.tools).toEqual([
+    { name: 'plan_status', isDeferred: undefined },
+    { name: 'plan_link', isDeferred: undefined },
+  ])
 
     expect((await within(w, 0, $.prompt.compose(COMPOSE))).sections).toEqual([...SECTIONS])
 
@@ -207,7 +216,7 @@ for (const failure of ['refuse', 'hang'] as const) {
     await ui.unmount()
 
     const reg = await within(w, 1000, $.command.run({ command: 'plan-register', args: '/tmp/probe/plan.md', ...COMMAND }))
-    expect(reg.text).toContain("ai-manager couldn't register plan.md: aimd")
+    expect(reg.text).toContain("ai-manager couldn't register /tmp/probe/plan.md: aimd")
 
     const status = await within(w, 1000, $.tool.call({ tool: TOOL }))
     expect(status.deny).toContain("ai-manager's plan_status couldn't reach aimd")

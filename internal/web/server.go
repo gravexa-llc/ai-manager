@@ -122,6 +122,10 @@ type Options struct {
 	// notifications whatever the Settings page's switch says, and the page
 	// says so.
 	NotifyDisabled bool
+	// NotifyUnavailable, when set, is why this aimd can't post desktop
+	// notifications at all (it runs off macOS); the Settings page shows
+	// it by the switch.
+	NotifyUnavailable string
 	// HomeDir, if set, is shown as ~ at the start of paths.
 	HomeDir string
 	// Now is the clock for ages; time.Now if nil.

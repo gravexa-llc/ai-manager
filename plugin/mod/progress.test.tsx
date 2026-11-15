@@ -104,6 +104,12 @@ test("one plan: the line is its summary's counts, on every surface", { options: 
   await ui.unmount()
 })
 
+test('band status: the progress line still shows', { options: { ...OPTIONS, band: 'status' } }, async ($, on) => {
+  const w = session(on, { ...ROUTES, 'GET /api/context': { status: 200, body: contextWith('aim') } })
+  await start($, w)
+  for (const surface of SURFACES) expect(await line($, surface)).toBe('aim · 3/15 done · 1 ready · 2 need you')
+})
+
 test('several plans: the first, with +N for the rest', { options: OPTIONS }, async ($, on) => {
   const w = session(on, { ...ROUTES, 'GET /api/context': { status: 200, body: contextWith('aim', 'sharing', 'surge') } })
   await start($, w)
@@ -167,7 +173,7 @@ test("the line sits above the band's other rows: a plan offer keeps its buttons"
   await w.clock.settle()
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.findAll({ type: 'Button' })).map(b => b.key)).toEqual(['progress', 'register', 'not-a-plan'])
+    expect((await ui.findAll({ type: 'Button' })).map(b => b.key)).toEqual(['progress', 'register', 'ignore'])
     await ui.unmount()
   }
 })
@@ -300,7 +306,7 @@ test('/aim with aimd down opens /app/, and says where it is when no browser open
 
 // --- settings, aimd down, throttling --------------------------------------------------------
 
-test('band off: no line, and the mod never asks for one', { options: { ...OPTIONS, band: false } }, async ($, on) => {
+test('band off: no line, and the mod never asks for one', { options: { ...OPTIONS, band: 'off' } }, async ($, on) => {
   const w = session(on)
   await start($, w)
   await turnEnd($)

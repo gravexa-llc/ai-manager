@@ -5,7 +5,7 @@
 import type { On } from 'claude-code'
 import { expect, test, type Engine } from 'claude-code/testing'
 
-import { NOT_LOCAL, isLoopback, localBase, request, settings } from './aimd'
+import { NOT_LOCAL, bandMode, isLoopback, localBase, request, settings } from './aimd'
 import { CONTEXT, SPAWN, SPAWNED, SUMMARY, bashResult } from './fixtures'
 import { BAND, COMMAND, OPTIONS, START, TOKEN, world, type Routes } from './testkit'
 
@@ -200,4 +200,16 @@ test('request() to an address that is not local answers without fetching, and ne
   await $.session.start(START)
   expect(got).toEqual({ ok: false, status: 0, error: "aimdUrl isn't a local address, so nothing was sent" })
   expect(w.requests.filter(r => r.path === '/events')).toEqual([])
+})
+
+test('the band setting: full, status or off', () => {
+  expect(bandMode('full')).toBe('full')
+  expect(bandMode('status')).toBe('status')
+  expect(bandMode(' Off ')).toBe('off')
+  // Unset or unknown is the default; the old boolean keeps its meaning.
+  for (const v of [undefined, '', 'loud', 1, true]) expect(bandMode(v)).toBe('full')
+  expect(bandMode(false)).toBe('off')
+  expect(settings({ band: 'full' })).toMatchObject({ band: true, bandLinks: true })
+  expect(settings({ band: 'status' })).toMatchObject({ band: true, bandLinks: false })
+  expect(settings({ band: 'off' })).toMatchObject({ band: false, bandLinks: false })
 })

@@ -18,7 +18,17 @@ func cmdDown(args []string, stdout, stderr io.Writer) int {
 	return down(realSys(), args, stdout, stderr)
 }
 
+// down stops aimd and removes its service: the launchd agent on a Mac, the
+// systemd user unit on Linux (systemd.go).
 func down(s sys, args []string, stdout, stderr io.Writer) int {
+	switch s.goos {
+	case "darwin":
+	case "linux":
+		return downSystemd(s, args, stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "aim down: %s\n", unsupported(s.goos))
+		return 1
+	}
 	if len(args) > 0 {
 		if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
 			fmt.Fprint(stdout, downUsage)

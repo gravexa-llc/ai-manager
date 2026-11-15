@@ -40,9 +40,10 @@ The mod is one hooks module, `plugin/mod/register.tsx`, that Claude Code loads i
 
 | Hook | Does |
 |---|---|
-| `session.start` | Asks aimd (`GET /api/context`) which repo, plans and package the session's folder belongs to. Registers `/aim`, `/plan-register` and the `plan_status` tool, and starts the progress line. |
+| `session.start` | Asks aimd (`GET /api/context`) which repo, plans and package the session's folder belongs to. Registers `/aim`, `/plan-register` and the `plan_status` and `plan_link` tools, and starts the progress line. |
 | `agent.spawn` | When the lead spawns an agent: finds its package from the brief's `Package:` line (or a package ID in the description or brief), appends the convention block to the brief, and links the agent (`POST /api/links/spawn`). For a package the plan file lacks, it tells the lead to add the row, or refuses the spawn when `requirePlanRow` is on. For a brief that could mean several packages, it offers a choice above the prompt. |
 | `tool.call` on `Agent` | Links a remote agent once its cloud session URL comes back. |
+| `classic.SubagentStop` | Drops the band's link offer for the agent that stopped. |
 | `prompt.compose` | Adds the convention block to the system prompt of a session whose worktree or branch is already linked to a package. |
 | `tool.call` on `Bash` | Before `gh pr create` by a linked agent: refuses it if the PR body lacks the package's `Plan:` line (when `prCheck` is on). After it: tells aimd the PR exists (`POST /api/links/pr`), so the card moves to "in review" and aimd reads the PR from GitHub within seconds. A PR from an agent no package claims is only read (`POST /api/prs/refresh`). |
 | `tool.call` on `mcp__…create_pull_request` | The same, for GitHub's MCP tool. |
@@ -64,6 +65,7 @@ The mod is one hooks module, `plugin/mod/register.tsx`, that Claude Code loads i
 |---|---|
 | `command.run` on `aim` and `plan-register` | The commands below. |
 | `tool.call` on `mcp__ai-manager__plan_status` | The `plan_status` tool. |
+| `tool.call` on `mcp__ai-manager__plan_link` | The `plan_link` tool: links an agent the plugin couldn't place to the package or packages it works on. |
 
 **Reporting.** Every other hook queues an event for aimd and passes the event on unchanged:
 
@@ -74,13 +76,26 @@ The mod is one hooks module, `plugin/mod/register.tsx`, that Claude Code loads i
 
 See [What it reports to aimd](#what-it-reports-to-aimd).
 
+**On a Team or Enterprise account.** There, and on a machine with managed settings, Claude Code seats its built-in security plugin (`cc-plugin-sec-default`) ahead of every other. It hands each `classic.*` event and the system-prompt events, `prompt.compose` among them, past the plugins a person installs, so those hooks of this plugin don't run. A session says so once per event when it starts: "ai-manager: its classic.SessionStart hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it." That notice is expected, and nothing needs fixing. Until a `classic.*` hook has run in a session, the plugin reports from the events it does get:
+
+| In place of | The plugin |
+|---|---|
+| `classic.PermissionRequest` | reports nothing: aimd's session poller shows the dialog instead, from Claude Code's own `waiting` status. No hook the plugin gets tells a dialog from a call the mode allowed: both are a `tool.check` ask and then nothing until the call ends, so a timer here took every long allowed call (a build, a test run) for a dialog. Questions and plan approvals (`AskUserQuestion`, `ExitPlanMode`) are still reported at once. |
+| `classic.Notification` (idle) | reports the session idle a minute after the main loop's turn ends, when nothing has followed. |
+| `classic.SessionStart` after `/clear` | asks Claude Code for the session id on the first event after a `session_end`, and reports the new session before that event. |
+| `prompt.compose` | puts the package conventions beside the linked session's next prompt, once per package. They are in the conversation, not the system prompt, so a compaction can drop them. |
+
+`classic.StopFailure`, `classic.SubagentStart` and `classic.WorktreeCreate` need no stand-in: aimd reads a failed turn from `turn_complete`, an agent from its `turn_start` and the agent list, and its worktree from where it works. What is lost: the error's own word (`rate_limit`, say; the session shows "error"), and a need raised only by Claude Code's notification (an MCP server's question, an agent that needs input).
+
+Claude Code's settings describe another route, not tried here: an administrator makes ai-manager a managed plugin (enabled in managed settings and listed in `appendPlugins`), where the events reach its hooks.
+
 ### The band
 
 The band is the area above the prompt. It has up to three lines:
 
 ```text
 search · 1/6 done · 2 ready · 1 needs you · +1 plan
-search-plan.md looks like a dispatch plan: 6 packages, 2 lanes.  [Register]  [Not a plan]
+search-plan.md looks like a dispatch plan: 6 packages, 2 lanes.  [Register]  [Ignore]
 Link search endpoint work to: [API1] [UI2] [Skip]
 ```
 
@@ -93,9 +108,19 @@ Link search endpoint work to: [API1] [UI2] [Skip]
 
   The line refreshes every 15 seconds, and within 2 seconds of a turn ending, a PR being created, an agent being linked or a plan being registered. Clicking it, or pressing Enter when the band has focus, opens the plan's page in the dashboard.
 - **The Register offer** appears after the main loop saves a markdown file that looks like a plan and isn't registered or dismissed.
-- **The link offer** appears when the main loop spawns an agent whose brief could mean several packages. Pick one, or **Skip**.
+- **The link offer** appears when the main loop spawns an agent whose brief could mean several packages, and only with `band` set to `full`. Pick one, or **Skip**. The lead session is asked too (see [Linking agents](plans.md)), so you rarely need it. An offer goes once the agent is linked, when the agent stops, or after 30 minutes.
 
-There's no band in `claude -p` runs, or when the `band` setting is off.
+**Pressing a button.** Click it, or press ctrl+x then Tab to move the focus into the band, pick a button and press Enter; Esc goes back to the prompt. A click needs the terminal to pass mouse clicks on (iTerm2: Settings → Profiles → Terminal → Enable mouse reporting; Terminal: View → Allow Mouse Reporting). `[-]` at the band's right, or ctrl+x ctrl+a, folds it away for the session.
+
+**What it shows** is the plugin's `band` setting, a row in `/config` (`/config ai-manager.band=status`). A change there applies at once:
+
+| `band` | Progress line | Register offer | Link offer |
+|---|---|---|---|
+| `full` (default) | yes | yes | yes |
+| `status` | yes | yes | no |
+| `off` | no | no | no |
+
+There's no band in `claude -p` runs, or when the `band` setting is `off`.
 
 ### Failing open
 
@@ -119,7 +144,7 @@ The plugin's settings are the `userConfig` fields in `plugin/.claude-plugin/plug
 |---|---|---|
 | `token` | none | aimd's write token: the contents of `~/.ai-manager/token`. Stored as a secret. Without it, the plugin can still read the progress line and `plan_status`, but can't link, register, report or watch. |
 | `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. It must be this machine (`127.0.0.1`, `localhost` or `[::1]`): to any other address the plugin sends nothing (no token, no events, no plan calls), opens nothing, and says so once a session. |
-| `band` | on | The band above the prompt: the progress line, and the Register and link offers. |
+| `band` | `full` | The band above the prompt. `full`: the progress line, the Register offer and the link offers. `status`: the progress line and the Register offer. `off`: nothing. |
 | `appendConventions` | on | Appends the convention block to each linked agent's brief, and to a linked session's system prompt. |
 | `prCheck` | on | Refuses a linked agent's `gh pr create` when the PR body lacks its `Plan:` line. |
 | `requirePlanRow` | off | Refuses to spawn an agent whose brief names a package its plan file has no row for yet. Off, the agent starts, the package shows as provisional, and the lead is told to add the row. |
@@ -160,7 +185,7 @@ Sessions pick up a change when they restart.
 | `/aim` | Opens this session's plan in the dashboard (the plan the progress line shows), or the dashboard's Overview when the repo has no plan or aimd is down. |
 | `/aim watch` | Monitors this session: it shows in Needs you and notifications when it waits on you. |
 | `/aim unwatch` | Stops watching it. A plan's lead stays monitored until its plan is unregistered. |
-| `/plan-register [path]` | Registers a plan file, and makes this session its lead. Without a path, it registers the last file the plugin detected as a plan in this session. |
+| `/plan-register [path]` | Registers a plan file, and makes this session its lead. The path is absolute, starts with `~/` for your home folder, or is relative to the session's folder. Without a path, it registers the last file the plugin detected as a plan in this session. If it fails, the message gives the whole path it tried. |
 
 All three answer in one line, and none of them fails the session when aimd is down.
 
@@ -302,7 +327,7 @@ The mod POSTs events to aimd's `/events`, with the token:
 
 **When it says a session needs you.** Only when you're actually asked something:
 
-- a permission dialog opens (`classic.PermissionRequest`);
+- a permission dialog opens (`classic.PermissionRequest`; where that hook doesn't run, aimd's session poller sees Claude Code's `waiting` status, see [On a Team or Enterprise account](#what-each-hook-does));
 - a question or a plan to approve (`AskUserQuestion`, `ExitPlanMode`);
 - Claude Code's own notification that a dialog is waiting.
 

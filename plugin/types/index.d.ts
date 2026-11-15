@@ -30,6 +30,8 @@ export type UnlinkedSpawn = {
   /** The Agent call's short description. */
   description: string
   candidates: LinkCandidate[]
+  /** When the offer was made (ms since the epoch, the session's clock): it expires after a while. */
+  at: number
 }
 
 /**
@@ -59,6 +61,8 @@ declare module 'claude-code' {
       progress: Shaped<PlanProgress | null>
       /** Plans this session registered or dispatched agents for, latest first (slugs). */
       mine: Shaped<string[]>
+      /** A classic.* hook has run in this process (the report stand-ins stay quiet). */
+      classic: Shaped<boolean>
     }
   }
 }

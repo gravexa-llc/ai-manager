@@ -2,9 +2,9 @@
 
 A local dashboard for running Claude Code at scale. A lead session writes a plan of work packages and dispatches one agent per package, each in its own git worktree. Each agent opens a PR. ai-manager follows every package from plan to agent, worktree, PR, CI and merge. It shows what needs you, lets you jump to the right terminal tab, and tells you which worktrees are safe to delete.
 
-It has three parts, all on your Mac:
+It has three parts, all on your own machine, a Mac or a Linux one ([Linux](#linux) lists what differs there):
 
-- **`aimd`**: a small daemon under launchd. It watches your Claude Code sessions, git worktrees and GitHub PRs, and serves the dashboard at http://127.0.0.1:7777.
+- **`aimd`**: a small daemon under launchd (macOS) or systemd (Linux). It watches your Claude Code sessions, git worktrees and GitHub PRs, and serves the dashboard at http://127.0.0.1:7777.
 - **`aim`**: a CLI to start and stop the daemon, list and prune worktrees, and jump to a session.
 - **The plugin** (`plugin/`): a Claude Code plugin that loads in every session. It links agents to their packages, reports what a session is waiting on, adds a progress line above the prompt, and gives you `/aim` and `/plan-register`.
 
@@ -33,15 +33,15 @@ It has three parts, all on your Mac:
 
 ## Requirements
 
-- macOS. aimd runs under launchd, and Go buttons and notifications use AppleScript.
+- macOS, or Linux with systemd. On macOS aimd runs under launchd, and Go buttons and notifications use AppleScript; on Linux it runs as a systemd user unit, without Go buttons or desktop notifications (see [Linux](#linux)).
 - **Claude Code 2.1.319 or later**, with plugin mods. Check with `claude --version`.
 - Go 1.21 or later, e.g. `brew install go`. `go.mod`'s `toolchain` line makes the go command download the exact version it needs (1.26.10) for this repo only, so your other projects keep their Go.
 - `git`, `jq`, and the GitHub CLI `gh`, logged in (`gh auth status`) to an account that can read your repos.
-- iTerm2 or Terminal.app, for the Go buttons.
+- On macOS, iTerm2 or Terminal.app, for the Go buttons.
 
 ## Install
 
-Do this once per Mac.
+Do this once per machine.
 
 **1. Get the code.** Clone it where you keep your projects. The plugin is read straight from this checkout, so keep it on `main`.
 
@@ -67,7 +67,7 @@ my-org = "my-github-login"
 
 Every setting, with its default, is listed at the top of `internal/config/config.go`.
 
-**4. Start aimd.** This installs the launchd agent `com.gravexa.aimd`, so aimd starts at login and restarts if it stops:
+**4. Start aimd.** This installs the launchd agent `com.gravexa.aimd` (on Linux, the systemd user unit `aimd.service`), so aimd starts at login and restarts if it stops:
 
 ```sh
 aim up        # aimd is running at http://127.0.0.1:7777
@@ -89,7 +89,7 @@ The plugin's other settings, and their defaults (`claude plugin configure ai-man
 | Setting | Default | What it does |
 |---|---|---|
 | `aimdUrl` | `http://127.0.0.1:7777` | Where aimd listens. It must be this machine (`127.0.0.1`, `localhost` or `[::1]`); the plugin sends nothing to any other address. |
-| `band` | on | The plan line above the prompt, and the Register offer. |
+| `band` | `full` | What the band above the prompt shows. `full`: the plan's progress line, the Register offer and the offers to link an agent to a package. `status`: the progress line and the Register offer. `off`: nothing. It is a row in `/config` too: `/config ai-manager.band=status`. |
 | `appendConventions` | on | Adds the package, its branch name and the PR's `Plan:` line to each agent's brief. |
 | `prCheck` | on | Asks a linked agent to add the `Plan:` line to its PR body. |
 | `requirePlanRow` | off | Refuses to spawn an agent whose brief names a package its plan file has no row for yet, until you add the row. Off, the agent starts, the package shows on the board as provisional ("not in plan file"), and the lead is told to add the row. |
@@ -190,7 +190,7 @@ There are two ways to remove them:
 |---|---|
 | `/aim` | Opens this session's plan in the dashboard, or the dashboard itself |
 | `/aim watch`, `/aim unwatch` | Monitors this session, or stops |
-| `/plan-register [path]` | Registers a plan file |
+| `/plan-register [path]` | Registers a plan file (`~/…`, absolute, or relative to the session's folder) |
 
 | In a terminal | Does |
 |---|---|
@@ -213,7 +213,7 @@ Plugin changes reach each Claude session when it restarts.
 ## Uninstalling
 
 ```sh
-aim down                                        # stops aimd and removes its launchd agent
+aim down                                        # stops aimd and removes its launchd agent (or systemd unit)
 claude plugin uninstall ai-manager@ai-manager
 claude plugin marketplace remove ai-manager
 rm -rf ~/.ai-manager                            # deletes aimd's history, settings and token
@@ -221,20 +221,40 @@ rm -rf ~/.ai-manager                            # deletes aimd's history, settin
 
 ## Troubleshooting
 
-- **"aimd not running".** Run `aim up`. Logs are in `~/.ai-manager/aimd.log`; startup crashes go to `~/.ai-manager/aimd.launchd.log`.
+- **"aimd not running".** Run `aim up`. Logs are in `~/.ai-manager/aimd.log`; startup crashes go to `~/.ai-manager/aimd.launchd.log` (on Linux, to the journal: `journalctl --user -u aimd.service`).
 - **A session doesn't show up, or shows no detail.**
   - Make sure it was started or restarted after the plugin install, and that it's monitored (`/aim watch`).
   - `claude plugin configure ai-manager@ai-manager` should list the token as set.
+- **"ai-manager: its classic.SessionStart hook was skipped" when a session starts.** Expected on a Team or Enterprise account: Claude Code keeps those events from plugins you install yourself. The plugin reports without them; [the plugin guide](docs/guides/plugin-and-skills.md) says what differs.
 - **Go is greyed out.** Hover over it for the reason: a background job with no tab, a session inside tmux, or an app other than iTerm2 or Terminal.
 - **Clicking a macOS notification opens Script Editor.** That's a known limit of macOS's built-in notifications. Open the dashboard instead.
 - **A background job is listed as expired.** Claude Code deleted its conversation after 30 days (`cleanupPeriodDays`), so it can't be reopened. Clear it with the `claude rm <id>` command shown on its row.
+
+## Linux
+
+ai-manager runs on a Linux machine with systemd, such as a server you reach over ssh. The plans, the board, Needs you, the sessions, worktrees and PRs all work as on a Mac. These differ:
+
+- **`aim up` installs a systemd user unit,** `~/.config/systemd/user/aimd.service`, and `aim down` removes it. A user unit stops when your last login session ends and starts again at your next login. To keep aimd running while you're logged out, turn lingering on for your account once: `loginctl enable-linger`. On a server you reach over ssh that usually needs sudo, since there is no one to ask for the password: `sudo loginctl enable-linger $USER`. `aim up` says so when it's off.
+- **On a machine without systemd** (most containers), run `aimd --foreground` under your own supervisor.
+- **A server has no browser,** so `aim open` prints the sign-in link instead of opening it. aimd listens on 127.0.0.1 only: forward its port from the machine with the browser and open the link there within a minute:
+
+  ```sh
+  ssh -L 7777:127.0.0.1:7777 <the server>
+  ```
+
+  The port must be the same on both ends of the tunnel. aimd answers only to `127.0.0.1:<its port>` and `localhost:<its port>`, so a browser that comes through another local port (`ssh -L 7778:127.0.0.1:7777`) gets `aimd: unexpected Host header`. If the port is taken on the machine with the browser, give aimd another one on the server (`port = 7778` in `~/.ai-manager/config.toml`, then `aim up`), forward that, and set the plugin's `aimdUrl` to match.
+
+  On a Linux desktop, `aim open` opens the link with `xdg-open`.
+- **No Go buttons and no `aim go`.** Go switches tabs in iTerm2 and Terminal.app, which only macOS has. The buttons are greyed out with the reason, and a background job's detail still shows its `claude attach <id>` command.
+- **No desktop notifications.** The Settings page says so by the switch. The tab-title count, the chime and the highlight are the dashboard's own, and work.
+- **Repo roots are case-sensitive.** The default root is `~/Projects`; if yours is `~/projects`, say so in `config.toml`.
 
 ## Privacy and security
 
 - aimd listens only on 127.0.0.1. Nothing is sent anywhere except read-only GitHub queries made with your own `gh` login.
 - Writes to aimd need its token or the dashboard's per-page CSRF token.
 - What a session is waiting on, such as a command, is stored only in memory, with secrets like tokens, passwords and auth headers redacted.
-- Dashboard pages can be read by any program on your Mac, so don't expose port 7777 beyond your machine.
+- Dashboard pages can be read by any program on your machine, so don't expose port 7777 beyond your machine.
 
 ## Development
 

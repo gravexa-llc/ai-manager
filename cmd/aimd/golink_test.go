@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,5 +163,21 @@ func TestMonitorMergesOverride(t *testing.T) {
 	}
 	if got := waits(); got != "lead" {
 		t.Errorf("overridden to lead: waiting on %s", got)
+	}
+}
+
+// Go and notifications are macOS's: on a Mac nothing is said, elsewhere
+// the reason names the system.
+func TestUnavailableOffMacOS(t *testing.T) {
+	if got := goUnavailable("darwin") + notifyUnavailable("darwin"); got != "" {
+		t.Errorf("on macOS: %q", got)
+	}
+	for _, why := range []string{goUnavailable("linux"), notifyUnavailable("linux")} {
+		if !strings.Contains(why, "macOS") || !strings.Contains(why, "runs on Linux") {
+			t.Errorf("on Linux: %q", why)
+		}
+	}
+	if got := goUnavailable("freebsd"); !strings.Contains(got, "runs on freebsd") {
+		t.Errorf("elsewhere: %q", got)
 	}
 }

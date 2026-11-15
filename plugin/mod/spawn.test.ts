@@ -199,15 +199,18 @@ test('appendConventions off: the brief is left alone, the agent still linked', {
   expect(w.sent('POST /api/links/spawn')[0]?.body).toMatchObject({ plan: 'aim', pkg: 'C4' })
 })
 
-test('band off: an ambiguous spawn offers nothing', { options: { ...OPTIONS, band: false } }, async ($, on) => {
-  const w = lead(on)
-  await $.session.start(START)
-  await $.agent.spawn({ ...SPAWN, prompt: 'Do C4, then D2.', description: 'mod work' })
-  await w.clock.settle()
-  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  await ui.unmount()
-})
+for (const band of ['status', 'off']) {
+  test(`band ${band}: an ambiguous spawn offers nothing`, { options: { ...OPTIONS, band } }, async ($, on) => {
+    const w = lead(on)
+    await $.session.start(START)
+    await $.agent.spawn({ ...SPAWN, prompt: 'Do C4, then D2.', description: 'mod work' })
+    await w.clock.settle()
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ type: 'Text', text: /Link mod work to:/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'link-' + SPAWNED.agentId + '-aim-C4' })).toBeUndefined()
+    await ui.unmount()
+  })
+}
 
 test('the context is fetched again only after a minute', { options: OPTIONS }, async ($, on) => {
   const w = lead(on)

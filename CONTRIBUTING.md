@@ -10,7 +10,7 @@ To learn the product first, start with the [README](README.md) and the [guides](
 
 ## What you need
 
-- **macOS.** aimd runs under launchd, and the dashboard's Go button and notifications use AppleScript. Most of the code is portable, but nothing else is tested.
+- **macOS, or Linux.** On macOS aimd runs under launchd, and the dashboard's Go button and notifications use AppleScript. On Linux it runs as a systemd user unit, and Go and notifications are off. `make check` passes on both; the maintainer's CI runs on a Mac.
 - **Go 1.21 or later.** `go.mod`'s `toolchain` line makes the go command fetch the exact version this repo uses (1.26.10) for this repo only.
 - **Claude Code 2.1.319 or later**, on your `PATH`: `make check` runs its plugin checks.
 - **`git`, and the GitHub CLI `gh`**, logged in, for running aimd against real repos.
@@ -55,7 +55,7 @@ Pass `make check` before you push.
 ```text
 cmd/aimd/            the daemon's main: flags, logging, wiring
 cmd/aim/             the CLI: up, down, status, ls, prune, go
-deploy/              the launchd plist template that `aim up` fills in
+deploy/              the launchd plist and systemd unit templates that `aim up` fills in
 internal/            the Go packages (see the code map in docs/guides/architecture.md)
   store/migrations/  SQLite schema migrations, applied in order at start
   web/               the HTTP server, the API and the dashboard
@@ -113,7 +113,7 @@ Put test repos in `$DEV/repos`: `git init` one, commit, and add a plan file. [`d
 
 **Never with a development build or a temporary `AIM_HOME`:**
 
-- **`aim up` or `aim down`.** There's one launchd agent, `com.gravexa.aimd`, so either would replace or stop your real aimd. Run `bin/aimd --foreground` instead.
+- **`aim up` or `aim down`.** There's one launchd agent, `com.gravexa.aimd` (on Linux, one systemd user unit, `aimd.service`), so either would replace or stop your real aimd. Run `bin/aimd --foreground` instead.
 - **`aim prune --apply`, or Remove on the dashboard, against your real worktrees.** Try cleanup on throwaway repos in `$DEV/repos`.
 
 ## Testing the plugin

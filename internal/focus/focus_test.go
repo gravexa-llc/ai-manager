@@ -376,3 +376,31 @@ func TestMatchNumericJobID(t *testing.T) {
 		t.Errorf("Match = %q, %v", got.Key, err)
 	}
 }
+
+// Off macOS there is no tab to switch to: a key is still resolved, then
+// refused with the reason, and no terminal app is asked. A background
+// job's refusal carries the command that opens it.
+func TestGoUnavailable(t *testing.T) {
+	ft := &fakeTerminal{}
+	svc := service(ft)
+	svc.Unavailable = "Go needs macOS"
+	for key, want := range map[string]string{
+		"pid:101":      "Go needs macOS",
+		"job:022c44bf": "Go needs macOS. sharing reports is a background session: open it with `claude attach 022c44bf`",
+	} {
+		res, err := svc.Go(context.Background(), key)
+		var e *Error
+		if !errors.As(err, &e) || e.Status != http.StatusUnprocessableEntity || e.Msg != want {
+			t.Errorf("%s: err = %v, want a 422 saying %q", key, err, want)
+		}
+		if res.Key != key {
+			t.Errorf("%s: result key = %q", key, res.Key)
+		}
+	}
+	if _, err := svc.Go(context.Background(), "no such session"); err == nil || strings.Contains(err.Error(), "Go needs macOS") {
+		t.Errorf("unknown key: %v, want the usual refusal", err)
+	}
+	if len(ft.focused) != 0 || len(ft.attached) != 0 {
+		t.Errorf("asked the terminal: focused %v, attached %v", ft.focused, ft.attached)
+	}
+}

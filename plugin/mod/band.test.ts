@@ -16,8 +16,8 @@ const ROUTES: Routes = {
 
 const SURFACES = ['terminal', 'desktop'] as const
 
-function session(on: On, routes: Routes = ROUTES) {
-  const w = world(on, routes)
+function session(on: On, routes: Routes = ROUTES, env: Readonly<Record<string, string>> = {}) {
+  const w = world(on, routes, undefined, undefined, env)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', { tool: ['Write', 'Edit'] }, (_, e) => ({
     result: { type: 'create', filePath: e.file_path, content: '[file content]', structuredPatch: [], originalFile: null },
@@ -41,7 +41,7 @@ test('saving a plan in the main loop raises the Register band', { options: OPTIO
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Text', text: /looks like/ }))?.text).toBe('sharing-plan.md looks like a dispatch plan: 14 packages, 3 lanes. ')
-    expect((await ui.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['Register', 'Not a plan'])
+    expect((await ui.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['Register', 'Ignore'])
     await ui.unmount()
   }
 })
@@ -61,13 +61,13 @@ test('[Register] registers the file with no model turn and clears the band', { o
   await ui.unmount()
 })
 
-test('[Not a plan] dismisses the file and clears the band', { options: OPTIONS }, async ($, on) => {
+test('[Ignore] dismisses the file and clears the band', { options: OPTIONS }, async ($, on) => {
   const w = session(on)
   await $.session.start(START)
   await write($, PLAN)
   await w.clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  await ui.press({ key: 'not-a-plan' })
+  await ui.press({ key: 'ignore' })
   expect(w.sent('POST /api/plans/dismiss')[0]?.body).toEqual({ path: PLAN })
   expect(await ui.find({ type: 'Button' })).toBeUndefined()
   await ui.unmount()
@@ -80,7 +80,7 @@ test('a failed [Register] says why and keeps the offer', { options: OPTIONS }, a
   await w.clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   await ui.press({ key: 'register' })
-  expect(w.toasts).toContain("ai-manager couldn't register sharing-plan.md: slug sharing is taken by another file")
+  expect(w.toasts).toContain("ai-manager couldn't register /tmp/probe/docs/sharing-plan.md: slug sharing is taken by another file")
   expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
   await ui.unmount()
 })
@@ -99,7 +99,19 @@ test('no band for a file that is not offered, a non-.md file, or a subagent writ
   await ui.unmount()
 })
 
-test('band off: no band, though detection still feeds /plan-register', { options: { ...OPTIONS, band: false } }, async ($, on) => {
+test('band status: the Register offer still shows', { options: { ...OPTIONS, band: 'status' } }, async ($, on) => {
+  const w = session(on)
+  await $.session.start(START)
+  await write($, PLAN)
+  await w.clock.settle()
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+    expect((await ui.findAll({ type: 'Button' })).map(b => b.props.label)).toEqual(['Register', 'Ignore'])
+    await ui.unmount()
+  }
+})
+
+test('band off: no band, though detection still feeds /plan-register', { options: { ...OPTIONS, band: 'off' } }, async ($, on) => {
   const w = session(on)
   await $.session.start(START)
   await write($, PLAN)
@@ -138,7 +150,34 @@ test('/plan-register passes on what aimd says is wrong', { options: OPTIONS }, a
   session(on, { ...ROUTES, 'POST /api/plans': { status: 422, body: { error: 'notes.md has no package table' } } })
   await $.session.start(START)
   const out = await $.command.run({ command: 'plan-register', args: '/tmp/probe/notes.md', ...COMMAND })
-  expect(out.text).toBe("ai-manager couldn't register notes.md: notes.md has no package table")
+  expect(out.text).toBe("ai-manager couldn't register /tmp/probe/notes.md: notes.md has no package table")
+})
+
+test('/plan-register ~/…: the home folder, as in a shell; a failure names the path with ~', { options: OPTIONS }, async ($, on) => {
+  const w = session(on, ROUTES, { HOME: '/tmp/' })
+  await $.session.start(START)
+  await $.command.run({ command: 'plan-register', args: '~/probe/docs/sharing-plan.md', ...COMMAND })
+  expect(w.sent('POST /api/plans')[0]?.body).toEqual({ path: PLAN, session_id: SESSION_ID })
+  await $.command.run({ command: 'plan-register', args: '"~/probe/./docs/../docs/sharing-plan.md"', ...COMMAND })
+  expect(w.sent('POST /api/plans')[1]?.body).toEqual({ path: PLAN, session_id: SESSION_ID })
+})
+
+test('/plan-register: a failure names the whole path, home as ~', { options: OPTIONS }, async ($, on) => {
+  session(on, { ...ROUTES, 'POST /api/plans': { status: 404, body: { error: 'no such file' } } }, { HOME: '/tmp' })
+  await $.session.start(START)
+  const out = await $.command.run({ command: 'plan-register', args: '~/probe/missing.md', ...COMMAND })
+  expect(out.text).toBe("ai-manager couldn't register ~/probe/missing.md: no such file")
+})
+
+test('/plan-register: a ~ it cannot expand says so and sends nothing', { options: OPTIONS }, async ($, on) => {
+  const w = session(on)
+  await $.session.start(START)
+  // HOME unset, then another user's home.
+  for (const args of ['~/probe/docs/sharing-plan.md', '~someone/plan.md']) {
+    const out = await $.command.run({ command: 'plan-register', args, ...COMMAND })
+    expect(out.text).toContain("can't tell where")
+  }
+  expect(w.sent('POST /api/plans').length).toBe(0)
 })
 
 test("/aim opens this session's plan in the new dashboard", { options: OPTIONS }, async ($, on) => {

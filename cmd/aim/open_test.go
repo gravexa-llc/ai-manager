@@ -144,3 +144,34 @@ func TestOpenFailures(t *testing.T) {
 		}
 	})
 }
+
+// On a machine without a browser, the link is printed with how to reach
+// aimd from one that has a browser, and that isn't a failure.
+func TestOpenWithoutABrowser(t *testing.T) {
+	h, _ := newOpenHarness(t, true)
+	h.browseErr = errNoBrowser
+	var out, errb bytes.Buffer
+	if code := openCmd(h.sys, nil, &out, &errb); code != 0 || errb.Len() != 0 {
+		t.Fatalf("aim open = %d, stderr %q", code, errb.String())
+	}
+	for _, want := range []string{
+		"http://127.0.0.1:7777/app/sign-in?code=abc\n",
+		"ssh -L 7777:127.0.0.1:7777",
+		"works once, for 60 seconds",
+		"The port must be 7777 on both ends of the tunnel",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// Off a Mac, a session without a display has no browser, whatever is on
+// PATH.
+func TestBrowserNeedsADisplay(t *testing.T) {
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	if err := browser("linux")(context.Background(), "http://127.0.0.1:7777/app/"); !errors.Is(err, errNoBrowser) {
+		t.Errorf("browse = %v, want errNoBrowser", err)
+	}
+}
