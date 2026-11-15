@@ -1,0 +1,24 @@
+# The systemd user unit for aimd, on Linux. `aim up` fills in this template
+# (deploy/aimd.service in the ai-manager repo) and writes it to
+# ~/.config/systemd/user; edit the template, not the copy.
+# A user unit's PATH lacks ~/.local/bin and the like, so `aim up` resolves
+# claude, gh and git when it runs and puts their folders in PATH below.
+# It also sets AIMD_LAUNCHD=1 there, which tells aimd a service manager runs
+# it, so it logs only to aimd.log (rotated to aimd.log.1 at 10 MB), not to
+# stderr as well.
+# The journal (journalctl --user -u aimd.service) then holds only what
+# aimd.log doesn't get: a panic, or the error aimd stops with.
+[Unit]
+Description=ai-manager daemon (aimd)
+
+[Service]
+ExecStart={{exec .Program}} --foreground
+WorkingDirectory={{dir .Home}}
+{{- range .Env}}
+Environment={{env .Key .Value}}
+{{- end}}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

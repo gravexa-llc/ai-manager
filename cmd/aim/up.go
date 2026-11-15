@@ -30,7 +30,17 @@ func cmdUp(args []string, stdout, stderr io.Writer) int {
 	return up(realSys(), args, stdout, stderr)
 }
 
+// up installs and starts aimd's service: a launchd agent on a Mac, a
+// systemd user unit on Linux (systemd.go).
 func up(s sys, args []string, stdout, stderr io.Writer) int {
+	switch s.goos {
+	case "darwin":
+	case "linux":
+		return upSystemd(s, args, stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "aim up: %s\n", unsupported(s.goos))
+		return 1
+	}
 	fs := flag.NewFlagSet("aim up", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	printOnly := fs.Bool("print", false, "")

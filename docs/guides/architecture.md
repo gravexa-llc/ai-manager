@@ -1,8 +1,8 @@
 # Architecture
 
-ai-manager runs entirely on your Mac. It has three parts:
+ai-manager runs entirely on your own machine: a Mac, or a Linux machine with systemd. It has three parts:
 
-- **aimd**, a daemon written in Go. It watches your Claude Code sessions, git worktrees and GitHub PRs, keeps what it finds in SQLite, works out each plan's board, and serves the dashboard and an HTTP API on `127.0.0.1:7777`. It runs as the launchd agent `com.gravexa.aimd`, so it starts at login and restarts if it crashes.
+- **aimd**, a daemon written in Go. It watches your Claude Code sessions, git worktrees and GitHub PRs, keeps what it finds in SQLite, works out each plan's board, and serves the dashboard and an HTTP API on `127.0.0.1:7777`. It runs as the launchd agent `com.gravexa.aimd` on macOS and as the systemd user unit `aimd.service` on Linux, so it starts at login and restarts if it crashes.
 - **aim**, a command-line tool. It installs and stops aimd (`aim up`, `aim down`), prints a status line (`aim status`), lists and prunes worktrees (`aim ls`, `aim prune`), opens the dashboard and signs your browser in (`aim open`), and brings a session to the front (`aim go`).
 - **The plugin**, which loads in every Claude Code session. Its mod reports what the session does, links agents to plan packages, draws the progress line above the prompt, and adds `/aim`, `/plan-register` and the `plan_status` tool. Its skills teach Claude the plan format and how to dispatch. See [The plugin and its skills](plugin-and-skills.md).
 
@@ -81,12 +81,14 @@ Everything is in `~/.ai-manager/`, or in `$AIM_HOME` when that's set. The folder
 | `config.toml` | Optional settings: `roots`, `[owners]`, `port`, poll intervals, `[prune]`, `[notify]`, `[sessions]`. Without it, every default applies. Unknown keys are an error, so a typo doesn't silently fall back to a default. The full list is at the top of `internal/config/config.go`. |
 | `token` | aimd's write token: 32 random bytes, hex, mode 0600, made on first start. aimd refuses a token file that other users can read. |
 | `aimd.log` | aimd's log, rotated to `aimd.log.1` at 10 MB. |
-| `aimd.launchd.log` | Under launchd, what the log can't hold: a crash, or the error aimd stopped with. |
+| `aimd.launchd.log` | Under launchd, what the log can't hold: a crash, or the error aimd stopped with. Under systemd that goes to the journal instead (`journalctl --user -u aimd.service`). |
 
-`aim up` also writes `~/Library/LaunchAgents/com.gravexa.aimd.plist`. That file:
+`aim up` also writes `~/Library/LaunchAgents/com.gravexa.aimd.plist` on macOS, or `~/.config/systemd/user/aimd.service` on Linux (under `$XDG_CONFIG_HOME` when that is set). That file:
 
-- holds the paths of `claude`, `gh` and `git` as your shell finds them, since launchd's `PATH` is only the system one. Run `aim up` again after moving them;
+- holds the paths of `claude`, `gh` and `git` as your shell finds them, since launchd's `PATH`, and a systemd user unit's, is only the system one. Run `aim up` again after moving them;
 - passes through your `AIM_HOME`, `CLAUDE_CONFIG_DIR` and `GH_CONFIG_DIR`.
+
+**On Linux,** two things aimd does through AppleScript on a Mac are off, and say why: Go (`POST /api/go` answers 422 with the reason, and no session's terminal is one Go can switch to) and desktop notifications (the notifier never starts, and the Settings page notes it). A systemd user unit stops at the end of your last login session unless lingering is on (`loginctl enable-linger`).
 
 **Retention:**
 
@@ -105,7 +107,7 @@ Everything else stays until you unregister its plan or delete the folder.
 
 ## Security model
 
-aimd is built for a Mac with one user account.
+aimd is built for a machine with one user account.
 
 - **Local only.** aimd listens on 127.0.0.1, never on the network. Every request's `Host` header must be `127.0.0.1:<port>` or `localhost:<port>`, which stops DNS rebinding. aimd sends no CORS headers, so other websites can't read its answers.
 - **Writes need a secret.**
@@ -131,7 +133,7 @@ aimd is built for a Mac with one user account.
 | Package | Does |
 |---|---|
 | `cmd/aimd`, `cmd/aim` | The two binaries |
-| `deploy` | The launchd plist template |
+| `deploy` | The launchd plist template (macOS) and the systemd unit template (Linux) |
 | `internal/config` | `AIM_HOME`, `config.toml` and the token |
 | `internal/daemon` | The scheduler: which source polls when, and the rate-limit budget |
 | `internal/sessions` | `claude agents --json`, and expired background jobs |

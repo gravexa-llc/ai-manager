@@ -249,7 +249,11 @@ func fillSettings(s *Server, r *http.Request, sn *snapshot, d *appData) error {
 	}
 	for _, k := range []string{store.SettingTabCount, store.SettingNotifications, store.SettingChime, store.SettingHighlight} {
 		sw := toggle(k)
-		if k == store.SettingNotifications && s.opts.NotifyDisabled {
+		switch {
+		case k != store.SettingNotifications:
+		case s.opts.NotifyUnavailable != "":
+			sw.Note = s.opts.NotifyUnavailable
+		case s.opts.NotifyDisabled:
 			sw.Note = "config.toml turns them off (notify.enabled = false), whatever this says."
 		}
 		v.Alerts = append(v.Alerts, sw)

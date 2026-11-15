@@ -575,3 +575,14 @@ func TestSettingNotificationsConfigOff(t *testing.T) {
 	srv, _ := newApp(t, func(o *Options) { o.NotifyDisabled = true })
 	wantIn(t, "page", get(t, srv.routes(), "/app/settings"), "config.toml turns them off (notify.enabled = false), whatever this says.")
 }
+
+// And when this aimd can't post any, which wins over config.toml's note.
+func TestSettingNotificationsUnavailable(t *testing.T) {
+	const why = "aimd posts desktop notifications through macOS, and this one runs on Linux, so it posts none, whatever this says."
+	srv, _ := newApp(t, func(o *Options) { o.NotifyDisabled, o.NotifyUnavailable = true, why })
+	page := get(t, srv.routes(), "/app/settings")
+	wantIn(t, "page", page, why)
+	if strings.Contains(page, "config.toml turns them off") {
+		t.Error("page shows config.toml's note as well")
+	}
+}

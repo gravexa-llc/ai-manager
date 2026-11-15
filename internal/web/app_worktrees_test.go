@@ -836,18 +836,18 @@ func TestWorktreesGroupBy(t *testing.T) {
 	short := func(p string) string { return "~" + strings.TrimPrefix(p, home) }
 
 	repo := get(t, h, "/app/worktrees?fragment=list")
-	if got := strings.Join(sectionKeys(repo), " "); got != "repo:acme/app repo:example-org/web repo:"+worktrees.PathKey(wtNotes) {
+	if got := strings.Join(sectionKeys(repo), " "); got != "repo:acme/app repo:example-org/web "+repoKey(wtNotes) {
 		t.Errorf("repo: sections %s", got)
 	}
 	wantIn(t, "control", repo, `<div class="gby" role="group" aria-label="Group by" data-group-cookie="aim_group_worktrees">`,
 		`data-group-by="repo" class="on" aria-current="true">Repo</a>`, `data-group-by="plan">Plan</a>`, `data-group-by="status">Cleanup status</a>`)
 	wantSection(t, repo, "repo:acme/app", true, false)
 	wantSection(t, repo, "repo:example-org/web", false, false)
-	wantSection(t, repo, "repo:"+worktrees.PathKey(wtNotes), false, false)
+	wantSection(t, repo, repoKey(wtNotes), false, false)
 	if got := wtRowsOf(t, repo, "repo:acme/app"); !sameSet(got, []string{short(wtS1), short(wtS2), short(wtS3), short(wtWatched), short(wtStray)}) {
 		t.Errorf("acme/app rows %v", got)
 	}
-	_, notes := sectionOf(t, repo, "repo:"+worktrees.PathKey(wtNotes))
+	_, notes := sectionOf(t, repo, repoKey(wtNotes))
 	wantIn(t, "notes", notes, `<span>notes</span><span>1</span>`, `<span class="pill tone-info">Scratch</span>`)
 	// Every row keeps its verdict.
 	_, acme := sectionOf(t, repo, "repo:acme/app")

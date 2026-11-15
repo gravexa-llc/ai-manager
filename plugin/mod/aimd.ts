@@ -18,7 +18,10 @@ export type Settings = {
   url: string
   /** Whether aimdUrl is a local address. When not, nothing is sent to it and nothing opens it. */
   local: boolean
+  /** Whether the band draws anything: its `band` setting is `full` or `status`. */
   band: boolean
+  /** Whether the band offers to link an ambiguous spawn to a package: `band` is `full`. */
+  bandLinks: boolean
   appendConventions: boolean
   prCheck: boolean
   /** Refuse a spawn whose Package: line names a package its plan file lacks; off by default. */
@@ -55,15 +58,32 @@ export function isLoopback(raw: string): boolean {
   return localBase(raw) !== undefined
 }
 
+/** What the band shows: everything, the progress line and Register offer only, or nothing. */
+export type BandMode = 'full' | 'status' | 'off'
+
+/**
+ * The `band` setting. The engine passes a stored value outside the field's
+ * options as unset, so the old boolean reaches here only from a host that
+ * hands options over as stored: `false` stays off, `true` is `full`.
+ */
+export function bandMode(v: unknown): BandMode {
+  if (v === false) return 'off'
+  if (typeof v !== 'string') return 'full'
+  const mode = v.trim().toLowerCase()
+  return mode === 'status' || mode === 'off' ? mode : 'full'
+}
+
 export function settings(options: PluginOptions): Settings {
   const text = (v: unknown, d: string) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : d)
   const flag = (v: unknown) => v !== false
   const base = localBase(text(options.aimdUrl, 'http://127.0.0.1:7777'))
+  const band = bandMode(options.band)
   return {
     token: text(options.token, ''),
     url: base ?? '',
     local: base !== undefined,
-    band: flag(options.band),
+    band: band !== 'off',
+    bandLinks: band === 'full',
     appendConventions: flag(options.appendConventions),
     prCheck: flag(options.prCheck),
     requirePlanRow: options.requirePlanRow === true,

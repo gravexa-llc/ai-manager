@@ -17,10 +17,11 @@
       "default": "http://127.0.0.1:7777"
     },
     "band": {
-      "type": "boolean",
+      "type": "string",
       "title": "Plan band",
-      "description": "Show the plan band above the prompt.",
-      "default": true
+      "description": "What the band above the prompt shows. full: the plan's progress line, the Register offer and the offers to link an agent to a package. status: the progress line and the Register offer, without the link offers. off: nothing.",
+      "options": ["full", "status", "off"],
+      "default": "full"
     },
     "appendConventions": {
       "type": "boolean",

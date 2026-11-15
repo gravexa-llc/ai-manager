@@ -143,6 +143,10 @@ type Service struct {
 	Terminal Terminal
 	// HomeDir expands a leading ~/ in a cwd prefix.
 	HomeDir string
+	// Unavailable, when set, is why this machine can't go to any session
+	// (aimd runs off macOS, which alone has the terminal apps Go drives):
+	// a key is still resolved, and then refused with this.
+	Unavailable string
 }
 
 // Go resolves key to a live session and brings it to the front. A
@@ -201,6 +205,12 @@ func (s *Service) Resolve(ctx context.Context, key string) (Target, string, erro
 // open brings t to the front.
 func (s *Service) open(ctx context.Context, t Target) (api.GoResult, error) {
 	res := api.GoResult{Key: t.Key, Title: t.Title()}
+	if s.Unavailable != "" {
+		if t.Kind == KindBackground && t.JobID != "" {
+			return res, refuse(http.StatusUnprocessableEntity, nil, "%s. %s is a background session: open it with `claude attach %s`", s.Unavailable, res.Title, t.JobID)
+		}
+		return res, refuse(http.StatusUnprocessableEntity, nil, "%s", s.Unavailable)
+	}
 	if t.Kind == KindBackground {
 		if t.JobID == "" {
 			return res, refuse(http.StatusUnprocessableEntity, nil, "%s is a background session without a job id, so aim can't attach to it", res.Title)

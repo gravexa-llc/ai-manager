@@ -32,7 +32,7 @@ Add parser warnings and unmatched branches or PRs in one line, if there are any.
 
 ## Brief each agent
 
-**Every brief starts with `Package: <slug> · <ID>` on its own first line.** The ai-manager mod reads that line to link the agent to its package. Put the ID in the Agent `description` too (`T2 dark palette`). Spawn each agent in the background in its own worktree, unless the plan says otherwise. A new package gets its row in the plan file before its agent is spawned: without the row it shows only as provisional, and the mod reminds you to add it.
+**Every brief starts with `Package: <slug> · <ID>` on its own first line.** The ai-manager mod reads that line to link the agent to its package. Put the ID in the Agent `description` too (`T2 dark palette`). An agent that takes several packages of one plan names them all in its description, as a range or a list (`T2-T4 dark palette`): ai-manager links it to each, and its brief's `Package:` line names the first. If ai-manager says it couldn't tell an agent's package, link it with the `plan_link` tool. Spawn each agent in the background in its own worktree, unless the plan says otherwise. A new package gets its row in the plan file before its agent is spawned: without the row it shows only as provisional, and the mod reminds you to add it.
 
 ```text
 Package: dark · T2

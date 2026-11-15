@@ -433,9 +433,9 @@ Auth: write. The plugin sends every `.md` file the lead writes. The file rules a
 - `is_plan`: the file has a package table and at least 2 package IDs.
 - `slug`: the registered plan's slug, or the slug the file would get.
 - `dismissed_at`: set when `dismissed` is true.
-- `offer`: `is_plan`, not registered and not dismissed. That is when the band shows **Register** and **Not a plan**.
+- `offer`: `is_plan`, not registered and not dismissed. That is when the band shows **Register** and **Ignore**.
 
-### `POST /api/plans/dismiss`: "Not a plan"
+### `POST /api/plans/dismiss`: "Ignore"
 
 Auth: write. The file rules apply. aimd remembers the dismissal per resolved file path, and registering the file later clears it.
 
@@ -1169,7 +1169,7 @@ An answer missing `done`, `total`, `ready` or `needs_you`, or with one of them o
 - **Refresh.** The line is asked for 15 s after its last refresh. It's asked for sooner after a turn ends (the main loop's or an agent's), a PR is created (`gh pr create` or the GitHub MCP tool), an agent is linked to a package, or a plan is registered. Those refresh at once, but at most once every 2 s: a burst collapses into one more refresh. Drawing the band never calls aimd, and no hook waits on a refresh. The repo's plan list comes from the plugin's cached `GET /api/context`, fetched again at most once a minute.
 - **aimd down or slow** (no answer in 1 s), or the plan unregistered since: no line, never an error. The line comes back with the next refresh that aimd answers.
 - **Pressing the line** (a click, or Enter once the band has the focus) opens the plan's page, `/app/plans/{slug}`, with `open` (`xdg-open` elsewhere). If neither opens a browser, a toast says where the page is.
-- **No line** when the plugin's `band` setting is off (and nothing is asked for), and in a session that draws nowhere (`claude -p`, the SDK) until a terminal or desktop client attaches.
+- **No line** when the plugin's `band` setting is `off` (and nothing is asked for), and in a session that draws nowhere (`claude -p`, the SDK) until a terminal or desktop client attaches.
 
 ## Settings
 
@@ -1275,7 +1275,7 @@ Auth: the token. The plugin POSTs `{"events": [ … ]}`: at most 200 events and 
 | `GET /api/plans/{slug}` | — | One board |
 | `GET /api/plans/{slug}/summary[?since=]` | — | Counts, ready, needs you (the inbox's Open items), to merge, unlocked, band |
 | `POST /api/plans/detect` | write | Does a file look like a plan; is it registered or dismissed? |
-| `POST /api/plans/dismiss` | write | "Not a plan" |
+| `POST /api/plans/dismiss` | write | "Ignore" |
 | `POST /api/plans/{slug}/packages/{id}/done` | write | Mark done |
 | `DELETE /api/plans/{slug}/packages/{id}/done` | write | Undo Mark done |
 | `POST /api/links/spawn` | write | Link a spawned agent or remote session, making a provisional package for one the plan file lacks |

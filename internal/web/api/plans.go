@@ -469,7 +469,7 @@ type Detection struct {
 	Registered  bool      `json:"registered"`
 	Dismissed   bool      `json:"dismissed"`
 	DismissedAt time.Time `json:"dismissed_at,omitzero"`
-	// Offer is true when the band should offer [Register] [Not a plan]: a
+	// Offer is true when the band should offer [Register] [Ignore]: a
 	// plan, not registered, not dismissed.
 	Offer bool `json:"offer"`
 }

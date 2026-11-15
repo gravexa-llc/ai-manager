@@ -31,14 +31,15 @@ export const OPTIONS = { token: TOKEN, aimdUrl: 'http://127.0.0.1:17999' }
 /**
  * Hooks the test's `on` with a fake aimd (routes keyed `METHOD /path`), a
  * mocked clock and the session nouns the mod reads. Unrouted paths get 404.
- * `sessionId` is what $.session.id() answers; an Error makes it fail.
+ * `sessionId` is what $.session.id() answers (a function is asked each
+ * time); an Error makes it fail.
  * `env` is the environment $.env.get reads (none set by default).
  */
 export function world(
   on: On,
   routes: Routes,
   cwd = REPO,
-  sessionId: string | Error = SESSION_ID,
+  sessionId: string | Error | (() => string) = SESSION_ID,
   env: Readonly<Record<string, string>> = {},
 ) {
   const clock = mock.clock(on, { now: 1_000_000 })
@@ -76,7 +77,7 @@ export function world(
 
   on('session.id', () => {
     if (sessionId instanceof Error) throw sessionId
-    return { value: sessionId }
+    return { value: typeof sessionId === 'function' ? sessionId() : sessionId }
   })
   on('session.root', () => ({ value: cwd }))
   on('session.cwd', () => ({ value: cwd }))

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,27 +25,38 @@ import (
 // holds what that doesn't get: a panic, or the error aimd stops with.
 const launchdLogFile = "aimd.launchd.log"
 
-// systemPath ends the PATH aimd runs with under launchd.
+// systemPath ends the PATH aimd runs with under launchd or systemd.
 var systemPath = []string{"/usr/bin", "/bin", "/usr/sbin", "/sbin"}
 
 // tools are the programs aimd runs; `aim up` resolves them where the user's
-// shell finds them, since launchd's PATH is only the system one.
+// shell finds them, since launchd's PATH, and a systemd user unit's, is
+// only the system one.
 var tools = []string{"claude", "gh", "git"}
 
-// passEnv are environment variables copied into the plist when set, so
-// aimd under launchd sees the same Claude config, ai-manager home and gh
-// config as the shell that ran `aim up`.
+// passEnv are environment variables copied into the plist (or the systemd
+// unit) when set, so aimd under launchd or systemd sees the same Claude
+// config, ai-manager home and gh config as the shell that ran `aim up`.
 var passEnv = []string{"AIM_HOME", "CLAUDE_CONFIG_DIR", "GH_CONFIG_DIR"}
 
 // sys is everything the up / down / status commands touch outside the
-// process, so tests never install anything or run launchctl.
+// process, so tests never install anything or run launchctl or systemctl.
 type sys struct {
+	// goos is the system aim runs on (runtime.GOOS): "darwin" keeps aimd
+	// under launchd, "linux" under systemd's user manager (systemd.go).
+	goos       string
 	lookPath   func(string) (string, error)
 	executable func() (string, error)
 	userHome   func() (string, error)
 	uid        int
 	// launchctl runs launchctl with args and returns its combined output.
 	launchctl func(ctx context.Context, args ...string) ([]byte, error)
+	// systemctl runs `systemctl --user` with args and returns its
+	// combined output.
+	systemctl func(ctx context.Context, args ...string) ([]byte, error)
+	// linger reports whether lingering is on for the user, so their
+	// systemd units outlive their last login session; known is false
+	// when loginctl can't say.
+	linger func() (on, known bool)
 	// httpGet fetches a URL (aimd's status).
 	httpGet func(ctx context.Context, url string) ([]byte, error)
 }
@@ -52,12 +64,31 @@ type sys struct {
 // realSys is the machine itself.
 func realSys() sys {
 	return sys{
+		goos:       runtime.GOOS,
 		lookPath:   exec.LookPath,
 		executable: os.Executable,
 		userHome:   os.UserHomeDir,
 		uid:        os.Getuid(),
 		launchctl: func(ctx context.Context, args ...string) ([]byte, error) {
 			return exec.CommandContext(ctx, "/bin/launchctl", args...).CombinedOutput()
+		},
+		systemctl: func(ctx context.Context, args ...string) ([]byte, error) {
+			return exec.CommandContext(ctx, "systemctl", append([]string{"--user"}, args...)...).CombinedOutput()
+		},
+		linger: func() (bool, bool) {
+			ctx, cancel := context.WithTimeout(context.Background(), systemctlTimeout)
+			defer cancel()
+			out, err := exec.CommandContext(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger", "--value").Output()
+			if err != nil {
+				return false, false
+			}
+			switch strings.TrimSpace(string(out)) {
+			case "yes":
+				return true, true
+			case "no":
+				return false, true
+			}
+			return false, false
 		},
 		httpGet: httpGet,
 	}
@@ -174,6 +205,12 @@ func findAimd(s sys) (string, error) {
 		return "", errors.New("aimd not found next to aim or on PATH; build it with `make build` or `go install ./cmd/...`")
 	}
 	return filepath.Abs(found)
+}
+
+// unsupported is what `aim up` and `aim down` say on a system with neither
+// launchd nor systemd support in aim.
+func unsupported(goos string) string {
+	return fmt.Sprintf("aim keeps aimd running with launchd on macOS and systemd on Linux; on %s, run `aimd --foreground` under your own supervisor", goos)
 }
 
 // renderPlist fills the template.
